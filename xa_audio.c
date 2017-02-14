@@ -266,10 +266,10 @@ extern xaULONG	xa_kludge900_aud;
 
 /**** Non Hardware Specific Functions ************/
 void XA_Audio_Init_Snd();
-void Init_Audio_Ring();
-void Kill_Audio_Ring();
-void XA_Update_Ring();
-void XA_Flush_Ring();
+static void Init_Audio_Ring(xaULONG ring_num,xaULONG buf_size);
+static void Kill_Audio_Ring();
+static void XA_Update_Ring();
+static void XA_Flush_Ring();
 XA_SND *XA_Audio_Next_Snd();
 void XA_Read_Audio_Delta();
 xaLONG XA_Read_AV_Time();
@@ -356,13 +356,13 @@ extern xaULONG xa_audio_port;
 
 xaULONG xa_vaudio_hard_buff = 0;		/* VID Domain snd chunk size */
 
-xaULONG xa_audio_hard_freq;		/* hardware frequency */
-xaULONG xa_audio_hard_buff;		/* preferred snd chunk size */
+static xaULONG xa_audio_hard_freq;		/* hardware frequency */
+xaULONG xa_audio_hard_buff;				/* preferred snd chunk size */
 static xaULONG xa_audio_ring_size;		/* preferred num of ring entries */
-xaULONG xa_audio_hard_type;		/* hardware sound encoding type */
-xaULONG xa_audio_hard_bps;		/* hardware bytes per sample */
-xaULONG xa_audio_hard_chans;		/* hardware number of chan. not yet */
-xaULONG xa_audio_flushed = 0;
+xaULONG xa_audio_hard_type;				/* hardware sound encoding type */
+static xaULONG xa_audio_hard_bps;		/* hardware bytes per sample */
+static xaULONG xa_audio_hard_chans;		/* hardware number of chan. not yet */
+static xaULONG xa_audio_flushed = 0;
 
 void  XA_Audio_Setup();
 void (*XA_Audio_Init)();
@@ -385,10 +385,10 @@ void New_Merged_Audio_Output();
 /****************************************************************************/
 /* useful for backing out audio when device opens fails, etc */
 
-void  XA_NoAudio_Nop();
-xaULONG XA_NoAudio_Nop1();
-void  XA_NoAudio_Nop2();
-void  XA_Null_Audio_Setup();
+static void  XA_NoAudio_Nop();
+static xaULONG XA_NoAudio_Nop1();
+static void  XA_NoAudio_Nop2();
+static void  XA_Null_Audio_Setup();
 
 void XA_Null_Audio_Setup()
 {
@@ -5747,9 +5747,7 @@ void Gen_Arm_2_Signed()
  * Global Variables:
  *  xa_audio_ring		pointer to somewhere in the ring
  *************************************/
-void Init_Audio_Ring(ring_num,buf_size)
-xaULONG ring_num;
-xaULONG buf_size;
+void Init_Audio_Ring(xaULONG ring_num,xaULONG buf_size)
 {
   xaULONG i;
   XA_AUDIO_RING_HDR *t_ring,*t_first;

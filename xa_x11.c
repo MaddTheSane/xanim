@@ -146,13 +146,13 @@ void XA_Remote_SpeedDiff();
 void XA_Remote_Adj_Volume();
 #endif
 
-void XA_Install_CMAP();
-void IFF_Buffer_HAM6();
-void IFF_Buffer_HAM8();
-void UTIL_Mapped_To_Bitmap();
-void UTIL_Mapped_To_Mapped();
-xaULONG CMAP_Find_Closest();
-void XA_Store_Title();
+static void XA_Install_CMAP();
+static void IFF_Buffer_HAM6();
+static void IFF_Buffer_HAM8();
+static void UTIL_Mapped_To_Bitmap();
+static void UTIL_Mapped_To_Mapped();
+static xaULONG CMAP_Find_Closest();
+static void XA_Store_Title();
 
 
 

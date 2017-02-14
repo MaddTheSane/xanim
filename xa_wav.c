@@ -33,7 +33,7 @@ static AUDS_HDR auds_hdr;
 static xaULONG wav_max_faud_size;
 static xaULONG wav_snd_time,wav_snd_timelo;
 static xaULONG wav_audio_type;
-xaULONG XA_Add_Sound();
+extern xaULONG XA_Add_Sound();
 
 #ifdef XA_GSM
 extern void GSM_Init();

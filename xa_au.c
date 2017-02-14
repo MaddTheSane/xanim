@@ -45,10 +45,10 @@ xaULONG AU_Read_File();
 xaULONG au_max_faud_size;
 extern void  AVI_Print_ID();
 
-xaULONG au_format,au_chans;
-xaULONG au_freq,au_bits,au_bps;
-xaULONG au_snd_time,au_snd_timelo;
-xaULONG au_audio_type;
+static xaULONG au_format,au_chans;
+static xaULONG au_freq,au_bits,au_bps;
+static xaULONG au_snd_time,au_snd_timelo;
+static xaULONG au_audio_type;
 xaULONG UTIL_Get_MSB_Long();
 xaULONG UTIL_Get_LSB_Long();
 xaULONG UTIL_Get_LSB_Short();

@@ -158,10 +158,10 @@ xaULONG xa_kludge900_aud;
 
 void TheEnd();
 void TheEnd1();
-void Hard_Death();
-void Usage();
-void Usage_Quick();
-void XA_Lets_Get_Looped();
+static void Hard_Death();
+static void Usage();
+static void Usage_Quick();
+static void XA_Lets_Get_Looped();
 void XAnim_Looped();
 extern xaULONG XA_Open_And_ID_File();
 void XA_Audio_Wait();
@@ -185,12 +185,12 @@ xaLONG XA_Read_AV_Time();
 void XA_Reset_Speed_Time();
 void XA_Install_CMAP();
 xaULONG XA_Mapped_To_Display();
-xaULONG XA_Read_Int();
-float XA_Read_Float();
-xaLONG XA_Get_Class();
-void XA_Add_Pause();
+static xaULONG XA_Read_Int();
+static float XA_Read_Float();
+static xaLONG XA_Get_Class();
+static void XA_Add_Pause();
 void XA_Store_Title();
-void XA_Resize_Window();
+static void XA_Resize_Window();
 XA_ANIM_SETUP *XA_Get_Anim_Setup();
 void XA_Free_Anim_Setup();
 XA_FUNC_CHAIN *XA_Get_Func_Chain();
@@ -230,7 +230,7 @@ XImage *im1_Image = 0;
 XImage *im2_Image = 0;
 XImage *sh_Image = 0;
 #endif
-xaULONG XA_Setup_Them_Buffers();
+static xaULONG XA_Setup_Them_Buffers();
 
 xaULONG mbuf = 0;
 
@@ -356,8 +356,8 @@ xaULONG xa_window_refresh_flag;
  * for the worst case.
  *
  */
-xaULONG xa_anim_type;
-xaULONG xa_merged_anim_flags;
+static xaULONG xa_anim_type;
+static xaULONG xa_merged_anim_flags;
 
 
 /*

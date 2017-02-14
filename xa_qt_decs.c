@@ -47,29 +47,29 @@
 xaLONG QT_Codec_Query();
 xaLONG QT_UNK_Codec_Query();
 
-xaULONG QT_Decode_RAW1();
-xaULONG QT_Decode_RAW4();
-xaULONG QT_Decode_RAW8();
-xaULONG QT_Decode_RAW16();
-xaULONG QT_Decode_RAW24();
-xaULONG QT_Decode_RAW32();
-xaULONG QT_Decode_RLE1();
-xaULONG QT_Decode_RLE2();
-xaULONG QT_Decode_RLE4();
-xaULONG QT_Decode_RLE8();
-xaULONG QT_Decode_RLE16();
-xaULONG QT_Decode_RLE24();
-xaULONG QT_Decode_RLE32();
+static xaULONG QT_Decode_RAW1();
+static xaULONG QT_Decode_RAW4();
+static xaULONG QT_Decode_RAW8();
+static xaULONG QT_Decode_RAW16();
+static xaULONG QT_Decode_RAW24();
+static xaULONG QT_Decode_RAW32();
+static xaULONG QT_Decode_RLE1();
+static xaULONG QT_Decode_RLE2();
+static xaULONG QT_Decode_RLE4();
+static xaULONG QT_Decode_RLE8();
+static xaULONG QT_Decode_RLE16();
+static xaULONG QT_Decode_RLE24();
+static xaULONG QT_Decode_RLE32();
 xaULONG QT_Decode_RPZA();
-xaULONG QT_Decode_SMC();
-xaULONG QT_Decode_YUV2();
-xaULONG QT_Decode_8BPS8();
-xaULONG QT_Decode_8BPS24();
+static xaULONG QT_Decode_SMC();
+static xaULONG QT_Decode_YUV2();
+static xaULONG QT_Decode_8BPS8();
+static xaULONG QT_Decode_8BPS24();
 extern xaULONG JFIF_Decode_JPEG();
 extern xaULONG AVI_Decode_CRAM();
 extern xaULONG AVI_Decode_CRAM16();
 
-xaULONG QT_RPZA_Dither();
+static xaULONG QT_RPZA_Dither();
 
 extern void XA_Gen_YUV_Tabs();
 /* JPEG and other assist routines */
