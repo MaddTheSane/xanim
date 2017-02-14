@@ -2,23 +2,17 @@
 /*
  * xa_replay.c
  *
- * Copyright (C) 1995 by Mark Podlipec. 
+ * Copyright (C) 1995-1998,1999 by Mark Podlipec. 
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  * 
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
- *
- */
-/* The following copyright applies to all Ultimotion Segments of the Code:
- *
- * "Copyright International Business Machines Corporation 1994, All rights
- *  reserved. This product uses Ultimotion(tm) IBM video technology."
  *
  */
 
@@ -31,7 +25,6 @@
 
 #include "xa_replay.h" 
 
-xaLONG Is_ARM_File();
 xaULONG ARM_Read_File();
 ARM_FRAME *ARM_Add_Frame();
 void ARM_Free_Frame_List();
@@ -56,25 +49,24 @@ extern xaULONG XA_RGB24_To_CLR32();
 void CMAP_Cache_Clear();
 void CMAP_Cache_Init();
 
-XA_ACTION *ACT_Get_Action();
-XA_CHDR *ACT_Get_CMAP();
-XA_CHDR *CMAP_Create_332();
-XA_CHDR *CMAP_Create_422();
-XA_CHDR *CMAP_Create_Gray();
-void ACT_Add_CHDR_To_Action();
-void ACT_Setup_Mapped();
-void ACT_Get_CCMAP();
-XA_CHDR *CMAP_Create_CHDR_From_True();
-xaULONG CMAP_Find_Closest();
-xaUBYTE *UTIL_RGB_To_FS_Map();
-xaUBYTE *UTIL_RGB_To_Map();
+extern XA_ACTION *ACT_Get_Action();
+extern XA_CHDR *ACT_Get_CMAP();
+extern XA_CHDR *CMAP_Create_332();
+extern XA_CHDR *CMAP_Create_422();
+extern XA_CHDR *CMAP_Create_Gray();
+extern void ACT_Add_CHDR_To_Action();
+extern void ACT_Setup_Mapped();
+extern void ACT_Get_CCMAP();
+extern XA_CHDR *CMAP_Create_CHDR_From_True();
+extern xaULONG CMAP_Find_Closest();
+extern xaUBYTE *UTIL_RGB_To_FS_Map();
+extern xaUBYTE *UTIL_RGB_To_Map();
 
-xaULONG UTIL_Get_MSB_Long();
-xaULONG UTIL_Get_MSB_UShort();
-void  UTIL_FPS_2_Time();
+extern void  UTIL_FPS_2_Time();
 extern XA_ANIM_SETUP *XA_Get_Anim_Setup();
-extern XA_Add_Func_To_Free_Chain();
-void XA_Free_Anim_Setup();
+extern void XA_Add_Func_To_Free_Chain();
+extern void XA_Free_Anim_Setup();
+extern xaULONG XA_find_str();
 
 xaUBYTE *ARM_prev_buff = 0;
 xaULONG ARM_prev_buff_size = 0;
@@ -126,46 +118,17 @@ ARM_FRAME *fframes;
   }
 }
 
-#define ARM_ARMo 0x41524D6F
-#define ARM_vie  0x76696500
-
-
-/*
- *
- */
-xaLONG Is_ARM_File(filename)
-char *filename;
-{
-  FILE *fin;
-  xaULONG data0,data1;
-
-  if ( (fin=fopen(filename,XA_OPEN_MODE)) == 0) return(xaNOFILE);
-  data0 = UTIL_Get_MSB_Long(fin);
-  data1 = (UTIL_Get_MSB_Long(fin)) & 0xffffff00;
- 
-  fclose(fin);
-  if ( (data0 == ARM_ARMo) && (data1 == ARM_vie)) return(xaTRUE);
-  return(xaFALSE);
-}
-
 
 xaULONG ARM_Read_File(fname,anim_hdr,audio_attempt)
 char *fname;
 XA_ANIM_HDR *anim_hdr;
 xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
-{
-  FILE *fin;
+{ XA_INPUT *xin = anim_hdr->xin;
   xaLONG i,t_time;
   xaULONG t_timelo;
-  XA_ACTION *act;
   XA_ANIM_SETUP *arm;
   ARM_HDR   arm_hdr;
  
-  if ( (fin=fopen(fname,XA_OPEN_MODE)) == 0)
-  {
-    fprintf(stderr,"can't open ARM File %s for reading\n",fname);
-    return(xaFALSE);
-  }
 
   arm = XA_Get_Anim_Setup();
   arm->vid_time = XA_GET_TIME( 100 ); /* default */
@@ -176,18 +139,18 @@ xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
   arm_audio_attempt	= audio_attempt;
 
 
-  if (ARM_Read_Header(anim_hdr,fin,arm,&arm_hdr) == xaFALSE)
+  if (ARM_Read_Header(anim_hdr,xin,arm,&arm_hdr) == xaFALSE)
   {
     fprintf(stderr,"ARM: read header error\n");
-    fclose(fin);
+    xin->Close_File(xin);
     return(xaFALSE);
   }
 
-  if (ARM_Read_Index(fin,anim_hdr,arm,&arm_hdr)==xaFALSE) return(xaFALSE);
+  if (ARM_Read_Index(xin,anim_hdr,arm,&arm_hdr)==xaFALSE) return(xaFALSE);
 
   if (xa_verbose) 
   {
-    fprintf(stderr,"ARM %ldx%ldx%ld frames %ld\n",
+    fprintf(stderr,"ARM %dx%dx%d frames %d\n",
 		arm->imagex,arm->imagey,arm->imagec,arm_frame_cnt);
   }
   if (arm_frame_cnt == 0)
@@ -208,7 +171,7 @@ xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
   {
     if (i > arm_frame_cnt)
     {
-      fprintf(stderr,"ARM_Read_Anim: frame inconsistency %ld %ld\n",
+      fprintf(stderr,"ARM_Read_Anim: frame inconsistency %d %d\n",
                 i,arm_frame_cnt);
       break;
     }
@@ -229,8 +192,8 @@ xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
   anim_hdr->frame_lst[i].zztime = -1;
   anim_hdr->frame_lst[i].act  = 0;
   anim_hdr->loop_frame = 0;
-  if (xa_buffer_flag == xaFALSE) anim_hdr->anim_flags |= ANIM_SNG_BUF;
-  if (xa_file_flag == xaTRUE) anim_hdr->anim_flags |= ANIM_USE_FILE;
+  if (!(xin->load_flag & XA_IN_LOAD_BUF)) anim_hdr->anim_flags |= ANIM_SNG_BUF;
+  if (xin->load_flag & XA_IN_LOAD_FILE) anim_hdr->anim_flags |= ANIM_USE_FILE;
   anim_hdr->anim_flags |= ANIM_FULL_IM;
   anim_hdr->max_fvid_size = arm->max_fvid_size;
   anim_hdr->max_faud_size = arm->max_faud_size;
@@ -255,12 +218,12 @@ xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
 #define ARM_MAX_LINE 256
 char arm_line[ARM_MAX_LINE];
 
-xaULONG ARM_Read_Line(fin,ptr)
-FILE *fin;
+xaULONG ARM_Read_Line(xin,ptr)
+XA_INPUT *xin;
 char *ptr;
 { int i = 0;
-  while( !feof(fin) )
-  { int d = fgetc(fin);
+  while( !xin->At_EOF(xin,-1) )
+  { int d = xin->Read_U8(xin);
     if (d >= 0)
     { ptr[i] = d; i++;
       if (i  >= ARM_MAX_LINE) return(xaFALSE);
@@ -275,26 +238,29 @@ char *ptr;
   return(xaFALSE);
 }
 
-xaULONG ARM_Read_Header(anim_hdr,fin,arm,arm_hdr)
+xaULONG ARM_Read_Header(anim_hdr,xin,arm,arm_hdr)
 XA_ANIM_HDR *anim_hdr;
-FILE *fin;
+XA_INPUT *xin;
 XA_ANIM_SETUP *arm;
 ARM_HDR *arm_hdr;
-{ xaULONG t;
-  double tmpf;
+{ double tmpf;
 
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE);  /* ARMovie */
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE);  /* name */
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE);  /* date/copyright */
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE);  /* author/etc */
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE);  /* video format */
-    if (arm_line[0] == '1') arm_hdr->vid_codec = ARM_VIDEO_MOVL_RGB;
-    else  arm_hdr->vid_codec = ARM_VIDEO_UNK;
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE);	/* width */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE);  /* ARMovie */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE);  /* name */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE);  /* date/copyright */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE);  /* author/etc */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE);  /* video format */
+  if (arm_line[0] == '1') arm_hdr->vid_codec = ARM_VIDEO_MOVL_RGB;
+  else
+  { fprintf(stderr,"ARM: Unsupported Video Type: %s,",arm_line);
+    arm_hdr->vid_codec = ARM_VIDEO_UNK;
+  }
+
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE);	/* width */
     tmpf = atof(arm_line);  arm_hdr->width	 = (xaLONG)tmpf;
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE);	/* height */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE);	/* height */
     tmpf = atof(arm_line);  arm_hdr->height	= (xaLONG)tmpf;
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE);	/* depth */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE);	/* depth */
     tmpf = atof(arm_line);  arm_hdr->depth	= (xaLONG)tmpf;
 
 /* Check Video Precision Line for modifiers */
@@ -305,9 +271,9 @@ ARM_HDR *arm_hdr;
 		arm_hdr->vid_codec = ARM_VIDEO_MOVL_YUV;
     }
 
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE);	/* fps */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE);	/* fps */
     arm_hdr->fps = atof(arm_line);
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE);  /*audio format */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE);  /*audio format */
     if (arm_audio_attempt == xaTRUE)
     {
       if (arm_line[0] == '0') 
@@ -326,10 +292,10 @@ ARM_HDR *arm_hdr;
 	arm_audio_attempt = xaFALSE;
       }
     }
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE);  /* audio freq */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE);  /* audio freq */
      /* NOTE: this can be fraction HZ - eventually support this or us */
     tmpf = atof(arm_line);
-    { static char us[3] = { 0xB5, 0x73, 0x00 };
+    { static unsigned char us[3] = { 0xB5, 0x73, 0x00 };
       if (XA_find_str(arm_line,us)==xaTRUE)
       { double freq = (1000000.0 / tmpf) + 0.5;
         arm_hdr->aud_freq = (xaLONG)freq;
@@ -337,9 +303,9 @@ ARM_HDR *arm_hdr;
       else arm_hdr->aud_freq = (xaLONG)tmpf;
     }
      
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE);  /* audio chans */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE);  /* audio chans */
     tmpf = atof(arm_line);  arm_hdr->aud_chans	= (xaLONG)tmpf;
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE);  /* audio prec */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE);  /* audio prec */
     tmpf = atof(arm_line);  arm_hdr->aud_prec	= (xaLONG)tmpf;
 
     /* Check Audio Precision Line for modifiers */
@@ -353,14 +319,14 @@ ARM_HDR *arm_hdr;
       if ( XA_find_str(arm_line,"linear") == xaTRUE) 
       {
         if (xa_verbose==xaTRUE) 
-		fprintf(stderr,"AUDIO: Signed %ldHz chans: %ld  bits: %ld\n",
+		fprintf(stderr,"AUDIO: Signed %dHz chans: %d  bits: %d\n",
 			arm_audio_freq,arm_audio_chans,arm_hdr->aud_prec);
         arm_audio_type = XA_AUDIO_SIGNED;  /* NOTE: little endian */
       } 
       else if ( XA_find_str(arm_line,"logarithmic") == xaTRUE) 
       {
         if (xa_verbose==xaTRUE) 
-	    fprintf(stderr,"AUDIO: LOGARITHMIC %ldHz chans: %ld bits: %ld\n",
+	    fprintf(stderr,"AUDIO: LOGARITHMIC %dHz chans: %d bits: %d\n",
 			arm_audio_freq,arm_audio_chans,arm_hdr->aud_prec);
         arm_audio_type = XA_AUDIO_ARMLAW;  /* NOTE: little endian */
       } 
@@ -375,7 +341,7 @@ ARM_HDR *arm_hdr;
       if (arm_audio_type == XA_AUDIO_INVALID)
       {
         if (arm_audio_attempt == xaTRUE) 
-	  fprintf(stderr,"ARM: Audio Type unsupported %ld \n",
+	  fprintf(stderr,"ARM: Audio Type unsupported %d \n",
 						arm_hdr->aud_codec);
         arm_audio_attempt = xaFALSE;
       }
@@ -386,26 +352,26 @@ ARM_HDR *arm_hdr;
       }
     }
 
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE);/*frames perchnk*/
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE);/*frames perchnk*/
     tmpf = atof(arm_line);  arm_hdr->fp_chunk	= (xaLONG)tmpf;
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE); /* chunk cnt */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE); /* chunk cnt */
     tmpf = atof(arm_line);  arm_hdr->chunk_cnt	= (xaLONG)tmpf;
 
     /* This is necessary so +CF4 will function correctly */
     arm->cmap_frame_num  = (arm_hdr->chunk_cnt * arm_hdr->fp_chunk) 
 							/ cmap_sample_cnt;
 
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE); /*ev chunk sz */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE); /*ev chunk sz */
     tmpf = atof(arm_line);  arm_hdr->ev_chk_size	= (xaLONG)tmpf;
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE); /*od chunk sz */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE); /*od chunk sz */
     tmpf = atof(arm_line);  arm_hdr->od_chk_size	= (xaLONG)tmpf;
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE); /* idx offset */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE); /* idx offset */
     tmpf = atof(arm_line);  arm_hdr->idx_offset	= (xaLONG)tmpf;
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE); /*sprite offset*/
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE); /*sprite offset*/
     tmpf = atof(arm_line);  arm_hdr->sprite_off	= (xaLONG)tmpf;
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE); /*sprite size*/
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE); /*sprite size*/
     tmpf = atof(arm_line);  arm_hdr->sprite_size = (xaLONG)tmpf;
-  if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE); /*key  offset */
+  if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE); /*key  offset */
     tmpf = atof(arm_line);  arm_hdr->key_offset	= (xaLONG)tmpf;
   
 
@@ -425,17 +391,17 @@ ARM_HDR *arm_hdr;
 
 if (xa_verbose)
 {
-  fprintf(stderr,"ARM: %ldx%ldx%lx\n",arm->imagex,arm->imagey,arm->depth);
+  fprintf(stderr,"ARM: %dx%dx%x\n",arm->imagex,arm->imagey,arm->depth);
 }
 
   if (   (cmap_true_map_flag == xaFALSE) /* depth 16 and not true_map */
-      || (xa_buffer_flag == xaFALSE) )
+      || (!(xin->load_flag & XA_IN_LOAD_BUF)) )
   {
      if (cmap_true_to_332 == xaTRUE)
              arm->chdr = CMAP_Create_332(arm->cmap,&arm->imagec);
      else    arm->chdr = CMAP_Create_Gray(arm->cmap,&arm->imagec);
   }
-  if ( (arm->pic==0) && (xa_buffer_flag == xaTRUE))
+  if ( (arm->pic==0) && (xin->load_flag & XA_IN_LOAD_BUF))
   {
     arm->pic_size = arm->imagex * arm->imagey;
     if ( (cmap_true_map_flag == xaTRUE) && (arm->depth > 8) )
@@ -447,8 +413,8 @@ if (xa_verbose)
 }
 
 
-xaULONG ARM_Read_Index(fin,anim_hdr,arm,arm_hdr)
-FILE *fin;
+xaULONG ARM_Read_Index(xin,anim_hdr,arm,arm_hdr)
+XA_INPUT *xin;
 XA_ANIM_HDR *anim_hdr;
 XA_ANIM_SETUP *arm;
 ARM_HDR *arm_hdr;
@@ -459,16 +425,16 @@ ARM_HDR *arm_hdr;
   idx_vsize = (xaULONG *)malloc( (idx_cnt + 2) * sizeof(xaULONG) );
   idx_asize = (xaULONG *)malloc( (idx_cnt + 2) * sizeof(xaULONG) );
 
-  DEBUG_LEVEL2 fprintf(stderr,"    idx offset  %08lx\n",arm_hdr->idx_offset);
-  fseek(fin,arm_hdr->idx_offset,0);
+  DEBUG_LEVEL2 fprintf(stderr,"    idx offset  %08x\n",arm_hdr->idx_offset);
+  xin->Seek_FPos(xin,arm_hdr->idx_offset,0);
   /* Go Through Chunks */
   for(i=0; i<=idx_cnt; i++)
   { xaLONG off, vid_size, aud_size, ret;
-    if (ARM_Read_Line(fin,arm_line) == xaFALSE) return(xaFALSE); /*chunk count*/
-    ret = sscanf(arm_line,"%ld,%ld;%ld",&off,&vid_size,&aud_size);
+    if (ARM_Read_Line(xin,arm_line) == xaFALSE) return(xaFALSE); /*chunk count*/
+    ret = sscanf(arm_line,"%d,%d;%d",&off,&vid_size,&aud_size);
     DEBUG_LEVEL1
     {
-     fprintf(stderr,"  (%ld) %ld) off %08lx  vid %08lx  aud %08lx\n",ret,i,
+     fprintf(stderr,"  (%d) %d) off %08x  vid %08x  aud %08x\n",ret,i,
 						off,vid_size,aud_size);
     }
     idx_off[i] = off;
@@ -481,14 +447,15 @@ ARM_HDR *arm_hdr;
   for(i=0; i<=idx_cnt; i++)
   { xaULONG j; xaULONG tot_dsize = 0;
 
+DEBUG_LEVEL1 fprintf(stderr," idx %d) chunks %d\n",i, arm_hdr->fp_chunk);
     /* VIDEO */
-    fseek(fin,idx_off[i],0);
+    xin->Seek_FPos(xin,idx_off[i],0);
     for(j=0; j < arm_hdr->fp_chunk; j++)
     { xaULONG fpos,dsize;
-      fpos = ftell(fin);		/* save fin position */
-      dsize = ARM_Get_Length(fin,arm);	/* find length of delta */
-      fseek(fin,fpos,0);		/* return to fin position */
-      ARM_Read_Frame(fin,anim_hdr,arm,arm_hdr,dsize);
+      fpos = xin->Get_FPos(xin);		/* save xin position */
+      dsize = ARM_Get_Length(xin,arm);	/* find length of delta */
+      xin->Seek_FPos(xin,fpos,0);		/* return to xin position */
+      ARM_Read_Frame(xin,anim_hdr,arm,arm_hdr,dsize);
       tot_dsize += dsize;
     }
 
@@ -496,26 +463,26 @@ ARM_HDR *arm_hdr;
     if (arm_audio_attempt == xaTRUE) 
     { xaLONG ret, snd_size = (xaLONG)idx_asize[i];
       xaULONG snd_off = idx_off[i] + idx_vsize[i];
-      if (xa_file_flag==xaTRUE)
+      if (xin->load_flag & XA_IN_LOAD_FILE)
       { xaLONG rets;
 	rets = XA_Add_Sound(anim_hdr,0,arm_audio_type, snd_off,
 				arm_audio_freq, snd_size, 
-				&arm->aud_time,&arm->aud_timelo);
+				&arm->aud_time,&arm->aud_timelo, 0, 0);
 	if (rets==xaFALSE) arm_audio_attempt = xaFALSE;
 	if (snd_size > arm->max_faud_size) arm->max_faud_size = snd_size;
       }
       else
       { xaUBYTE *snd = (xaUBYTE *)malloc(snd_size);
 	if (snd==0) TheEnd1("ARM: snd malloc err");
-        fseek(fin,snd_off,0); /* seek to audio info */
-	ret = fread( snd, snd_size, 1, fin);
-	if (ret != 1) fprintf(stderr,"ARM: snd rd err(size %lx\n",snd_size);
+        xin->Seek_FPos(xin,snd_off,0); /* seek to audio info */
+	ret = xin->Read_Block(xin, snd, snd_size);
+	if (ret < snd_size) fprintf(stderr,"ARM: snd rd err(size %x\n",snd_size);
 	else
 	{ int rets;
           /*NOTE: don't free snd */
 	  rets = XA_Add_Sound(anim_hdr,snd,arm_audio_type, -1,
 				arm_audio_freq, snd_size,
-				&arm->aud_time, &arm->aud_timelo);
+				&arm->aud_time, &arm->aud_timelo, 0, 0);
 	  if (rets==xaFALSE) arm_audio_attempt = xaFALSE;
 	}
       }
@@ -527,31 +494,30 @@ ARM_HDR *arm_hdr;
   return(xaTRUE);
 }
 
-/* Assuming fin is pointing to start of delta.
- * leaves fin just after end of delta.
+/* Assuming xin is pointing to start of delta.
+ * leaves xin just after end of delta.
  */
-void ARM_Read_Frame(fin,anim_hdr,arm,arm_hdr,vsize)
-FILE *fin;
+void ARM_Read_Frame(xin,anim_hdr,arm,arm_hdr,vsize)
+XA_INPUT *xin;
 XA_ANIM_HDR *anim_hdr;
 XA_ANIM_SETUP *arm;
 ARM_HDR *arm_hdr;
 xaLONG vsize;
-{ xaULONG exit_flag;
-  XA_ACTION *act;
+{ XA_ACTION *act;
   xaULONG dlta_len = vsize;
   ACT_DLTA_HDR *dlta_hdr;
 
   act = ACT_Get_Action(anim_hdr,ACT_DELTA);
-  if (xa_file_flag == xaTRUE)
+  if (xin->load_flag & XA_IN_LOAD_FILE)
   {
     dlta_hdr = (ACT_DLTA_HDR *) malloc(sizeof(ACT_DLTA_HDR));
     if (dlta_hdr == 0) TheEnd1("ARM: dlta malloc err");
     act->data = (xaUBYTE *)dlta_hdr;
     dlta_hdr->flags = ACT_SNGL_BUF;
     dlta_hdr->fsize = dlta_len;
-    dlta_hdr->fpos  = ftell(fin);
+    dlta_hdr->fpos  = xin->Get_FPos(xin);
     if (dlta_len > arm->max_fvid_size) arm->max_fvid_size = dlta_len;
-    fseek(fin,dlta_len,1);
+    xin->Seek_FPos(xin,dlta_len,1);
   }
   else
   { xaULONG d; xaLONG ret;
@@ -561,8 +527,8 @@ xaLONG vsize;
     act->data = (xaUBYTE *)dlta_hdr;
     dlta_hdr->flags = ACT_SNGL_BUF | DLTA_DATA;
     dlta_hdr->fpos = 0; dlta_hdr->fsize = dlta_len;
-    ret = fread( dlta_hdr->data, dlta_len, 1, fin);
-    if (ret != 1) { fprintf(stderr,"ARM: read err\n"); return; }
+    ret = xin->Read_Block(xin, dlta_hdr->data, dlta_len);
+    if (ret < dlta_len) { fprintf(stderr,"ARM: read err\n"); return; }
   }
   ARM_Add_Frame(arm->vid_time,arm->vid_timelo,act);
   dlta_hdr->xpos = dlta_hdr->ypos = 0;
@@ -574,7 +540,7 @@ xaLONG vsize;
   else		dlta_hdr->extra = (void *)(ARM_VIDEO_RGB);
   dlta_hdr->xapi_rev = 0x0001;
   dlta_hdr->delta = ARM_Decode_MLINES;
-  ACT_Setup_Delta(arm,act,dlta_hdr,fin);
+  ACT_Setup_Delta(arm,act,dlta_hdr,xin);
 }
 
 
@@ -596,7 +562,7 @@ xaLONG vsize;
 xaULONG ARM_Get_RGB_Pixel(pix,map_flag,map,chdr)
 xaULONG pix,map_flag,*map;
 XA_CHDR *chdr;
-{ xaULONG r,g,b; xaULONG ret;
+{ xaULONG r,g,b;
   r = (pix >> 10) & 0x1f; g = (pix >> 5) & 0x1f; b = pix & 0x1f;
   r = (r << 3) | (r >> 2); g = (g << 3) | (g >> 2); b = (b << 3) | (b >> 2);
   return( XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr) );
@@ -605,7 +571,7 @@ XA_CHDR *chdr;
 xaULONG ARM_Get_YUV_Pixel(pix,map_flag,map,chdr)
 xaULONG pix,map_flag,*map;
 XA_CHDR *chdr;
-{ xaULONG y,u,v,r,g,b; xaULONG ret;
+{ xaULONG y,u,v,r,g,b;
   v = (pix >> 10) & 0x1f; u = (pix >> 5) & 0x1f; y = pix & 0x1f;
   u ^= 0x10; v ^= 0x10;
   y = (y << 3) | (y >> 2); u = (u << 3) | (u >> 2); v = (v << 3) | (v >> 2);
@@ -616,7 +582,7 @@ XA_CHDR *chdr;
 xaULONG ARM_Get_RGB_RGB(pix,ir,ig,ib)
 xaULONG pix;
 xaULONG *ir,*ig,*ib;
-{ xaULONG r,g,b; xaULONG ret;
+{ xaULONG r,g,b;
   r = (pix >> 10) & 0x1f; g = (pix >> 5) & 0x1f; b = pix & 0x1f;
   r = (r << 3) | (r >> 2); g = (g << 3) | (g >> 2); b = (b << 3) | (b >> 2);
   *ir = r; *ig = g; *ib = b;
@@ -626,7 +592,7 @@ xaULONG *ir,*ig,*ib;
 xaULONG ARM_Get_YUV_RGB(pix,ir,ig,ib)
 xaULONG pix;
 xaULONG *ir,*ig,*ib;
-{ xaULONG y,u,v; xaULONG ret;
+{ xaULONG y,u,v;
   v = (pix >> 10) & 0x1f; u = (pix >> 5) & 0x1f; y = pix & 0x1f;
   u ^= 0x10; v ^= 0x10;
   y = (y << 3) | (y >> 2); u = (u << 3) | (u >> 2); v = (v << 3) | (v >> 2);
@@ -695,7 +661,7 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 	if (test >=0x1f0)				/* New N Pixels */
 	{ xaLONG  arm_bcnt   = ((((cnt * 15) + 15) >> 4) << 1); /* dp bytes */
 	  xaLONG  arm_b_bnum = 0;	xaULONG arm_b_bbuf = 0;
-	  DEBUG_LEVEL1  fprintf(stderr,"New N Pixels %ld\n",cnt);
+	  DEBUG_LEVEL1  fprintf(stderr,"New N Pixels %d\n",cnt);
 	  i_cnt += cnt; if (i_cnt >= im_size) cnt -= (i_cnt - im_size);
 	  while(cnt--)  /* pixels */
 	  { xaULONG r,g,b; /* Little Endian */
@@ -709,13 +675,13 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 	} else { iptr += (3 * cnt);  i_cnt += cnt; }		/* Copy/Skip */
       }
       else if (test == 0x1cc)
-      { xaULONG r,g,b,pixel; xaUBYTE d;
+      { xaULONG r,g,b,pixel;
 	ARM_GET_CODE(dp,pixel);
 	arm_get_pixel(pixel,&r,&g,&b);
 	i_cnt += cnt;	if (i_cnt >= im_size) cnt -= (i_cnt - im_size);
 	while(cnt--) { *iptr++ = (xaUBYTE)r; 
 				*iptr++ = (xaUBYTE)g; *iptr++ = (xaUBYTE)b; }
-      } else fprintf(stderr,"ARM decode ERROR: %04lx\n",code);
+      } else fprintf(stderr,"ARM decode ERROR: %04x\n",code);
     }
     else			/* New Pixel */
     { xaULONG r,g,b; arm_get_pixel((code>>1),&r,&g,&b);  i_cnt++;
@@ -744,10 +710,10 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 	if (test >=0x1f0)				/* New N Pixels */
 	{ xaLONG  arm_bcnt   = ((((cnt * 15) + 15) >> 4) << 1); /* dp bytes */
 	  xaLONG  arm_b_bnum = 0;	xaULONG arm_b_bbuf = 0;
-	  DEBUG_LEVEL1  fprintf(stderr,"New N Pixels %ld\n",cnt);
+	  DEBUG_LEVEL1  fprintf(stderr,"New N Pixels %d\n",cnt);
 	  i_cnt += cnt; if (i_cnt >= im_size) cnt -= (i_cnt - im_size);
 	  while(cnt--)  /* pixels */
-	  { xaULONG pixel; /* Little Endian */
+	  { /* Little Endian */
 	    while(arm_b_bnum < 15) { arm_b_bbuf |=  (*dp++) << arm_b_bnum;
 						arm_b_bnum += 8; arm_bcnt--; }
 	    *iptr++ = (xaUBYTE)arm_get_pixel(arm_b_bbuf,map_flag,map,chdr);
@@ -762,7 +728,7 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 	d = (xaUBYTE)arm_get_pixel(pixel,map_flag,map,chdr);
 	i_cnt += cnt;	if (i_cnt >= im_size) cnt -= (i_cnt - im_size);
 	while(cnt--) *iptr++ = d;
-      } else fprintf(stderr,"ARM decode ERROR: %04lx\n",code);
+      } else fprintf(stderr,"ARM decode ERROR: %04x\n",code);
     }
     else			/* New Pixel */
     { *iptr++ = (xaUBYTE)arm_get_pixel((code>>1),map_flag,map,chdr);  i_cnt++; }
@@ -789,10 +755,10 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 	if (test >=0x1f0)				/* New N Pixels */
 	{ xaLONG  arm_bcnt   = ((((cnt * 15) + 15) >> 4) << 1); /* dp bytes */
 	  xaLONG  arm_b_bnum = 0;	xaULONG arm_b_bbuf = 0;
-	  DEBUG_LEVEL1  fprintf(stderr,"New N Pixels %ld\n",cnt);
+	  DEBUG_LEVEL1  fprintf(stderr,"New N Pixels %d\n",cnt);
 	  i_cnt += cnt; if (i_cnt >= im_size) cnt -= (i_cnt - im_size);
 	  while(cnt--)  /* pixels */
-	  { xaULONG pixel; /* Little Endian */
+	  { /* Little Endian */
 	    while(arm_b_bnum < 15) { arm_b_bbuf |=  (*dp++) << arm_b_bnum;
 						arm_b_bnum += 8; arm_bcnt--; }
 	    *iptr++ = (xaULONG)arm_get_pixel(arm_b_bbuf,map_flag,map,chdr);
@@ -807,7 +773,7 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 	d = (xaULONG)arm_get_pixel(pixel,map_flag,map,chdr);
 	i_cnt += cnt;	if (i_cnt >= im_size) cnt -= (i_cnt - im_size);
 	while(cnt--) *iptr++ = d;
-      } else fprintf(stderr,"ARM decode ERROR: %04lx\n",code);
+      } else fprintf(stderr,"ARM decode ERROR: %04x\n",code);
     }
     else			/* New Pixel */
     { *iptr++ = (xaULONG)arm_get_pixel((code>>1),map_flag,map,chdr);  i_cnt++; }
@@ -834,10 +800,10 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 	if (test >=0x1f0)				/* New N Pixels */
 	{ xaLONG  arm_bcnt   = ((((cnt * 15) + 15) >> 4) << 1); /* dp bytes */
 	  xaLONG  arm_b_bnum = 0;	xaULONG arm_b_bbuf = 0;
-	  DEBUG_LEVEL1  fprintf(stderr,"New N Pixels %ld\n",cnt);
+	  DEBUG_LEVEL1  fprintf(stderr,"New N Pixels %d\n",cnt);
 	  i_cnt += cnt; if (i_cnt >= im_size) cnt -= (i_cnt - im_size);
 	  while(cnt--)  /* pixels */
-	  { xaULONG pixel; /* Little Endian */
+	  { /* Little Endian */
 	    while(arm_b_bnum < 15) { arm_b_bbuf |=  (*dp++) << arm_b_bnum;
 						arm_b_bnum += 8; arm_bcnt--; }
 	    *iptr++ = (xaUSHORT)arm_get_pixel(arm_b_bbuf,map_flag,map,chdr);
@@ -852,7 +818,7 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 	d = (xaUSHORT)arm_get_pixel(pixel,map_flag,map,chdr);
 	i_cnt += cnt;	if (i_cnt >= im_size) cnt -= (i_cnt - im_size);
 	while(cnt--) *iptr++ = d;
-      } else fprintf(stderr,"ARM decode ERROR: %04lx\n",code);
+      } else fprintf(stderr,"ARM decode ERROR: %04x\n",code);
     }
     else			/* New Pixel */
     { *iptr++ = (xaUSHORT)arm_get_pixel((code>>1),map_flag,map,chdr); i_cnt++; }
@@ -865,8 +831,8 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 }
 
 
-xaULONG ARM_Get_Length(fin,arm)
-FILE *fin;
+xaULONG ARM_Get_Length(xin,arm)
+XA_INPUT *xin;
 XA_ANIM_SETUP *arm;
 { xaULONG d_cnt = 0;
   xaLONG i = arm->imagex * arm->imagey;
@@ -874,8 +840,8 @@ XA_ANIM_SETUP *arm;
 
   while(i > 0)
   {
-    if ( feof(fin) ) return(0);
-    code = fgetc(fin); code |= (fgetc(fin) & 0xff) << 8; d_cnt += 2;
+    if ( xin->At_EOF(xin,-1) ) return(0);
+    code = xin->Read_LSB_U16(xin); d_cnt += 2; 
 
     if (code & 0x01)
     { xaULONG test,cnt;
@@ -890,24 +856,24 @@ XA_ANIM_SETUP *arm;
 	if (test >=0x1f0)			/* New N Pixels */
 	{ xaULONG bs = ((cnt * 15) + 15) >> 4;
 	  i -= cnt;
-	  while(bs--) { fgetc(fin); fgetc(fin); d_cnt += 2; }
+	  while(bs--) { xin->Read_LSB_U16(xin); d_cnt += 2; } 
 	}
 	else	{ i -= cnt; }			/* Copy/Skip */
       }
       else if (test == 0x1cc)				/* Duplicate */
       {
         if (cnt <= 2) {fprintf(stderr,"DUP CNT ERR\n"); continue; }
-	fgetc(fin); fgetc(fin); d_cnt += 2;
+        xin->Read_LSB_U16(xin); d_cnt += 2;
 	i -= cnt;
       }
       else 
       {
-	fprintf(stderr,"ARM Get len error: %04lx\n",code);
+	fprintf(stderr,"ARM Get len error: %04x\n",code);
       }
     }
     else { i--; }				/* New Pixel */
   }
-  code = fgetc(fin); code |= (fgetc(fin) & 0xff) << 8;
+  code = xin->Read_LSB_U16(xin); 
   if (code == 0xe601) d_cnt += 2;
   return(d_cnt);
 }
@@ -949,7 +915,7 @@ xaULONG *ir,*ig,*ib;
   *ib = (xaULONG)(bb);
 
   DEBUG_LEVEL1
-    fprintf(stderr,"YUV %ld %ld %ld  RGB %ld %ld %ld\n",iy,iu,iv,*ir,*ig,*ib);
+    fprintf(stderr,"YUV %d %d %d  RGB %d %d %d\n",iy,iu,iv,*ir,*ig,*ib);
 }
 
 

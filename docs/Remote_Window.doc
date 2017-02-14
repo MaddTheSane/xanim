@@ -1,0 +1,41 @@
+
+
+This document will eventually describe how to use the Remote Window
+aspect of XAnim.   This allows XAnim to be controlled from another
+program using X11 Change Property calls.  
+
+The file "proptest.c" gives an example on how to send these commands
+to XAnim and can be used to test this feature.
+
+NOTE: this feature is currently ONLY enabled if you use the +W# option
+to XAnim.
+
+The following commands sent via the ChangeProperty are currently supported.
+You'll notice that they're very similiar to the keyboard commands that may
+be typed into the XAnim window.
+
+     q         quit.
+     <space>   Toggle. starts/stops animation.
+     ,         Single step back one frame.
+     .         Single step forward one frame.
+     m         Single step back one frame staying within anim.
+     /         Single step forward one frame staying within anim.
+     -         Increase animation playback speed.
+     =         Decrease animation playback speed.
+     0         Reset animation playback speed to original values.
+     1         Decrement volume by 10.
+     2         Decrement volume by 1.
+     3         Increment volume by 1.
+     4         Increment volume by 10.
+     s         Toggle. Audio Volume(MUTE). on/off.
+     8         Toggle. Main Speaker. on/off.
+     9         Toggle. Headphones. on/off.
+     v#        Setup volume where # is an number from 0 to 100.
+		For example v53  or v78
+     e         force expose if anim running. Needs to be improved.
+
+
+Eventually commands will be added to set the frame, etc.  Also there
+may eventually be a status returned by a similiar mechanism.
+
+Mark

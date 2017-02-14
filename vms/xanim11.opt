@@ -1,0 +1,37 @@
+xanim
+unpacker
+xa_acodec
+xa_act
+xa_au
+xa_audio
+xa_avi
+xa_cmap
+xa_color
+xa_dl
+xa_dumfx
+xa_fli
+xa_formats
+xa_gif
+xa_iff
+xa_input
+xa_ipc
+xa_jmov
+xa_jpg
+xa_movi
+xa_mpg
+xa_qt
+xa_qt_decs
+xa_replay
+xa_rle
+xa_set
+xa_show
+xa_txt
+xa_utils
+xa_wav
+xa_x11
+!
+! Use these for Motif 1.1 
+Identification="XAnim 2.70.4"
+sys$share:decw$xmlibshr.exe/share
+sys$share:decw$xtshr.exe/share
+sys$share:decw$xlibshr/share

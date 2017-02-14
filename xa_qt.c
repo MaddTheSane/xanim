@@ -2,15 +2,15 @@
 /*
  * xa_qt.c
  *
- * Copyright (C) 1993,1994,1995 by Mark Podlipec.
+ * Copyright (C) 1993-1998,1999 by Mark Podlipec.
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  *
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
@@ -19,7 +19,7 @@
  * 31Aug94  RPZA was using *iptr+=row_inc instead of iptr+=row_inc.
  * 15Sep94  Added support for RAW32 format. straight RGB with 0x00 up front.
  * 19Sep94  Fixed stereo audio bug. Needed to double bps with stereo snd.
- * 20Sep94  I forgot to declare fin in the QT_Read_Audio_STSD(fin) and
+ * 20Sep94  I forgot to declare xin in the QT_Read_Audio_STSD(xin) and
  *	    that caused problems on the Alpha machines.
  * 20Sep94  Added RAW4,RAW16,RAW24,RAW32,Gray CVID and Gray Other codecs.
  * 07Nov94  Fixed bug in RLE,RLE16,RLE24,RLE32 and RLE1 code, where I
@@ -40,69 +40,32 @@
  *	    colormap not to be generated correctly. Only affected
  *	    the Gray Quicktime codecs.
  * 16Jun95  Removed Cinepak Codec per Radius request.
+ * 15Sep95  Code snippet to support erroneous Quicktime files that
+ *	    have the length of the "mdat" atom, but not the "mdat" ID.
+ * 15Sep95  Better check for truncated Quicktime files
+ * 26Feb96  Fixed prob in Read_Video_Data, where timing chunks were
+ *          incremented properly resulting in video/audio sync problems.
+ *  1Mar96  Moved Video Codecs into xa_qt_decs.c file
+ * 19Mar96  Modified for support of audio only files.
  */
 #include "xa_qt.h"
 #include "xa_codecs.h"
+#include <sys/stat.h>
 
-XA_CODEC_HDR qt_codec_hdr;
-
-/******************** Radius Cinepak External Library XAnim funtions ********/
-#ifdef XA_CINEPAK
-extern xaULONG  Cinepak_What_Rev_API();
-extern xaLONG   Cinepak_Codec_Query();
-#define XA_CINEPAK_QUERY_CNT 1
-#else
-#define XA_CINEPAK_QUERY_CNT 0
+#ifdef XA_ZLIB
+#include <zlib.h>
 #endif
 
+static XA_CODEC_HDR qt_codec_hdr;
 
-/******************** Intel Indeo External Library XAnim funtions ***********/
-#ifdef XA_INDEO
-extern xaULONG  Indeo_What_Rev_API();
-extern xaLONG  Indeo_Codec_Query();
-#define XA_INDEO_QUERY_CNT 1
-#else
-#define XA_INDEO_QUERY_CNT 0
-#endif
+extern xaULONG QT_Video_Codec_Query();
+extern xaULONG XA_Mem_Open_Init();
 
-xaLONG QT_Codec_Query();
-xaLONG QT_UNK_Codec_Query();
-
-#define QT_QUERY_CNT 2 + XA_INDEO_QUERY_CNT + XA_CINEPAK_QUERY_CNT
-
-xaLONG (*qt_query_func[])() = { 
-#ifdef XA_INDEO
-		Indeo_Codec_Query,
-#endif
-#ifdef XA_CINEPAK
-		Cinepak_Codec_Query,
-#endif
-		QT_Codec_Query,
-		QT_UNK_Codec_Query};
-
-
-xaULONG QT_Decode_RLE();
-xaULONG QT_Decode_RLE16();
-xaULONG QT_Decode_RLE24();
-xaULONG QT_Decode_RLE32();
-xaULONG QT_Decode_RLE1();
-xaULONG QT_Decode_RAW();
-xaULONG QT_Decode_RAW4();
-xaULONG QT_Decode_RAW16();
-xaULONG QT_Decode_RAW24();
-xaULONG QT_Decode_RAW32();
-xaULONG QT_Decode_RPZA();
-xaULONG QT_Decode_SMC();
-xaULONG QT_Decode_YUV2();
-/* xaULONG QT_Decode_SPIG(); */
-xaULONG JFIF_Decode_JPEG();
 xaULONG QT_Read_Video_Codec_HDR();
 xaULONG QT_Read_Audio_Codec_HDR();
 void QT_Audio_Type();
 xaULONG QT_Read_File();
 
-extern void yuv_to_rgb();
-extern void XA_Gen_YUV_Tabs();
 
 void QT_Create_Default_Cmap();
 void QT_Create_Gray_Cmap();
@@ -112,52 +75,35 @@ void CMAP_Cache_Clear();
 void CMAP_Cache_Init();
 
 
-/* JPEG and other assist routines */
-extern void JPG_Alloc_MCU_Bufs();
-extern void JPG_Setup_Samp_Limit_Table();
-
-/* POD NOTE: testing purposes */
-extern xaULONG pod;
-extern xaLONG xa_dither_flag;
-
-#define SMC_MAX_CNT 256
-/* POD NOTE: eventually make these conditionally dynamic */
-static xaULONG smc_8cnt,smc_Acnt,smc_Ccnt;
-static xaULONG smc_8[ (2 * SMC_MAX_CNT) ];
-static xaULONG smc_A[ (4 * SMC_MAX_CNT) ];
-static xaULONG smc_C[ (8 * SMC_MAX_CNT) ];
+xaUSHORT qt_gamma_adj[32];
 
 QTV_CODEC_HDR *qtv_codecs;
 QTS_CODEC_HDR *qts_codecs;
 xaULONG qtv_codec_num,qts_codec_num;
 
-XA_ACTION *ACT_Get_Action();
-XA_CHDR *ACT_Get_CMAP();
-XA_CHDR *CMAP_Create_332();
-XA_CHDR *CMAP_Create_422();
-XA_CHDR *CMAP_Create_Gray();
-void ACT_Add_CHDR_To_Action();
-void ACT_Setup_Mapped();
-XA_CHDR *CMAP_Create_CHDR_From_True();
-xaUBYTE *UTIL_RGB_To_FS_Map();
-xaUBYTE *UTIL_RGB_To_Map();
-xaULONG CMAP_Find_Closest();
-xaULONG UTIL_Get_MSB_Long();
-xaLONG UTIL_Get_MSB_Short();
-xaULONG UTIL_Get_MSB_UShort();
+extern XA_ACTION *ACT_Get_Action();
+extern XA_CHDR *ACT_Get_CMAP();
+extern XA_CHDR *CMAP_Create_332();
+extern XA_CHDR *CMAP_Create_422();
+extern XA_CHDR *CMAP_Create_Gray();
+extern void ACT_Add_CHDR_To_Action();
+extern void ACT_Setup_Mapped();
+extern XA_CHDR *CMAP_Create_CHDR_From_True();
+extern xaUBYTE *UTIL_RGB_To_FS_Map();
+extern xaUBYTE *UTIL_RGB_To_Map();
+extern xaULONG CMAP_Find_Closest();
 extern XA_ANIM_SETUP *XA_Get_Anim_Setup();
-void XA_Free_Anim_Setup();
+extern void XA_Free_Anim_Setup();
+extern void ACT_Setup_Delta();
 
 
-void QT_Get_Dith1_Color24();
-void QT_Get_Dith4_Color24();
- 
-
+#ifdef TEMPORARILY_REMOVE
 FILE *QT_Open_File();
-xaULONG QT_Parse_Chunks();
 xaULONG QT_Parse_Bin();
+#endif
+xaULONG QT_Parse_Chunks();
 xaULONG QT_Read_Video_Data();
-void  QT_Read_Audio_Data();
+xaULONG QT_Read_Audio_Data();
 
 void QT_Print_ID();
 void QT_Read_MVHD();
@@ -176,13 +122,7 @@ void QT_Read_STSC();
 void QT_Read_STGS();
 void QT_Free_Stuff();
 void QT_Codec_List();
-xaULONG QT_Get_Color();
-void QT_Get_RGBColor();
-void QT_Get_AV_Colors();
-void QT_Get_AV_RGBColors();
-xaULONG QT_Get_DithColor24();
 
-extern xaULONG XA_RGB24_To_CLR32();
 
 
 QT_MVHDR qt_mvhdr;
@@ -190,27 +130,29 @@ QT_TKHDR qt_tkhdr;
 QT_MDHDR qt_mdhdr;
 QT_HDLR_HDR qt_hdlr_hdr;
 
+#ifdef TEMPORARILY_REMOVED
 char qt_rfilename[256];
 char qt_dfilename[256];
-xaULONG qt_video_flag;
-xaULONG qt_data_flag;
-xaULONG qt_v_flag,qt_s_flag;
-xaULONG qt_moov_flag;
+#endif
+static xaULONG qt_video_flag, qt_audio_flag;
+static xaULONG qt_data_flag;
+static xaULONG qt_v_flag, qt_s_flag;
+static xaULONG qt_moov_flag;
 
-xaUSHORT qt_gamma_adj[32];
-
-xaULONG qt_frame_cnt;
-xaULONG qt_vid_timescale,qt_mv_timescale,qt_tk_timescale,qt_md_timescale;
+static xaULONG qt_frame_cnt;
+static xaULONG qt_mv_timescale,qt_md_timescale;
+static xaULONG qt_vid_timescale, qt_aud_timescale;
+static xaULONG qt_tk_timescale,qts_tk_timescale,qtv_tk_timescale;
 
 #define QT_CODEC_UNK   0x000
 
 /*** SOUND SUPPORT ****/
-xaULONG qt_audio_attempt;
-xaULONG qt_audio_type;
-xaULONG qt_audio_freq;
-xaULONG qt_audio_chans;
-xaULONG qt_audio_bps;
-xaULONG qt_audio_end;
+static xaULONG qt_audio_attempt;
+static xaULONG qt_audio_type;
+static xaULONG qt_audio_freq;
+static xaULONG qt_audio_chans;
+static xaULONG qt_audio_bps;
+static xaULONG qt_audio_end;
 xaULONG XA_Add_Sound();
 
 
@@ -254,21 +196,23 @@ QT_FRAME *fframes;
 xaLONG Is_QT_File(filename)
 char *filename;
 {
-  FILE *fin;
+#ifdef TEMPORARILY_REMOVED
+  ZILE *Zin;
   xaULONG ret;
-
-  if ( (fin=QT_Open_File(filename,qt_rfilename,qt_dfilename)) == 0)
+  if ( (Zin=QT_Open_File(filename,qt_rfilename,qt_dfilename)) == 0)
 				return(xaNOFILE);
-  ret = QT_Parse_Bin(fin);
-  fclose(fin);
+  ret = QT_Parse_Bin(Zin);
+  fclose(Zin);
   if ( ret != 0 ) return(xaTRUE);
+#endif
   return(xaFALSE);
 }
 
 /* FOR PARSING Quicktime Files */
 xaULONG *qtv_samp_sizes,*qts_samp_sizes;
 xaULONG qtv_samp_num,qts_samp_num;
-xaULONG qts_init_duration;
+xaULONG qt_init_duration,qts_init_duration, qtv_init_duration;
+xaULONG qt_start_offset,qts_start_offset, qtv_start_offset;
 
 QT_S2CHUNK_HDR *qtv_s2chunks,*qts_s2chunks;
 xaULONG qtv_s2chunk_num,qts_s2chunk_num;
@@ -287,25 +231,31 @@ xaULONG qt_stgs_num;
 
 xaULONG qt_has_ctab;
 
+xaULONG qt_saw_audio, qt_saw_video;
+
 /* main() */
 xaULONG QT_Read_File(fname,anim_hdr,audio_attempt)
 char *fname;
 XA_ANIM_HDR *anim_hdr;
 xaULONG audio_attempt;  /* xaTRUE is audio is to be attempted */
-{
-  FILE *fin;
+{ XA_INPUT *xin;
   xaLONG i,t_time;
   xaULONG t_timelo;
   XA_ANIM_SETUP *qt;
+  xaULONG qt_has_audio, qt_has_video;
 
-
+  xin = anim_hdr->xin;
   qt = XA_Get_Anim_Setup();
   qt->vid_time 		= XA_GET_TIME( 100 ); /* default 10 fps */
   qt->compression	= QT_CODEC_UNK;
 
 
-  qt_has_ctab = xaFALSE;
-  qt_stgs_num = 0;
+  qt_saw_audio	= xaFALSE;
+  qt_saw_video	= xaFALSE;
+  qt_has_audio	= xaFALSE;
+  qt_has_video	= xaFALSE;
+  qt_has_ctab	= xaFALSE;
+  qt_stgs_num	= 0;
   qtv_codec_lstnum	= qts_codec_lstnum = 0;
   qtv_chunkoff_lstnum	= qts_chunkoff_lstnum = 0;
   qtv_samp_lstnum	= qts_samp_lstnum = 0;
@@ -314,6 +264,7 @@ xaULONG audio_attempt;  /* xaTRUE is audio is to be attempted */
   qtv_codec_num 	= qts_codec_num = 0;
   qt_data_flag = xaFALSE;
   qt_video_flag		= 0;
+  qt_audio_flag		= 0;
   qt_v_flag		= qt_s_flag = 0;
   qt_moov_flag = xaFALSE;
 
@@ -321,8 +272,9 @@ xaULONG audio_attempt;  /* xaTRUE is audio is to be attempted */
   qt_frame_start = 0;
   qt_frame_cur = 0;
 
-  qt_vid_timescale		= 1000;
-  qt_mv_timescale = qt_tk_timescale = qt_md_timescale = 1000;
+  qt_vid_timescale	= qt_aud_timescale = 1000;
+  qt_mv_timescale	= qt_md_timescale = 1000;
+  qts_tk_timescale 	= qtv_tk_timescale 	= 1000;
   qtv_chunkoff_num	= qts_chunkoff_num = 0;
   qtv_chunkoffs		= qts_chunkoffs = 0;
   qtv_s2chunk_num	= qts_s2chunk_lstnum = 0;
@@ -332,27 +284,30 @@ xaULONG audio_attempt;  /* xaTRUE is audio is to be attempted */
   qtv_t2samps		= qts_t2samps = 0;
   qtv_samp_sizes	= qts_samp_sizes = 0;
   qtv_samp_num		= qts_samp_num = 0;
-  qts_init_duration	= 0;
+  qt_init_duration	= qts_init_duration	= qtv_init_duration = 0;
+  qt_start_offset 	= qts_start_offset	= qtv_start_offset = 0;
 
   qt_audio_attempt	= audio_attempt;
 
   for(i=0;i<32;i++) qt_gamma_adj[i] = xa_gamma_adj[ ((i<<3)|(i>>2)) ];
 
-  if ( (fin=QT_Open_File(fname,qt_rfilename,qt_dfilename)) == 0)
+#ifdef TEMPORARILY_REMOVED
+  if ( (xin=QT_Open_File(fname,qt_rfilename,qt_dfilename)) == 0)
   {
-    fprintf(stderr,"QT_Read: can't open %s\n",qt_rfilename);
+    fprintf(stdout,"QT_Read: can't open %s\n",qt_rfilename);
     XA_Free_Anim_Setup(qt);
     return(xaFALSE);
   }
 
-  if ( QT_Parse_Bin(fin) == 0 )
+  if ( QT_Parse_Bin(xin) == 0 )
   {
-    fprintf(stderr,"Not quicktime file\n");
+    fprintf(stdout,"Not quicktime file\n");
     XA_Free_Anim_Setup(qt);
     return(xaFALSE);
   }
+#endif
 
-  if (QT_Parse_Chunks(anim_hdr,qt,fin) == xaFALSE)
+  if (QT_Parse_Chunks(anim_hdr,qt,xin) == xaFALSE)
   {
     QT_Free_Stuff();
     XA_Free_Anim_Setup(qt);
@@ -360,102 +315,158 @@ xaULONG audio_attempt;  /* xaTRUE is audio is to be attempted */
   }
 
   if (qt_data_flag == xaFALSE) 
+  {
+    fprintf(stderr,"QT: no data found in file\n");
+    xin->Close_File(xin);
+    return(xaFALSE);
+  }
+#ifdef TEMPORARILY_REMOVED
+  if (qt_data_flag == xaFALSE) 
   { /* mdat was not in .rscr file need to open .data file */
-    fclose(fin); /* close .rscr file */
+    fclose(xin); /* close .rscr file */
     if (qt_dfilename[0] == 0)
-    {
-       fprintf(stderr,"QT_Data: No data in %s file. Can't find .data file.\n",
+    { fprintf(stdout,"QT_Data: No data in %s file and no *.data file.\n",
 		qt_rfilename);
-       return(xaFALSE);
+      fprintf(stdout,"         Some Quicktimes do not contain info playable by XAnim.\n");
+      return(xaFALSE);
     }
-    if ( (fin=fopen(qt_dfilename,XA_OPEN_MODE)) == 0) 
-    {
-      fprintf(stderr,"QT_Data: can't open %s file.\n",qt_dfilename);
+    if ( (xin=fopen(qt_dfilename,XA_OPEN_MODE)) == 0) 
+    { fprintf(stdout,"QT_Data: can't open %s file.\n",qt_dfilename);
       return(xaFALSE);
     }
   } else strcpy(qt_dfilename,qt_rfilename); /* r file is d file */
-DEBUG_LEVEL1 fprintf(stderr,"reading data\n");
-  if (QT_Read_Video_Data(qt,fin,anim_hdr) == xaFALSE) return(xaFALSE);
-  QT_Read_Audio_Data(qt,fin,anim_hdr);
-  fclose(fin);
+#endif
 
-  if (qt_frame_cnt == 0) 
-  {
-    if (qt_moov_flag==xaTRUE)
-	 fprintf(stderr,"QT: file possibly truncated.\n");
-    else fprintf(stderr,"QT: file possibly truncated or missing .rsrc info.\n");
-    return(xaFALSE);
-  }
+DEBUG_LEVEL1 fprintf(stdout,"reading data\n");
 
-  anim_hdr->frame_lst = (XA_FRAME *)
-                                malloc( sizeof(XA_FRAME) * (qt_frame_cnt+1));
-  if (anim_hdr->frame_lst == NULL) TheEnd1("QT_Read_File: frame malloc err");
- 
-  qt_frame_cur = qt_frame_start;
-  i = 0;
-  t_time = 0;
-  t_timelo = 0;
-  while(qt_frame_cur != 0)
+  if (qtv_samp_sizes && qt_video_flag)
+		qt_has_video = QT_Read_Video_Data(qt,xin,anim_hdr);
+  if (qts_samp_sizes && qt_audio_flag && (qt_audio_attempt==xaTRUE))
+		qt_has_audio = QT_Read_Audio_Data(qt,xin,anim_hdr);
+  xin->Close_File(xin);
+
+  if ((qt_has_video == xaFALSE) || (qt_frame_cnt == 0))
   {
-    if (i >= qt_frame_cnt)
-    {
-      fprintf(stderr,"QT_Read_Anim: frame inconsistency %ld %ld\n",
-                i,qt_frame_cnt);
-      break;
+
+    if (qt_has_audio == xaFALSE)  /* no video and no audio */
+    { 
+
+      if ((qt_saw_video == xaTRUE) && (qt_saw_audio == xaTRUE))
+      { fprintf(stdout,
+	   "  Notice: Video and Audio are present, but not yet supported.\n");
+      }
+      else if ((qt_saw_video == xaTRUE) && (qt_saw_audio == xaFALSE))
+      { fprintf(stdout,
+	   "  Notice: Video is present, but not yet supported.\n");
+      }
+      else if ((qt_saw_video == xaFALSE) && (qt_saw_audio == xaTRUE))
+      { fprintf(stdout,
+	   "  Notice: Audio is present, but not yet supported.\n");
+      }
+      else
+      {		 /* At least we saw the moov header */
+        if (qt_moov_flag == xaTRUE)
+	{
+		/* No Video and we weren't trying for audio */
+          if (qt_audio_attempt == xaFALSE)
+          {
+             fprintf(stdout,"QT: no video to play. possibly truncated.\n");
+          }
+          else
+	  {
+		/* No Video and No Audio */
+	    fprintf(stdout,"QT: no video/audio to play. possibly truncated.\n");
+	  }
+        }
+        else  /* either truncated or missing .rsrc file */
+	{
+	  fprintf(stdout,
+		"QT: file possibly truncated or missing .rsrc info.\n");
+        }
+      }
+      return(xaFALSE);
     }
-    anim_hdr->frame_lst[i].time_dur = qt_frame_cur->time;
-    anim_hdr->frame_lst[i].zztime = t_time;
-DEBUG_LEVEL2 fprintf(stderr,"QT: Vid Time  zz %ld dur %ld\n",
-	t_time, qt_frame_cur->time);
-    t_time += qt_frame_cur->time;
-    t_timelo += qt_frame_cur->timelo;
-    while(t_timelo > (1<<24)) {t_time++; t_timelo -= (1<<24);}
-    anim_hdr->frame_lst[i].act = qt_frame_cur->act;
-    qt_frame_cur = qt_frame_cur->next;
-    i++;
+
+    if (qt_saw_video == xaTRUE)
+    { fprintf(stdout,
+	   "  Notice: Video is present, but not yet supported.\n");
+    }
+
+/* NO LONGER???
+    if (qtv_samp_sizes)
+	fprintf(stdout,"QT Notice: No supported Video frames - treating as audio only file\n");
+*/
+
+    anim_hdr->total_time = (qt_mvhdr.duration * 1000) / (qt_mvhdr.timescale);
   }
-  if (i > 0)
+  else  
   {
-    anim_hdr->last_frame = i - 1;
-    anim_hdr->total_time = anim_hdr->frame_lst[i-1].zztime
+    anim_hdr->frame_lst = (XA_FRAME *)
+                                malloc( sizeof(XA_FRAME) * (qt_frame_cnt+1));
+    if (anim_hdr->frame_lst == NULL) TheEnd1("QT_Read_File: frame malloc err");
+ 
+    qt_frame_cur = qt_frame_start;
+    i = 0;
+    t_time = 0;
+    t_timelo = 0;
+    while(qt_frame_cur != 0)
+    { if (i >= qt_frame_cnt)
+      { fprintf(stdout,"QT_Read_Anim: frame inconsistency %d %d\n",
+                i,qt_frame_cnt); break;
+      }
+      anim_hdr->frame_lst[i].time_dur = qt_frame_cur->time;
+      anim_hdr->frame_lst[i].zztime = t_time;
+      t_time	+= qt_frame_cur->time;
+      t_timelo	+= qt_frame_cur->timelo;
+      while(t_timelo >= (1<<24)) {t_time++; t_timelo -= (1<<24);}
+      anim_hdr->frame_lst[i].act = qt_frame_cur->act;
+      qt_frame_cur = qt_frame_cur->next;
+      i++;
+    }
+    if (i > 0)
+    { anim_hdr->last_frame = i - 1;
+      anim_hdr->total_time = anim_hdr->frame_lst[i-1].zztime
                                 + anim_hdr->frame_lst[i-1].time_dur;
-  }
-  else
-  {
-    anim_hdr->last_frame = 0;
-    anim_hdr->total_time = 0;
-  }
+    }
+    else { anim_hdr->last_frame = 0; anim_hdr->total_time = 0; }
 
-  if (xa_verbose)
-  { fprintf(stderr, "  Frame Stats: Size=%ldx%ld  Frames=%ld",
+    if (xa_verbose)
+    { fprintf(stdout, "  Frame Stats: Size=%dx%d  Frames=%d",
 				qt->imagex,qt->imagey,qt_frame_cnt);
-    if (anim_hdr->total_time) 
-    { float fps = (float)(1000 * qt_frame_cnt)/(float)(anim_hdr->total_time);
-      fprintf(stderr, "  avfps=%2.1f\n",fps);
-    } 
-    else fprintf(stderr,"\n");
+      if (anim_hdr->total_time) 
+      { float fps = (float)(1000 * qt_frame_cnt)/(float)(anim_hdr->total_time);
+        fprintf(stdout, "  avfps=%2.1f\n",fps);
+      } 
+      else fprintf(stdout,"\n");
+    }
+    anim_hdr->imagex = qt->max_imagex;
+    anim_hdr->imagey = qt->max_imagey;
+    anim_hdr->imagec = qt->imagec;
+    anim_hdr->imaged = 8; /* nop */
+    anim_hdr->frame_lst[i].time_dur = 0;
+    anim_hdr->frame_lst[i].zztime = -1;
+    anim_hdr->frame_lst[i].act  = 0;
+    anim_hdr->loop_frame = 0;
   }
 
-  anim_hdr->imagex = qt->max_imagex;
-  anim_hdr->imagey = qt->max_imagey;
-  anim_hdr->imagec = qt->imagec;
-  anim_hdr->imaged = 8; /* nop */
-  anim_hdr->frame_lst[i].time_dur = 0;
-  anim_hdr->frame_lst[i].zztime = -1;
-  anim_hdr->frame_lst[i].act  = 0;
-  anim_hdr->loop_frame = 0;
   if (xa_buffer_flag == xaFALSE) anim_hdr->anim_flags |= ANIM_SNG_BUF;
   anim_hdr->max_fvid_size = qt->max_fvid_size;
   anim_hdr->max_faud_size = qt->max_faud_size;
+	/***----------------------------------------------------------***
+	 * If reading from file, then use the data fork file name
+	 * as the file name.
+	 ***----------------------------------------------------------***/
   if (xa_file_flag == xaTRUE) 
-  {
-    xaULONG len;
+  { /* xaULONG len; */
     anim_hdr->anim_flags |= ANIM_USE_FILE;
+#ifdef TEMPORARILY_REMOVED
     len = strlen(qt_dfilename) + 1;
     anim_hdr->fname = (char *)malloc(len);
     if (anim_hdr->fname==0) TheEnd1("QT: malloc fname err");
     strcpy(anim_hdr->fname,qt_dfilename);
+#endif
   }
+  anim_hdr->fname = anim_hdr->name;
   QT_Free_Stuff();
   XA_Free_Anim_Setup(qt);
   return(xaTRUE);
@@ -476,105 +487,38 @@ void QT_Free_Stuff()
   if (qts_chunkoffs) FREE(qts_chunkoffs,0x900c);
 }
 
-FILE *QT_Open_File(fname,r_file,d_file)
-char *fname,*r_file,*d_file;
-{
-  FILE *fin;
-
-  /* check to see if fname exists? */
-  if ( (fin=fopen(fname,XA_OPEN_MODE)) != 0)  /* filename is as give */
-  { /*three choices - with or without .rsrc ending, or using .resource subdir*/
-    xaLONG len;
-    FILE *ftst;
-    /* path/fname exits. */
-
-    /* check for  path/.resource/fname */
-    {
-      char *lastdirsep;
-      strcpy(r_file,fname);			/* copy path/fname to r */
-      lastdirsep = XA_rindex(r_file, '/');	/* find sep if any */
-      if ( lastdirsep != (char *)(NULL) )
-      {
-        strcpy(d_file,lastdirsep);		/* save fname to d*/
-	lastdirsep++; *lastdirsep = 0;		/* cut of fname off r*/
-/*POD NOTE: eventually might want to check for both, but for now
- *          let's just wait and see. */
-#ifdef sony
-	/* For AppleTalk of NEWS-OS, .rsrc file is in .afprsrc directory */
-	strcat(lastdirsep, ".afprsrc/");	/* add .afprsrc to r*/
-#else
-	strcat(lastdirsep, ".resource/");     /* add .resource to r*/
-#endif
-        strcat(r_file, d_file); 		/* add fname to r */
-      }
-      else /* no path */
-      {
-#ifdef sony
-	strcpy(r_file,".afprsrc/");
-#else
-	strcpy(r_file,".resource/");
-#endif
-	strcat(r_file,fname);
-      }
-      if ( (ftst=fopen(r_file,"r")) != 0)
-      {
-	/* path/fname and path/.resource/fname exist - wrap it up */
-	strcpy(d_file,fname);			/* setup .data name */
-	fclose(fin);				/* close .data fork */
-        return(ftst);		/* return .rsrc fork (in .resource) */
-      }
-    }
-     
-    /* Now check for .rsrc or .data endings */
-    strcpy(r_file,fname);
-    strcpy(d_file,fname);
-    len = strlen(r_file) - 5;
-    if (len > 0)
-    { char *tmp;
-      tmp = XA_rindex(d_file, '.');	/* get last "." */
-      if ( tmp == (char *)(NULL) ) { *d_file = 0; return(fin); }
-      else if (strcmp(tmp,".rsrc")==0)  /* fname has .rsrc ending */
-      {
-        strcpy(tmp,".data"); /* overwrite .rsrc with .data in d*/
-	return(fin);
-      }
-      else if (strcmp(tmp,".data")==0)  /* fname has .data ending */
-      {
-        strcpy(tmp,".rsrc"); /* overwrite .rsrc with .data in d*/
-        if ( (ftst=fopen(d_file,"r")) != 0) /* see if .rsrc exists */
-	{
-	  char t_file[256];  /* swap r and d files */
-	  strcpy(t_file,r_file); strcpy(r_file,d_file); strcpy(d_file,t_file);
-	  fclose(fin);		/* close .data file */
-	  return(ftst);		/* return .rsrc file */
-	}
-	/* hopefully .data is flattened. find out later */
-	else { *d_file = 0; return(fin); }
-      }
-      else { *d_file = 0; return(fin); }
-    }
-    else { *d_file = 0; return(fin); }
-  }
-
-  /* does fname.rsrc exist? */
-  strcpy(r_file,fname);
-  strcat(r_file,".rsrc");
-  if ( (fin=fopen(r_file,XA_OPEN_MODE)) != 0)  /* fname.rsrc */
-  { FILE *ftst;
-    /* if so, check .data existence */
-    strcpy(d_file,fname);
-    strcat(d_file,".data");
-    if ( (ftst=fopen(d_file,XA_OPEN_MODE)) != 0)	fclose(ftst);
-    else *d_file = 0;
-    return(fin);
-  } else *d_file = 0;
-  return(0);
-}
-
-xaULONG QT_Parse_Chunks(anim_hdr,qt,fin)
+/****------------------------------------------------------------------****
+ * Quicktime exists natively on Macintosh as a .rsrc file(containing
+ * all the headers) and a .data file(containing all the vid/aud/txt/etc data)
+ *
+ * Hopefully the file was flattened, made into single fork, saved for
+ * export, etc, before being send into the real world.  In this case
+ * all the info needed is contained in one single file.
+ *
+ * However, all the fun is in the other convoluted solutions developed
+ * to cross-platform the Macintosh .rsrc/.data forks to unix.
+ *
+ * If sent across using MacBinary and unpacked with macutils.
+ *
+ *    filename.data		data fork
+ *    filename.rsrc		rsrc fork
+ *
+ * Sony's NEWS-OS when file sharing over AppleTalk does the following:
+ *    filename			data fork
+ *    .afprsrc/filename		rsrc fork
+ * 
+ * Another file sharing method is:
+ *    filename			data fork
+ *    .resource/filename	rsrc fork
+ *
+ *
+ * This routine determines the rsrc file name and the data file name.
+ ****------------------------------------------------------------------****/
+ 
+xaULONG QT_Parse_Chunks(anim_hdr,qt,xin)
 XA_ANIM_HDR *anim_hdr;
 XA_ANIM_SETUP *qt;
-FILE *fin;
+XA_INPUT *xin;
 {
   xaLONG file_len;
   xaULONG id,len;
@@ -582,22 +526,30 @@ FILE *fin;
   file_len = 1;
   while(file_len > 0)
   {
-    len = UTIL_Get_MSB_Long(fin);
-    id  = UTIL_Get_MSB_Long(fin);
+    len = xin->Read_MSB_U32(xin);
+    id  = xin->Read_MSB_U32(xin);
+
+/* if (xa_verbose) */
+DEBUG_LEVEL1 
+	fprintf(stdout,"%c%c%c%c %04x len = %x file_len =  %x\n",
+	(char)(id >> 24),(char)((id>>16)&0xff),
+	(char)((id>>8)&0xff),(char)(id&0xff),id,len,file_len);
 
     if ( (len == 0) && (id == QT_mdat) )
     {
-      fprintf(stderr,"QT: mdat len is 0. You also need a .rsrc file.\n");
+      fprintf(stdout,"QT: mdat len is 0. You also need a .rsrc file.\n");
       return(xaFALSE);
     }
-    if (len < 8) { file_len = 0; continue; } /* just bad - finish this */
+    if (len < 8) { file_len = 0; continue; } /* just bad - xinish this */
     if (file_len == 1)
     {
       if (id == QT_moov) file_len = len;
-      else file_len = len + 1;
+      else file_len = len;
     }
-    DEBUG_LEVEL2 fprintf(stderr,"%c%c%c%c %04lx len = %lx file_len =  %lx\n",
-	(id >> 24),((id>>16)&0xff),((id>>8)&0xff),(id&0xff),id,len,file_len);
+
+/* if (xa_verbose) */
+DEBUG_LEVEL1 
+    fprintf(stdout,"  len = %x file_len = %x\n",len,file_len);
 
     switch(id)
     {
@@ -626,77 +578,80 @@ FILE *fin;
 	break;
     /*---------------STUFF------------------*/
       case QT_mvhd:
-	QT_Read_MVHD(fin,&qt_mvhdr);
+	QT_Read_MVHD(xin,&qt_mvhdr);
 	file_len -= len;
 	break;
       case QT_tkhd:
-	QT_Read_TKHD(fin,&qt_tkhdr);
+	QT_Read_TKHD(xin,&qt_tkhdr);
 	file_len -= len;
 	break;
       case QT_elst:
-	QT_Read_ELST(fin);
+	QT_Read_ELST(xin,&qt_start_offset,&qt_init_duration);
 	file_len -= len;
 	break;
       case QT_mdhd:
-	QT_Read_MDHD(fin,&qt_mdhdr);
+	QT_Read_MDHD(xin,&qt_mdhdr);
 	file_len -= len;
 	break;
       case QT_hdlr:
-	QT_Read_HDLR(fin,len,&qt_hdlr_hdr);
+	QT_Read_HDLR(xin,len,&qt_hdlr_hdr);
 	file_len -= len;
 	break;
     /*--------------DATA CHUNKS-------------*/
       case QT_mdat:  /* data is included in .rsrc - assumed flatness */
-	fseek(fin,(len-8),1); /* skip over it for now */
+	xin->Seek_FPos(xin,(len-8),1); /* skip over it for now */
+	file_len -= len;
 	qt_data_flag = xaTRUE;
 	break;
       case QT_stsd:
-	qt_video_flag = 0;
-	if (qt_v_flag) 
-	{
-	  if (QT_Read_Video_STSD(anim_hdr,qt,fin) == xaFALSE) return(xaFALSE);
+	if (qt_v_flag)
+	{ qt_saw_video = xaTRUE;
+	  QT_Read_Video_STSD(anim_hdr,qt,xin,(len-8));
 	}
-	else if (qt_s_flag) QT_Read_Audio_STSD(fin);
-        else fseek(fin,(len-8),1);
+	else if (qt_s_flag)
+	{ qt_saw_audio = xaTRUE;
+	  QT_Read_Audio_STSD(xin,(len-8));
+	}
+        else xin->Seek_FPos(xin,(len-8),1);
 	file_len -= len;
 	break;
       case QT_stts:
 	if (qt_v_flag) 
-		QT_Read_STTS(fin,(len-8),&qtv_t2samp_num,&qtv_t2samps);
-/*POD NOTE: AUDIO don't need? probably, just haven't been bit by it yet.
+		QT_Read_STTS(xin,(len-8),&qtv_t2samp_num,&qtv_t2samps);
+/*POD NOTE: AUDIO doesn't need? probably, just haven't been bit by it yet.
 	else if (qt_s_flag) 
-		QT_Read_STTS(fin,(len-8),&qts_t2samp_num,&qts_t2samps);
+		QT_Read_STTS(xin,(len-8),&qts_t2samp_num,&qts_t2samps);
 */
-        else	fseek(fin,(len-8),1);
+        else	xin->Seek_FPos(xin,(len-8),1);
 	file_len -= len;
 	break;
       case QT_stss:
-	QT_Read_STSS(fin);
+	QT_Read_STSS(xin);
 	file_len -= len;
 	break;
       case QT_stco:
-	if (qt_v_flag) QT_Read_STCO(fin,&qtv_chunkoff_num,&qtv_chunkoffs);
-	else if (qt_s_flag) QT_Read_STCO(fin,&qts_chunkoff_num,&qts_chunkoffs);
-	else fseek(fin,(len-8),1);
+	if (qt_v_flag) QT_Read_STCO(xin,&qtv_chunkoff_num,&qtv_chunkoffs);
+	else if (qt_s_flag) QT_Read_STCO(xin,&qts_chunkoff_num,&qts_chunkoffs);
+	else xin->Seek_FPos(xin,(len-8),1);
 	file_len -= len;
 	break;
       case QT_stsz:
-	if (qt_v_flag) QT_Read_STSZ(fin,len,&qtv_samp_num,&qtv_samp_sizes);
+	if (qt_v_flag) QT_Read_STSZ(xin,len,&qtv_samp_num,&qtv_samp_sizes);
 	else if (qt_s_flag) 
-		QT_Read_STSZ(fin,len,&qts_samp_num,&qts_samp_sizes);
-	else fseek(fin,(len-8),1);
+		QT_Read_STSZ(xin,len,&qts_samp_num,&qts_samp_sizes);
+	else xin->Seek_FPos(xin,(len-8),1);
 	file_len -= len;
 	break;
       case QT_stsc:
-	if (qt_v_flag) QT_Read_STSC(fin,len,&qtv_s2chunk_num,&qtv_s2chunks,
+	if (qt_v_flag) QT_Read_STSC(xin,len,&qtv_s2chunk_num,&qtv_s2chunks,
 			qtv_chunkoff_lstnum,qtv_codec_num,qtv_codec_lstnum);
-	else if (qt_s_flag) QT_Read_STSC(fin,len,&qts_s2chunk_num,&qts_s2chunks,
+	else if (qt_s_flag) QT_Read_STSC(xin,len,&qts_s2chunk_num,&qts_s2chunks,
 			qts_chunkoff_lstnum,qts_codec_num,qts_codec_lstnum);
-	else fseek(fin,(len-8),1);
+	else xin->Seek_FPos(xin,(len-8),1);
 	file_len -= len;
 	break;
       case QT_stgs:
-	QT_Read_STGS(fin,len);
+	QT_Read_STGS(xin,len);
 	file_len -= len;
 	break;
     /*-----------Sound Codec Headers--------------*/
@@ -708,19 +663,26 @@ FILE *fin;
       case QT_rpza:
       case QT_rle:
       case QT_cvid:
-	fprintf(stderr,"QT: Warning %08lx\n",id);
-        fseek(fin,(len-8),1);  /* skip over */
+	fprintf(stdout,"QT: Warning %08x\n",id);
+        xin->Seek_FPos(xin,(len-8),1);  /* skip over */
 	file_len -= len;
 	break;
     /*-----------TYPE OF TRAK---------------*/
       case QT_vmhd:
-        fseek(fin,(len-8),1);
+        xin->Seek_FPos(xin,(len-8),1);
 	file_len -= len; qt_v_flag = 1;
 	qt_vid_timescale = qt_md_timescale;
+	qtv_tk_timescale = qt_tk_timescale;
+	qtv_init_duration = qt_init_duration; qt_init_duration = 0;
+	qtv_start_offset = qt_start_offset; qt_start_offset = 0;
 	break;
       case QT_smhd:
-        fseek(fin,(len-8),1);
+        xin->Seek_FPos(xin,(len-8),1);
 	file_len -= len; qt_s_flag = 1;
+	qt_aud_timescale = qt_md_timescale;
+	qts_tk_timescale = qt_tk_timescale;
+	qts_init_duration = qt_init_duration; qt_init_duration = 0;
+	qts_start_offset = qt_start_offset; qt_start_offset = 0;
 	break;
     /************ CTAB ******************
      * Color Table to be used for display 16/24 bit animations on
@@ -728,18 +690,22 @@ FILE *fin;
      *************************************/
       case QT_ctab:
 	{ xaULONG i,tmp,start,end;
-          if (x11_display_type != XA_PSEUDOCOLOR) break;
-fprintf(stderr,"QT: has ctab\n");
-          tmp   = UTIL_Get_MSB_Long(fin);  /* ?? */
-          start = UTIL_Get_MSB_UShort(fin);  /* start */
-          end   = UTIL_Get_MSB_UShort(fin);  /* end */
+          if (x11_display_type != XA_PSEUDOCOLOR)
+	  {
+	     while(len > 0) {xin->Read_U8(xin); len--; } 
+	     break;
+	  }
+if (xa_verbose) fprintf(stdout,"QT: has ctab\n");
+          tmp   = xin->Read_MSB_U32(xin);  /* ?? */
+          start = xin->Read_MSB_U16(xin);  /* start */
+          end   = xin->Read_MSB_U16(xin);  /* end */
 	  len -= 8;
 	  for(i=start; i <= end; i++)
 	  { xaULONG idx,r,g,b;
-	    idx = UTIL_Get_MSB_UShort(fin);
-	    r   = UTIL_Get_MSB_UShort(fin);
-	    g   = UTIL_Get_MSB_UShort(fin);
-	    b   = UTIL_Get_MSB_UShort(fin);  len -= 8;
+	    idx = xin->Read_MSB_U16(xin);
+	    r   = xin->Read_MSB_U16(xin);
+	    g   = xin->Read_MSB_U16(xin);
+	    b   = xin->Read_MSB_U16(xin);  len -= 8;
 	    /* if (cflag & 0x8000)  idx = i; */
 	    if (idx < qt->imagec)
 	    {
@@ -749,36 +715,182 @@ fprintf(stderr,"QT: has ctab\n");
 	    }
 	    if (len <= 0) break;
 	  } /* end of for i */
-	  while(len > 0) {fgetc(fin); len--; } 
+	  while(len > 0) {xin->Read_U8(xin); len--; } 
 	  qt->imagec = 256;
 	  qt->chdr = ACT_Get_CMAP(qt->cmap,qt->imagec,0,qt->imagec,0,8,8,8);
 	  qt_has_ctab = xaTRUE;
 	}
+	break;
+    /*--------------Indicated We Don't Support this File -----------*/
+      case QT_rmra:
+	fprintf(stdout,"NOTE: RMRA chunk is not yet supported.\n");
+        xin->Seek_FPos(xin,(len-8),1);  /* skip over */
+	file_len -= len;
+	break;
+/*
+00000000: 00000AAC 636D7664 00001A0C 789CB598   ....cmvd....x...
+00000010: 7B7054D5 1DC7BF1B 486049C8 3BEC665F   {pT.....H`I.;.f_
+*/
+      case QT_cmov:
+	{ unsigned char *cmov_buf = 0;
+	  unsigned char *moov_buf = 0;
+	  int cmov_ret = xaFALSE;
+	  int tlen, cmov_sz,moov_sz;
+	  xaULONG cmov_comp = 0;
+	  XA_INPUT	mem_xin;
+
+	  file_len -= len;
+
+	  len -= 8;
+	  while(len > 8)
+	  { xaULONG t_id, t_sz;
+            
+	    t_sz = xin->Read_MSB_U32(xin);
+	    t_id = xin->Read_MSB_U32(xin);
+
+	    len -= 8;
+	    t_sz -= 8;
+	  DEBUG_LEVEL1 fprintf(stderr,"QT CMOV: id %08x len %08x\n",t_id,t_sz);
+
+	    if (len < t_sz)
+	    { fprintf(stderr,"QT err parsing cmov\n");
+	      break;
+	    }
+	    len -= t_sz;
+	    switch(t_id)
+	    {
+		/* Find out how cmov is compressed */
+	      case QT_dcom:
+		cmov_comp = xin->Read_MSB_U32(xin);	t_sz -= 4;
+		if (cmov_comp != QT_zlib)
+		{ fprintf(stderr,"QT cmov: unsupported compression %08x\n",
+							cmov_comp);
+		  fprintf(stderr,"         contact author.\n");
+		  break;
+		}
+		else if (xa_verbose)
+		{ 
+		  fprintf(stdout,"  QT Compressed Hdr Codec: zlib\n");
+		}
+		if (t_sz > 0) { xin->Seek_FPos(xin,t_sz,1); t_sz = 0; }
+		break;
+
+	      case QT_cmvd:
+			/* read how large uncompressed moov will be */
+		moov_sz = xin->Read_MSB_U32(xin); t_sz -= 4;
+		cmov_sz = t_sz;
+
+			/* Allocate buffer for compressed header */
+		cmov_buf = (unsigned char *)malloc( cmov_sz );
+		if (cmov_buf == 0) TheEnd1("QT cmov: malloc err 0");
+			/* Read in  compressed header */
+		tlen = xin->Read_Block(xin, cmov_buf, cmov_sz);
+		if (tlen != cmov_sz)
+		{ fprintf(stderr,"QT cmov: read err\n");
+		  free(cmov_buf);
+		  return(xaFALSE);
+		}
+			/* Allocate buffer for decompressed header */
+		moov_sz += 16; /* slop?? */
+		moov_buf = (unsigned char *)malloc( moov_sz );
+		if (moov_buf == 0) TheEnd1("QT cmov: malloc err 1");
+
+#ifndef XA_ZLIB
+	  	  fprintf(stderr,
+			"QT: cmov support not compiled in. See zlib.readme\n");
+		  break;
+#else
+		{ z_stream zstrm;
+		  int zret;
+		 
+  		  zstrm.zalloc          = (alloc_func)0;
+  		  zstrm.zfree           = (free_func)0;
+  		  zstrm.opaque          = (voidpf)0;
+  		  zstrm.next_in         = cmov_buf;
+  		  zstrm.avail_in        = cmov_sz;
+  		  zstrm.next_out        = moov_buf;
+  		  zstrm.avail_out       = moov_sz;
+
+  		  zret = inflateInit(&zstrm);
+  		  if (zret != Z_OK)
+	          { fprintf(stderr,"QT cmov: inflateInit err %d\n",zret);
+		    break;
+		  }
+  		  zret = inflate(&zstrm, Z_NO_FLUSH);
+		  if ((zret != Z_OK) && (zret != Z_STREAM_END))
+	          { fprintf(stderr,"QT cmov inflate: ERR %d\n",zret);
+		    break;
+		  }
+		  moov_sz = zstrm.total_out;
+  		  zret = inflateEnd(&zstrm);
+
+		  XA_Mem_Open_Init(&mem_xin,moov_buf,moov_sz);
+		  cmov_ret = QT_Parse_Chunks(anim_hdr,qt,&mem_xin);
+		  DEBUG_LEVEL1 fprintf(stderr,"QT cmov parse %d\n",cmov_ret);
+		}
+#endif
+		break;
+
+	      default:
+		fprintf(stderr,"QT CMOV: Unk chunk %08x \n",t_id);
+		if (t_sz > 0) { xin->Seek_FPos(xin,t_sz,1); t_sz = 0; }
+		break;
+
+	    } /* end of cmov sub chunk ID case */
+	  } /* end of while len  */
+	  if (cmov_buf) free(cmov_buf);
+	  if (moov_buf) free(moov_buf);
+          if (cmov_ret == xaFALSE) return(cmov_ret); /*failed or unsupported*/
+	} /* end of cmov */
 	break;
     /*--------------IGNORED FOR NOW---------*/
       case QT_gmhd:
       case QT_text:
       case QT_clip:
       case QT_skip:
+      case QT_free:
       case QT_udta:
       case QT_dinf:
-        fseek(fin,(len-8),1);  /* skip over */
+        xin->Seek_FPos(xin,(len-8),1);  /* skip over */
 	file_len -= len;
 	break;
     /*--------------UNKNOWN-----------------*/
       default:
-	if ( !feof(fin) && (len <= file_len) )
+	if ( !xin->At_EOF(xin) && (len <= file_len) )
 	{
 	  xaLONG i;
-	  QT_Print_ID(stderr,id,1);
-	  fprintf(stderr," len = %lx\n",len);
+
+DEBUG_LEVEL1
+{
+	  QT_Print_ID(stdout,id,1);
+	  fprintf(stdout," len = %x file_len %x\n",len,file_len);
+}
 	  i = (xaLONG)(len) - 8;
-	  while(i > 0) { i--; getc(fin); if (feof(fin)) i = 0; }
+		/* read and check eof */
+	  while(i > 0) { i--; xin->Read_U8(xin); if (xin->At_EOF(xin)) i = 0; }
 	}
 	file_len -= len;
 	break;
     } /* end of switch */
-    if ( feof(fin) ) file_len = 0;
+
+    if ( xin->At_EOF(xin) ) 
+    {
+      file_len = 0;
+      if ((qt_moov_flag == xaFALSE) && (qt_data_flag == xaTRUE))
+      { fprintf(stdout,"QT: file possibly truncated or missing .rsrc info.\n");
+	return(xaFALSE);
+      }
+    }
+    else if (file_len <= 0)
+    {
+	/* interesting dilemma */
+      if (   (qt_data_flag == xaFALSE)
+	  || (qt_moov_flag == xaFALSE))
+      {
+	/** START OVER **/
+	file_len = 1;
+      }
+    }
   } /* end of while */
   return(xaTRUE);
 }
@@ -786,166 +898,161 @@ fprintf(stderr,"QT: has ctab\n");
 void QT_Print_ID(fout,id,flag)
 FILE *fout;
 xaLONG id,flag;
-{
- fprintf(fout,"%c",     ((id >> 24) & 0xff));
- fprintf(fout,"%c",     ((id >> 16) & 0xff));
- fprintf(fout,"%c",     ((id >>  8) & 0xff));
- fprintf(fout,"%c",      (id        & 0xff));
- if (flag) fprintf(fout,"(%lx)",id);
+{ fprintf(fout,"%c",     (char)((id >> 24) & 0xff));
+  fprintf(fout,"%c",     (char)((id >> 16) & 0xff));
+  fprintf(fout,"%c",     (char)((id >>  8) & 0xff));
+  fprintf(fout,"%c",     (char) (id        & 0xff));
+  if (flag) fprintf(fout,"(%x)",id);
 }
 
 
-void QT_Read_MVHD(fin,qt_mvhdr)
-FILE *fin;
+void QT_Read_MVHD(xin,qt_mvhdr)
+XA_INPUT *xin;
 QT_MVHDR *qt_mvhdr;
 {
   xaULONG i,j;
 
-  qt_mvhdr->version =	UTIL_Get_MSB_Long(fin);
-  qt_mvhdr->creation =	UTIL_Get_MSB_Long(fin);
-  qt_mvhdr->modtime =	UTIL_Get_MSB_Long(fin);
-  qt_mvhdr->timescale =	UTIL_Get_MSB_Long(fin);
-  qt_mvhdr->duration =	UTIL_Get_MSB_Long(fin);
-  qt_mvhdr->rate =	UTIL_Get_MSB_Long(fin);
-  qt_mvhdr->volume =	UTIL_Get_MSB_UShort(fin);
-  qt_mvhdr->r1  =	UTIL_Get_MSB_Long(fin);
-  qt_mvhdr->r2  =	UTIL_Get_MSB_Long(fin);
+  qt_mvhdr->version =	xin->Read_MSB_U32(xin);
+  qt_mvhdr->creation =	xin->Read_MSB_U32(xin);
+  qt_mvhdr->modtime =	xin->Read_MSB_U32(xin);
+  qt_mvhdr->timescale =	xin->Read_MSB_U32(xin);
+  qt_mvhdr->duration =	xin->Read_MSB_U32(xin);
+  qt_mvhdr->rate =	xin->Read_MSB_U32(xin);
+  qt_mvhdr->volume =	xin->Read_MSB_U16(xin);
+  qt_mvhdr->r1  =	xin->Read_MSB_U32(xin);
+  qt_mvhdr->r2  =	xin->Read_MSB_U32(xin);
   for(i=0;i<3;i++) for(j=0;j<3;j++) 
-	qt_mvhdr->matrix[i][j]=UTIL_Get_MSB_Long(fin);
-  qt_mvhdr->r3  =	UTIL_Get_MSB_UShort(fin);
-  qt_mvhdr->r4  =	UTIL_Get_MSB_Long(fin);
-  qt_mvhdr->pv_time =	UTIL_Get_MSB_Long(fin);
-  qt_mvhdr->post_time =	UTIL_Get_MSB_Long(fin);
-  qt_mvhdr->sel_time =	UTIL_Get_MSB_Long(fin);
-  qt_mvhdr->sel_durat =	UTIL_Get_MSB_Long(fin);
-  qt_mvhdr->cur_time =	UTIL_Get_MSB_Long(fin);
-  qt_mvhdr->nxt_tk_id =	UTIL_Get_MSB_Long(fin);
+	qt_mvhdr->matrix[i][j]=xin->Read_MSB_U32(xin);
+  qt_mvhdr->r3  =	xin->Read_MSB_U16(xin);
+  qt_mvhdr->r4  =	xin->Read_MSB_U32(xin);
+  qt_mvhdr->pv_time =	xin->Read_MSB_U32(xin);
+  qt_mvhdr->post_time =	xin->Read_MSB_U32(xin);
+  qt_mvhdr->sel_time =	xin->Read_MSB_U32(xin);
+  qt_mvhdr->sel_durat =	xin->Read_MSB_U32(xin);
+  qt_mvhdr->cur_time =	xin->Read_MSB_U32(xin);
+  qt_mvhdr->nxt_tk_id =	xin->Read_MSB_U32(xin);
 
   if (qt_mvhdr->timescale) qt_mv_timescale = qt_mvhdr->timescale;
   else qt_mv_timescale = 1000;
   qt_vid_timescale = qt_mv_timescale;
+
   
   DEBUG_LEVEL2
-  {
-    fprintf(stderr,"mv   ver = %lx  timescale = %lx  duration = %lx\n",
+  { fprintf(stdout,"mv   ver = %x  timescale = %x  duration = %x\n",
 	qt_mvhdr->version,qt_mvhdr->timescale, qt_mvhdr->duration);
-    fprintf(stderr,"     rate = %lx volumne = %lx  nxt_tk = %lx\n",
+    fprintf(stdout,"     rate = %x volume = %x  nxt_tk = %x\n",
 	qt_mvhdr->rate,qt_mvhdr->volume,qt_mvhdr->nxt_tk_id);
   }
 }
 
-void QT_Read_TKHD(fin,qt_tkhdr)
-FILE *fin;
+void QT_Read_TKHD(xin,qt_tkhdr)
+XA_INPUT *xin;
 QT_TKHDR *qt_tkhdr;
-{
-  xaULONG i,j;
+{ xaULONG i,j;
 
-  qt_tkhdr->version =	UTIL_Get_MSB_Long(fin);
-  qt_tkhdr->creation =	UTIL_Get_MSB_Long(fin);
-  qt_tkhdr->modtime =	UTIL_Get_MSB_Long(fin);
-  qt_tkhdr->trackid =	UTIL_Get_MSB_Long(fin);
-  qt_tkhdr->timescale =	UTIL_Get_MSB_Long(fin);
-  qt_tkhdr->duration =	UTIL_Get_MSB_Long(fin);
-  qt_tkhdr->time_off =	UTIL_Get_MSB_Long(fin);
-  qt_tkhdr->priority  =	UTIL_Get_MSB_Long(fin);
-  qt_tkhdr->layer  =	UTIL_Get_MSB_UShort(fin);
-  qt_tkhdr->alt_group = UTIL_Get_MSB_UShort(fin);
-  qt_tkhdr->volume  =	UTIL_Get_MSB_UShort(fin);
+  qt_tkhdr->version =	xin->Read_MSB_U32(xin);
+  qt_tkhdr->creation =	xin->Read_MSB_U32(xin);
+  qt_tkhdr->modtime =	xin->Read_MSB_U32(xin);
+  qt_tkhdr->trackid =	xin->Read_MSB_U32(xin);
+  qt_tkhdr->timescale =	xin->Read_MSB_U32(xin);
+  qt_tkhdr->duration =	xin->Read_MSB_U32(xin);
+  qt_tkhdr->time_off =	xin->Read_MSB_U32(xin);
+  qt_tkhdr->priority  =	xin->Read_MSB_U32(xin);
+  qt_tkhdr->layer  =	xin->Read_MSB_U16(xin);
+  qt_tkhdr->alt_group = xin->Read_MSB_U16(xin);
+  qt_tkhdr->volume  =	xin->Read_MSB_U16(xin);
   for(i=0;i<3;i++) for(j=0;j<3;j++) 
-			qt_tkhdr->matrix[i][j]=UTIL_Get_MSB_Long(fin);
-  qt_tkhdr->tk_width =	UTIL_Get_MSB_Long(fin);
-  qt_tkhdr->tk_height =	UTIL_Get_MSB_Long(fin);
-  qt_tkhdr->pad  =	UTIL_Get_MSB_UShort(fin);
+			qt_tkhdr->matrix[i][j]=xin->Read_MSB_U32(xin);
+  qt_tkhdr->tk_width =	xin->Read_MSB_U32(xin);
+  qt_tkhdr->tk_height =	xin->Read_MSB_U32(xin);
+  qt_tkhdr->pad  =	xin->Read_MSB_U16(xin);
 
   if (qt_tkhdr->timescale) qt_tk_timescale = qt_tkhdr->timescale;
   else qt_tk_timescale = qt_mv_timescale;
 
   DEBUG_LEVEL2
-  {
-    fprintf(stderr,"tk   ver = %lx  tk_id = %lx  timescale = %lx\n",
+  { fprintf(stdout,"tk   ver = %x  tk_id = %x  timescale = %x\n",
 	qt_tkhdr->version,qt_tkhdr->trackid,qt_tkhdr->timescale);
-    fprintf(stderr,"     dur= %lx timoff= %lx tk_width= %lx  tk_height= %lx\n",
+    fprintf(stdout,"     dur= %x timoff= %x tk_width= %x  tk_height= %x\n",
 	qt_tkhdr->duration,qt_tkhdr->time_off,qt_tkhdr->tk_width,qt_tkhdr->tk_height);
   }
 }
 
 
-void QT_Read_ELST(fin)
-FILE *fin;
-{
- xaULONG num,version;
+/* POD TODO */
+/* implement difference between start_offset and init_duration */
+void QT_Read_ELST(xin,qt_start_offset,qt_init_duration)
+XA_INPUT *xin;
+xaULONG  *qt_start_offset;
+xaULONG  *qt_init_duration;
+{ xaULONG i,num,version;
 
- if (qts_samp_num==0) qts_init_duration = 0;
- version = UTIL_Get_MSB_Long(fin);
- num = UTIL_Get_MSB_Long(fin);
- DEBUG_LEVEL2 fprintf(stderr,"    ELST ver %lx num %lx\n",version,num);
- while(num--)
- {
-   xaULONG duration,time,rate,pad;
-   duration = UTIL_Get_MSB_Long(fin); 
-   time = UTIL_Get_MSB_Long(fin); 
-   rate = UTIL_Get_MSB_UShort(fin); 
-   pad  = UTIL_Get_MSB_UShort(fin); 
-   /* if 1st audio doesn't start at time 0 */
-   /* NOTE: this still won't work if there's a middle trak with no audio */
-   if ((qts_samp_num==0) && (time == 0xffffffff)) qts_init_duration += duration;
+ version = xin->Read_MSB_U32(xin);
+ num = xin->Read_MSB_U32(xin);
+ DEBUG_LEVEL2 fprintf(stdout,"    ELST ver %x num %x\n",version,num);
+ for(i=0; i < num; i++)
+ { xaULONG duration,time,rate,pad;
+   duration = xin->Read_MSB_U32(xin); 
+   time = xin->Read_MSB_U32(xin); 
+   rate = xin->Read_MSB_U16(xin); 
+   pad  = xin->Read_MSB_U16(xin); 
 
-   DEBUG_LEVEL2 fprintf(stderr,"    -) dur %lx tim %lx rate %lx\n",
+/* This is currently a kludge with limited support */
+   if (i==0)
+   {  if (time == 0xffffffff)	*qt_init_duration += duration;
+      else if (time != 0x0)	*qt_start_offset += time;
+   }
+   DEBUG_LEVEL2 fprintf(stdout,"    -) dur %x tim %x rate %x\n",
 		duration,time,rate);
  }
 }
 
-void QT_Read_MDHD(fin,qt_mdhdr)
-FILE *fin;
+void QT_Read_MDHD(xin,qt_mdhdr)
+XA_INPUT *xin;
 QT_MDHDR *qt_mdhdr;
-{
-  qt_mdhdr->version =	UTIL_Get_MSB_Long(fin);
-  qt_mdhdr->creation =	UTIL_Get_MSB_Long(fin);
-  qt_mdhdr->modtime =	UTIL_Get_MSB_Long(fin);
-  qt_mdhdr->timescale =	UTIL_Get_MSB_Long(fin);
-  qt_mdhdr->duration =	UTIL_Get_MSB_Long(fin);
-  qt_mdhdr->language =	UTIL_Get_MSB_UShort(fin);
-  qt_mdhdr->quality =	UTIL_Get_MSB_UShort(fin);
+{ qt_mdhdr->version =	xin->Read_MSB_U32(xin);
+  qt_mdhdr->creation =	xin->Read_MSB_U32(xin);
+  qt_mdhdr->modtime =	xin->Read_MSB_U32(xin);
+  qt_mdhdr->timescale =	xin->Read_MSB_U32(xin);
+  qt_mdhdr->duration =	xin->Read_MSB_U32(xin);
+  qt_mdhdr->language =	xin->Read_MSB_U16(xin);
+  qt_mdhdr->quality =	xin->Read_MSB_U16(xin);
 
   if (qt_mdhdr->timescale) qt_md_timescale = qt_mdhdr->timescale;
   else qt_md_timescale = qt_tk_timescale;
 
   DEBUG_LEVEL2
-  {
-    fprintf(stderr,"md   ver = %lx  timescale = %lx  duration = %lx\n",
+  { fprintf(stdout,"md   ver = %x  timescale = %x  duration = %x\n",
 	qt_mdhdr->version,qt_mdhdr->timescale,qt_mdhdr->duration);
-    fprintf(stderr,"     lang= %lx quality= %lx\n", 
+    fprintf(stdout,"     lang= %x quality= %x\n", 
 	qt_mdhdr->language,qt_mdhdr->quality);
   }
 }
 
 
-void QT_Read_HDLR(fin,len,qt_hdlr_hdr)
-FILE *fin;
+void QT_Read_HDLR(xin,len,qt_hdlr_hdr)
+XA_INPUT *xin;
 xaLONG len;
 QT_HDLR_HDR *qt_hdlr_hdr;
-{
-  qt_hdlr_hdr->version =	UTIL_Get_MSB_Long(fin);
-  qt_hdlr_hdr->type =	UTIL_Get_MSB_Long(fin);
-  qt_hdlr_hdr->subtype =	UTIL_Get_MSB_Long(fin);
-  qt_hdlr_hdr->vendor =	UTIL_Get_MSB_Long(fin);
-  qt_hdlr_hdr->flags =	UTIL_Get_MSB_Long(fin);
-  qt_hdlr_hdr->mask =	UTIL_Get_MSB_Long(fin);
+{ qt_hdlr_hdr->version =	xin->Read_MSB_U32(xin);
+  qt_hdlr_hdr->type =	xin->Read_MSB_U32(xin);
+  qt_hdlr_hdr->subtype =	xin->Read_MSB_U32(xin);
+  qt_hdlr_hdr->vendor =	xin->Read_MSB_U32(xin);
+  qt_hdlr_hdr->flags =	xin->Read_MSB_U32(xin);
+  qt_hdlr_hdr->mask =	xin->Read_MSB_U32(xin);
 
   DEBUG_LEVEL2
-  {
-    fprintf(stderr,"     ver = %lx  ",qt_hdlr_hdr->version);
-    QT_Print_ID(stderr,qt_hdlr_hdr->type,1);
-    QT_Print_ID(stderr,qt_hdlr_hdr->subtype,1);
-    QT_Print_ID(stderr,qt_hdlr_hdr->vendor,0);
-    fprintf(stderr,"\n     flags= %lx mask= %lx\n",
+  { fprintf(stdout,"     ver = %x  ",qt_hdlr_hdr->version);
+    QT_Print_ID(stdout,qt_hdlr_hdr->type,1);
+    QT_Print_ID(stdout,qt_hdlr_hdr->subtype,1);
+    QT_Print_ID(stdout,qt_hdlr_hdr->vendor,0);
+    fprintf(stdout,"\n     flags= %x mask= %x\n",
 	qt_hdlr_hdr->flags,qt_hdlr_hdr->mask);
   }
   /* Read Handler Name if Present */
   if (len > 32)
-  {
-    len -= 32;
-    QT_Read_Name(fin,len);
+  { len -= 32;
+    QT_Read_Name(xin,len);
   }
 }
 
@@ -954,14 +1061,16 @@ QT_HDLR_HDR *qt_hdlr_hdr;
  * Read and Parse Video Codecs
  *
  **********/
-xaULONG QT_Read_Video_STSD(anim_hdr,qt,fin)
-XA_ANIM_HDR *anim_hdr;
-XA_ANIM_SETUP *qt;
-FILE *fin;
+xaULONG QT_Read_Video_STSD(anim_hdr,qt,xin,clen)
+XA_ANIM_HDR	*anim_hdr;
+XA_ANIM_SETUP	*qt;
+XA_INPUT		*xin;
+xaLONG		clen;
 { xaULONG i,version,num,cur,sup;
-  version = UTIL_Get_MSB_Long(fin);
-  num = UTIL_Get_MSB_Long(fin);
-  DEBUG_LEVEL2 fprintf(stderr,"     ver = %lx  num = %lx\n", version,num);
+  version = xin->Read_MSB_U32(xin);
+  num = xin->Read_MSB_U32(xin);
+  clen -= 8;
+  DEBUG_LEVEL2 fprintf(stdout,"     ver = %x  num = %x\n", version,num);
   if (qtv_codecs == 0)
   { qtv_codec_num = num;
     qtv_codecs = (QTV_CODEC_HDR *)malloc(qtv_codec_num * sizeof(QTV_CODEC_HDR));
@@ -981,10 +1090,15 @@ FILE *fin;
   sup = 0;
   for(i=0; i < num; i++)
   {
-    sup |= QT_Read_Video_Codec_HDR(anim_hdr,qt, &qtv_codecs[cur], fin ); 
-DEBUG_LEVEL1 fprintf(stderr,"CODEC %ld) sup=%ld\n",i,sup);
+    sup |= QT_Read_Video_Codec_HDR(anim_hdr,qt, &qtv_codecs[cur], xin, &clen ); 
+DEBUG_LEVEL1 fprintf(stdout,"CODEC %d) sup=%d\n",i,sup);
     cur++;
   }
+  if (clen)
+  { DEBUG_LEVEL1 fprintf(stdout,"QT Video STSD len mismatch %x\n",clen); 
+    xin->Seek_FPos(xin,clen,1);
+  }
+
   if (sup == 0) return(xaFALSE);
   qt_video_flag = 1; 
   if ( (qt->pic==0) && (xa_buffer_flag == xaTRUE))
@@ -999,37 +1113,39 @@ DEBUG_LEVEL1 fprintf(stderr,"CODEC %ld) sup=%ld\n",i,sup);
 }
 
 
-xaULONG QT_Read_Video_Codec_HDR(anim_hdr,qt,c_hdr,fin)
+xaULONG QT_Read_Video_Codec_HDR(anim_hdr,qt,c_hdr,xin, clen)
 XA_ANIM_HDR *anim_hdr;
 XA_ANIM_SETUP *qt;
 QTV_CODEC_HDR *c_hdr;
-FILE *fin;
+XA_INPUT *xin;
+xaLONG		*clen;
 {
   xaULONG id;
   xaLONG len,i,codec_ret;
   xaULONG unk_0,unk_1,unk_2,unk_3,unk_4,unk_5,unk_6,unk_7,flag;
   xaULONG vendor,temp_qual,spat_qual,h_res,v_res;
   
-  len		= UTIL_Get_MSB_Long(fin);
-  id 		= UTIL_Get_MSB_Long(fin);
-  unk_0		= UTIL_Get_MSB_Long(fin);
-  unk_1		= UTIL_Get_MSB_Long(fin);
-  unk_2		= UTIL_Get_MSB_UShort(fin);
-  unk_3		= UTIL_Get_MSB_UShort(fin);
-  vendor	= UTIL_Get_MSB_Long(fin);
-  temp_qual	= UTIL_Get_MSB_Long(fin);
-  spat_qual	= UTIL_Get_MSB_Long(fin);
-  qt->imagex	= UTIL_Get_MSB_UShort(fin);
-  qt->imagey	= UTIL_Get_MSB_UShort(fin);
-  h_res		= UTIL_Get_MSB_UShort(fin);
-  unk_4		= UTIL_Get_MSB_UShort(fin);
-  v_res		= UTIL_Get_MSB_UShort(fin);
-  unk_5		= UTIL_Get_MSB_UShort(fin);
-  unk_6		= UTIL_Get_MSB_Long(fin);
-  unk_7		= UTIL_Get_MSB_UShort(fin);
-  QT_Read_Name(fin,32);
-  qt->depth	= UTIL_Get_MSB_UShort(fin);
-  flag		= UTIL_Get_MSB_UShort(fin);
+  len		= xin->Read_MSB_U32(xin);
+  *clen		-= len;
+  id 		= xin->Read_MSB_U32(xin);
+  unk_0		= xin->Read_MSB_U32(xin);
+  unk_1		= xin->Read_MSB_U32(xin);
+  unk_2		= xin->Read_MSB_U16(xin);
+  unk_3		= xin->Read_MSB_U16(xin);
+  vendor	= xin->Read_MSB_U32(xin);
+  temp_qual	= xin->Read_MSB_U32(xin);
+  spat_qual	= xin->Read_MSB_U32(xin);
+  qt->imagex	= xin->Read_MSB_U16(xin);
+  qt->imagey	= xin->Read_MSB_U16(xin);
+  h_res		= xin->Read_MSB_U16(xin);
+  unk_4		= xin->Read_MSB_U16(xin);
+  v_res		= xin->Read_MSB_U16(xin);
+  unk_5		= xin->Read_MSB_U16(xin);
+  unk_6		= xin->Read_MSB_U32(xin);
+  unk_7		= xin->Read_MSB_U16(xin);
+  QT_Read_Name(xin,32);
+  qt->depth	= xin->Read_MSB_U16(xin);
+  flag		= xin->Read_MSB_U16(xin);
   len -= 0x56;
 
   /* init now in case of early out */
@@ -1040,15 +1156,20 @@ FILE *fin;
   c_hdr->chdr	= 0;
 
   if (   (qt->depth == 8) || (qt->depth == 40)
-      || (qt->depth == 4) || (qt->depth == 36) ) /* generate colormap */
+      || (qt->depth == 4) || (qt->depth == 36)
+      || (qt->depth == 2) || (qt->depth == 34) ) /* generate colormap */
   {
-    if (qt->depth & 0x04) qt->imagec = 16;
-    else qt->imagec = 256;
+    if      ((qt->depth & 0x0f) == 0x04) qt->imagec = 16;
+    else if ((qt->depth & 0x0f) == 0x02) qt->imagec = 4;
+    else				 qt->imagec = 256;
 
-    if (qt->depth < 32) QT_Create_Default_Cmap(qt->cmap,qt->imagec);
+    if ((qt->depth < 32) && (id != QT_raw3))
+    {
+      QT_Create_Default_Cmap(qt->cmap,qt->imagec);
+    }
     else /* grayscale */
     {
-      if ((id == QT_jpeg) || (id == QT_cvid)) 
+      if ((id == QT_jpeg) || (id == QT_cvid) || (id == QT_raw3)) 
 		QT_Create_Gray_Cmap(qt->cmap,1,qt->imagec);
       else	QT_Create_Gray_Cmap(qt->cmap,0,qt->imagec);
     }
@@ -1056,18 +1177,18 @@ FILE *fin;
     if ( !(flag & 0x08) && (len) ) /* colormap isn't default */
     {
       xaULONG start,end,p,r,g,b,cflag;
-DEBUG_LEVEL1 fprintf(stderr,"reading colormap. flag %lx\n",flag);
-      start = UTIL_Get_MSB_Long(fin); /* is this start or something else? */
-      cflag = UTIL_Get_MSB_UShort(fin); /* is this end or total number? */
-      end   = UTIL_Get_MSB_UShort(fin); /* is this end or total number? */
+DEBUG_LEVEL1 fprintf(stdout,"reading colormap. flag %x\n",flag);
+      start = xin->Read_MSB_U32(xin); /* is this start or something else? */
+      cflag = xin->Read_MSB_U16(xin); /* is this end or total number? */
+      end   = xin->Read_MSB_U16(xin); /* is this end or total number? */
       len -= 8;
-DEBUG_LEVEL1 fprintf(stderr," start %lx end %lx cflag %lx\n",start,end,cflag);
+DEBUG_LEVEL1 fprintf(stdout," start %x end %x cflag %x\n",start,end,cflag);
       for(i = start; i <= end; i++)
       {
-        p = UTIL_Get_MSB_UShort(fin); 
-        r = UTIL_Get_MSB_UShort(fin); 
-        g = UTIL_Get_MSB_UShort(fin); 
-        b = UTIL_Get_MSB_UShort(fin);  len -= 8;
+        p = xin->Read_MSB_U16(xin); 
+        r = xin->Read_MSB_U16(xin); 
+        g = xin->Read_MSB_U16(xin); 
+        b = xin->Read_MSB_U16(xin);  len -= 8;
         if (cflag & 0x8000) p = i;
         if (p<qt->imagec)
         {
@@ -1080,9 +1201,12 @@ DEBUG_LEVEL1 fprintf(stderr," start %lx end %lx cflag %lx\n",start,end,cflag);
     } 
   }
 
-  while(len > 0) {fgetc(fin); len--; }
+  if (len) 
+  { xin->Seek_FPos(xin,len,1);
+    len = 0;
+  }
 
-  qt_codec_hdr.compression = id;
+  qt->compression = qt_codec_hdr.compression = id;
   qt_codec_hdr.x = qt->imagex;
   qt_codec_hdr.y = qt->imagey;
   qt_codec_hdr.depth = qt->depth;
@@ -1090,28 +1214,20 @@ DEBUG_LEVEL1 fprintf(stderr," start %lx end %lx cflag %lx\n",start,end,cflag);
   qt_codec_hdr.avi_ctab_flag = xaFALSE;
 
   /* Query to see if Video Compression is supported or not */
-  { xaULONG q = 0;
-    while(q < (QT_QUERY_CNT) )
-    {
-      codec_ret = qt_query_func[q](&qt_codec_hdr);
-      if (codec_ret == CODEC_SUPPORTED)
-      {
-	qt->imagex = qt_codec_hdr.x;
-	qt->imagey = qt_codec_hdr.y;
-	qt->depth  = qt_codec_hdr.depth;
-	qt->compression = qt_codec_hdr.compression;
-	c_hdr->xapi_rev	= qt_codec_hdr.xapi_rev;
-	c_hdr->decoder	= qt_codec_hdr.decoder;
-	c_hdr->dlta_extra	= qt_codec_hdr.extra;
-	break;
-      }
-      else if (codec_ret == CODEC_UNSUPPORTED) break;
-      q++;
-    }
+  codec_ret = QT_Video_Codec_Query( &qt_codec_hdr );
+  if (codec_ret == CODEC_SUPPORTED)
+  {
+    qt->imagex		= qt_codec_hdr.x;
+    qt->imagey		= qt_codec_hdr.y;
+    qt->depth		= qt_codec_hdr.depth;
+    qt->compression	= qt_codec_hdr.compression;
+    c_hdr->xapi_rev	= qt_codec_hdr.xapi_rev;
+    c_hdr->decoder	= qt_codec_hdr.decoder;
+    c_hdr->depth 	= qt_codec_hdr.depth;		/* depth */
+    c_hdr->dlta_extra	= qt_codec_hdr.extra;
   }
-
-  /*** Return False if Codec is Unknown or Not Supported */
-  if (codec_ret != CODEC_SUPPORTED)
+  else /*** Return False if Codec is Unknown or Not Supported */
+  /* if (codec_ret != CODEC_SUPPORTED) */
   { char tmpbuf[256];
     if (codec_ret == CODEC_UNKNOWN)
     { xaULONG ii,a[4],dd = qt->compression;
@@ -1119,19 +1235,34 @@ DEBUG_LEVEL1 fprintf(stderr," start %lx end %lx cflag %lx\n",start,end,cflag);
       { a[ii] = dd & 0xff;  dd >>= 8;
         if ((a[ii] < ' ') || (a[ii] > 'z')) a[ii] = '.';
       }
-      sprintf(tmpbuf,"Unknown %c%c%c%c(%08lx)",
-				a[3],a[2],a[1],a[0],qt->compression);
+      sprintf(tmpbuf,"Unknown %c%c%c%c(%08x)",
+		(char)a[3],(char)a[2],(char)a[1],(char)a[0],qt->compression);
       qt_codec_hdr.description = tmpbuf;
     }
-    if (xa_verbose) 
-		fprintf(stderr,"  Video Codec: %s",qt_codec_hdr.description);
-    else	fprintf(stderr,"QT Video Codec: %s",qt_codec_hdr.description);
-    fprintf(stderr," depth=%ld is unsupported by this executable.\n",qt->depth);
+    fprintf(stdout,"  Video Codec: %s",qt_codec_hdr.description);
+    fprintf(stdout," not yet supported.(E%x)\n",qt->depth);
+/* point 'em to the readme's */
+    switch(qt->compression)
+    { 
+      case QT_iv31: 
+      case QT_IV31: 
+      case QT_iv32: 
+      case QT_IV32: 
+      case QT_YVU9: 
+      case QT_YUV9: 
+        fprintf(stdout,"      To support this Codec please read the file \"indeo.readme\".\n");
+        break;
+      case QT_cvid: 
+      case QT_CVID: 
+        fprintf(stdout,"      To support this Codec please read the file \"cinepak.readme\".\n");
+        break;
+    }
     return(0);
   }
+  if (qt->depth == 40) qt->depth = 8; 
 
   /* Print out Video Codec info */
-  if (xa_verbose) fprintf(stderr,"  Video Codec: %s depth=%ld\n",
+  if (xa_verbose) fprintf(stdout,"  Video Codec: %s depth=%d\n",
                                 qt_codec_hdr.description,qt->depth);
 
  
@@ -1142,7 +1273,7 @@ DEBUG_LEVEL1 fprintf(stderr," start %lx end %lx cflag %lx\n",start,end,cflag);
     qt->cmap[1].red = qt->cmap[1].green = qt->cmap[1].blue = 0xff; 
     qt->chdr = ACT_Get_CMAP(qt->cmap,qt->imagec,0,qt->imagec,0,8,8,8);
   }
-  else if ( (qt->depth == 8) || (qt->depth == 4) || (qt->depth >= 36) )
+  else if ((qt->depth == 8) || (qt->depth == 4))
   {
     qt->chdr = ACT_Get_CMAP(qt->cmap,qt->imagec,0,qt->imagec,0,16,16,16);
   }
@@ -1167,27 +1298,27 @@ DEBUG_LEVEL1 fprintf(stderr," start %lx end %lx cflag %lx\n",start,end,cflag);
   return(1);
 }
 
-void QT_Read_Name(fin,r_len)
-FILE *fin;
+void QT_Read_Name(xin,r_len)
+XA_INPUT *xin;
 xaLONG r_len;
 {
   xaULONG len,d,i;
 
-  len = fgetc(fin); r_len--;
+  len = xin->Read_U8(xin); r_len--;
   if (r_len == 0) r_len = len;
-  if (len > r_len) fprintf(stderr,"QT_Name: len(%ld) > r_len(%ld)\n",len,r_len);
-  DEBUG_LEVEL2 fprintf(stderr,"      (%ld/%ld) ",len,r_len);
+  if (len > r_len) fprintf(stdout,"QT_Name: len(%d) > r_len(%d)\n",len,r_len);
+  DEBUG_LEVEL2 fprintf(stdout,"      (%d/%d) ",len,r_len);
   for(i=0;i<r_len;i++)
   {
-    d = fgetc(fin) & 0x7f;
-    if (i < len) DEBUG_LEVEL2 fputc(d,stderr);
+    d = xin->Read_U8(xin) & 0x7f;
+    if (i < len) DEBUG_LEVEL2 fputc(d,stdout);
   }
-  DEBUG_LEVEL2 fputc('\n',stderr);
+  DEBUG_LEVEL2 fputc('\n',stdout);
 }
 
 /* Time To Sample */
-void QT_Read_STTS(fin,len,qt_t2samp_num,qt_t2samps)
-FILE *fin;
+void QT_Read_STTS(xin,len,qt_t2samp_num,qt_t2samps)
+XA_INPUT *xin;
 xaLONG len;
 xaULONG *qt_t2samp_num;
 QT_T2SAMP_HDR **qt_t2samps;
@@ -1196,9 +1327,9 @@ QT_T2SAMP_HDR **qt_t2samps;
   xaULONG t2samp_num = *qt_t2samp_num;
   QT_T2SAMP_HDR *t2samps = *qt_t2samps;
 
-  version	= UTIL_Get_MSB_Long(fin);
-  num		= UTIL_Get_MSB_Long(fin);  len -= 8;
-  DEBUG_LEVEL2 fprintf(stderr,"    ver=%lx num of entries = %lx\n",version,num);
+  version	= xin->Read_MSB_U32(xin);
+  num		= xin->Read_MSB_U32(xin);  len -= 8;
+  DEBUG_LEVEL2 fprintf(stdout,"    ver=%x num of entries = %x\n",version,num);
 /* POD TEST chunk len/num mismatch - deal with it - ignore given num??*/
   num = len >> 3;
   if (t2samps==0)
@@ -1221,8 +1352,8 @@ QT_T2SAMP_HDR **qt_t2samps;
   }
   for(i=0;i<num;i++)
   { double ftime;
-    samp_cnt	= UTIL_Get_MSB_Long(fin);
-    duration	= UTIL_Get_MSB_Long(fin);  len -= 8;
+    samp_cnt	= xin->Read_MSB_U32(xin);
+    duration	= xin->Read_MSB_U32(xin);  len -= 8;
     if (duration == 0) duration = 1;
     /* NOTE: convert to 1000ms per second */
     t2samps[cur].cnt = samp_cnt;
@@ -1230,47 +1361,47 @@ QT_T2SAMP_HDR **qt_t2samps;
     t2samps[cur].time = (xaULONG)(ftime);
     ftime -= (double)(t2samps[cur].time);
     t2samps[cur].timelo = (xaULONG)(ftime * (double)(1<<24));
-    DEBUG_LEVEL2 fprintf(stderr,"      %ld) samp_cnt=%lx duration = %lx time %ld timelo %ld ftime %lf\n",
+    DEBUG_LEVEL2 fprintf(stdout,"      %d) samp_cnt=%x duration = %x time %d timelo %d ftime %f\n",
 	i,samp_cnt,duration,t2samps[cur].time,t2samps[cur].timelo,ftime);
     cur++;
   }
   *qt_t2samp_num = t2samp_num;
   *qt_t2samps = t2samps;
-  while(len > 0) {len--; getc(fin); }
+  while(len > 0) {len--; xin->Read_U8(xin); }
 }
 
 
 /* Sync Sample */
-void QT_Read_STSS(fin)
-FILE *fin;
+void QT_Read_STSS(xin)
+XA_INPUT *xin;
 {
   xaULONG version,num,i,j;
-  version	= UTIL_Get_MSB_Long(fin);
-  num		= UTIL_Get_MSB_Long(fin);
+  version	= xin->Read_MSB_U32(xin);
+  num		= xin->Read_MSB_U32(xin);
   DEBUG_LEVEL2 
   {
-    fprintf(stderr,"    ver=%lx num of entries = %lx\n",version,num);
+    fprintf(stdout,"    ver=%x num of entries = %x\n",version,num);
     j = 0;
-    fprintf(stderr,"      ");
+    fprintf(stdout,"      ");
   }
   for(i=0;i<num;i++)
   {
     xaULONG samp_num;
-    samp_num	= UTIL_Get_MSB_Long(fin);
+    samp_num	= xin->Read_MSB_U32(xin);
     DEBUG_LEVEL2
     {
-      fprintf(stderr,"%lx ",samp_num); j++;
-      if (j >= 8) {fprintf(stderr,"\n      "); j=0; }
+      fprintf(stdout,"%x ",samp_num); j++;
+      if (j >= 8) {fprintf(stdout,"\n      "); j=0; }
     }
   }
-  DEBUG_LEVEL2 fprintf(stderr,"\n");
+  DEBUG_LEVEL2 fprintf(stdout,"\n");
 }
 
 
 /* Sample to Chunk */
-void QT_Read_STSC(fin,len,qt_s2chunk_num,qt_s2chunks,
+void QT_Read_STSC(xin,len,qt_s2chunk_num,qt_s2chunks,
 		chunkoff_lstnum,codec_num,codec_lstnum)
-FILE *fin;
+XA_INPUT *xin;
 xaLONG len;
 xaULONG *qt_s2chunk_num;
 QT_S2CHUNK_HDR **qt_s2chunks;
@@ -1280,21 +1411,21 @@ xaULONG chunkoff_lstnum,codec_num,codec_lstnum;
   xaULONG s2chunk_num = *qt_s2chunk_num;
   QT_S2CHUNK_HDR *s2chunks = *qt_s2chunks;
 
-  version	= UTIL_Get_MSB_Long(fin);
-  num		= UTIL_Get_MSB_Long(fin);	len -= 16;
+  version	= xin->Read_MSB_U32(xin);
+  num		= xin->Read_MSB_U32(xin);	len -= 16;
   i = (num)?(len/num):(0);
   if (i == 16) 
   { 
-    DEBUG_LEVEL2 fprintf(stderr,"STSC: OLD STYLE\n");
+    DEBUG_LEVEL2 fprintf(stdout,"STSC: OLD STYLE\n");
     len -= num * 16; stsc_type = 0;
   }
   else 
   { 
-    DEBUG_LEVEL2 fprintf(stderr,"STSC: NEW STYLE\n");
+    DEBUG_LEVEL2 fprintf(stdout,"STSC: NEW STYLE\n");
     len -= num * 12; stsc_type = 1;
   }
 
-  DEBUG_LEVEL2 fprintf(stderr,"    ver=%lx num of entries = %lx\n",version,num);
+  DEBUG_LEVEL2 fprintf(stdout,"    ver=%x num of entries = %x\n",version,num);
   if (s2chunks == 0)
   {
     s2chunk_num = num;
@@ -1317,10 +1448,10 @@ xaULONG chunkoff_lstnum,codec_num,codec_lstnum;
     xaULONG first_chk,samp_per,chunk_tag;
     if (stsc_type == 0)  /* 4 entries */
     { xaULONG tmp;
-      first_chk	= UTIL_Get_MSB_Long(fin);
-      tmp	= UTIL_Get_MSB_Long(fin);
-      samp_per	= UTIL_Get_MSB_Long(fin);
-      chunk_tag	= UTIL_Get_MSB_Long(fin);
+      first_chk	= xin->Read_MSB_U32(xin);
+      tmp	= xin->Read_MSB_U32(xin);
+      samp_per	= xin->Read_MSB_U32(xin);
+      chunk_tag	= xin->Read_MSB_U32(xin);
       if (i > 0) s2chunks[cur-1].num   = first_chk - last;
       last = first_chk;
       if (i==(num-1))
@@ -1332,20 +1463,20 @@ xaULONG chunkoff_lstnum,codec_num,codec_lstnum;
         }
 	else 
 	{
-	  fprintf(stderr,"STSC: old style but not stgs chunk warning\n");
+	  fprintf(stdout,"STSC: old style but not stgs chunk warning\n");
 	  s2chunks[cur].num = 100000;
 	}
       }
     }
     else		/* 3 entries */
     {
-      first_chk	= UTIL_Get_MSB_Long(fin);
-      samp_per	= UTIL_Get_MSB_Long(fin);
-      chunk_tag	= UTIL_Get_MSB_Long(fin);
+      first_chk	= xin->Read_MSB_U32(xin);
+      samp_per	= xin->Read_MSB_U32(xin);
+      chunk_tag	= xin->Read_MSB_U32(xin);
       s2chunks[cur].num   = samp_per;
     }
     DEBUG_LEVEL2 
-     fprintf(stderr,"      %ld-%ld) first_chunk=%lx samp_per_chk=%lx chk_tag=%lx\n",
+     fprintf(stdout,"      %d-%d) first_chunk=%x samp_per_chk=%x chk_tag=%x\n",
 					i,cur,first_chk,samp_per,chunk_tag);
         /* start at 0 not 1  and account for previous chunks */
     s2chunks[cur].first = first_chk - 1 + chunkoff_lstnum;
@@ -1357,15 +1488,15 @@ xaULONG chunkoff_lstnum,codec_num,codec_lstnum;
   s2chunks[cur].first = 0;
   s2chunks[cur].num   = 0;
   s2chunks[cur].tag   = 0;
-  DEBUG_LEVEL2 fprintf(stderr,"    STSC left over %ld\n",len);
-  while (len > 0) { fgetc(fin); len--; }
+  DEBUG_LEVEL2 fprintf(stdout,"    STSC left over %d\n",len);
+  while (len > 0) { xin->Read_U8(xin); len--; }
   *qt_s2chunk_num = s2chunk_num;
   *qt_s2chunks = s2chunks;
 }
 
 /* Sample Size */
-void QT_Read_STSZ(fin,len,qt_samp_num,qt_samp_sizes)
-FILE *fin;
+void QT_Read_STSZ(xin,len,qt_samp_num,qt_samp_sizes)
+XA_INPUT *xin;
 xaLONG len;
 xaULONG *qt_samp_num,**qt_samp_sizes;
 {
@@ -1373,25 +1504,25 @@ xaULONG *qt_samp_num,**qt_samp_sizes;
   xaULONG samp_num   = *qt_samp_num;
   xaULONG *samp_sizes = *qt_samp_sizes;
 
-  version	= UTIL_Get_MSB_Long(fin);
-  samp_size	= UTIL_Get_MSB_Long(fin);
-  num		= UTIL_Get_MSB_Long(fin);
+  version	= xin->Read_MSB_U32(xin);
+  samp_size	= xin->Read_MSB_U32(xin);
+  num		= xin->Read_MSB_U32(xin);
   len = (len - 20) / 4;   /* number of stored samples */
-  DEBUG_LEVEL2 fprintf(stderr,"    ver=%lx samp_size=%lx entries= %lx stored entries=%lx\n",version,samp_size,num,len);
+  DEBUG_LEVEL2 fprintf(stdout,"    ver=%x samp_size=%x entries= %x stored entries=%x\n",version,samp_size,num,len);
 
   if (samp_size == 1) num = 1; /* for AUDIO PODNOTE: rethink this */
   if (samp_sizes == 0)
   {
     samp_num = num;
     samp_sizes = (xaULONG *)malloc(num * sizeof(xaULONG));
-    if (samp_sizes == 0) {fprintf(stderr,"malloc err 0\n"); exit(0);}
+    if (samp_sizes == 0) {fprintf(stdout,"malloc err 0\n"); TheEnd();}
     cur = 0;
   }
   else /*TRAK*/
   {
     xaULONG *tsamps;
     tsamps = (xaULONG *)malloc((samp_num + num) * sizeof(xaULONG));
-    if (tsamps == 0) {fprintf(stderr,"malloc err 0\n"); exit(0);}
+    if (tsamps == 0) {fprintf(stdout,"malloc err 0\n"); TheEnd();}
     for(i=0; i<samp_num; i++) tsamps[i] = samp_sizes[i];
     cur = samp_num;
     samp_num += num;
@@ -1400,7 +1531,7 @@ xaULONG *qt_samp_num,**qt_samp_sizes;
   }
   for(i=0;i<num;i++) 
   {
-    if (i < len) samp_sizes[cur] = UTIL_Get_MSB_Long(fin);
+    if (i < len) samp_sizes[cur] = xin->Read_MSB_U32(xin);
     else if (i==0) samp_sizes[cur] = samp_size;
            else samp_sizes[cur] = samp_sizes[cur-1];
     cur++;
@@ -1410,8 +1541,8 @@ xaULONG *qt_samp_num,**qt_samp_sizes;
 }
 
 /* Chunk Offset */
-void QT_Read_STCO(fin,qt_chunkoff_num,qt_chunkoffs)
-FILE *fin;
+void QT_Read_STCO(xin,qt_chunkoff_num,qt_chunkoffs)
+XA_INPUT *xin;
 xaULONG *qt_chunkoff_num;
 xaULONG **qt_chunkoffs;
 {
@@ -1419,9 +1550,9 @@ xaULONG **qt_chunkoffs;
   xaULONG chunkoff_num = *qt_chunkoff_num;
   xaULONG *chunkoffs = *qt_chunkoffs;
 
-  version	= UTIL_Get_MSB_Long(fin);
-  num		= UTIL_Get_MSB_Long(fin);
-  DEBUG_LEVEL2 fprintf(stderr,"    ver=%lx entries= %lx\n",version,num);
+  version	= xin->Read_MSB_U32(xin);
+  num		= xin->Read_MSB_U32(xin);
+  DEBUG_LEVEL2 fprintf(stdout,"    ver=%x entries= %x\n",version,num);
   if (chunkoffs == 0)
   {
     chunkoff_num = num;
@@ -1432,23 +1563,27 @@ xaULONG **qt_chunkoffs;
   {
     xaULONG *tchunks;
     tchunks = (xaULONG *)malloc((chunkoff_num + num) * sizeof(xaULONG));
-    if (tchunks == 0) {fprintf(stderr,"malloc err 0\n"); exit(0);}
+    if (tchunks == 0) {fprintf(stdout,"malloc err 0\n"); TheEnd();}
     for(i=0; i<chunkoff_num; i++) tchunks[i] = chunkoffs[i];
     cur = chunkoff_num;
     chunkoff_num += num;
     FREE(chunkoffs,0x9011);
     chunkoffs = tchunks;
   }
-  for(i=0;i<num;i++) {chunkoffs[cur] = UTIL_Get_MSB_Long(fin); cur++; }
+  for(i=0;i<num;i++) {chunkoffs[cur] = xin->Read_MSB_U32(xin); cur++; }
   *qt_chunkoff_num = chunkoff_num;
   *qt_chunkoffs = chunkoffs;
+ DEBUG_LEVEL2
+ { for(i=0;i<num;i++)  fprintf(stdout,"  STCO %d) %x\n",i,
+		chunkoffs[ i ]); 
+ }
 }
 
 
 
-xaULONG QT_Read_Video_Data(qt,fin,anim_hdr)
+xaULONG QT_Read_Video_Data(qt,xin,anim_hdr)
 XA_ANIM_SETUP *qt;
-FILE *fin;
+XA_INPUT *xin;
 XA_ANIM_HDR *anim_hdr;
 {
   xaULONG d,ret,i;
@@ -1459,8 +1594,7 @@ XA_ANIM_HDR *anim_hdr;
   xaULONG unsupported_flag = xaFALSE;
   XA_ACTION *act;
 
-  if (qtv_samp_sizes == 0) 
-	{fprintf(stderr,"QT: no video samples\n"); return(xaFALSE); } 
+  qtv_init_duration += qts_start_offset;
 
   qt->cmap_frame_num = qtv_chunkoff_num / cmap_sample_cnt;
 
@@ -1500,19 +1634,6 @@ XA_ANIM_HDR *anim_hdr;
    check size of RPZA again size in codec.
 */
 
-DEBUG_LEVEL2 fprintf(stderr,"T2S: cur-t2 %ld cur-smp %ld nxt-t2 %ld tot t2 %ld\n", cur_t2samp,cur_samp,nxt_t2samp,qtv_t2samp_num);
-    if ( (cur_samp >= nxt_t2samp) && (cur_t2samp < qtv_t2samp_num) )
-    {
-      cur_t2samp++;
-      if (xa_jiffy_flag) { qt->vid_time = xa_jiffy_flag; qt->vid_timelo = 0; }
-      else
-      { 
-	qt->vid_time   = qtv_t2samps[cur_t2samp].time;
-	qt->vid_timelo = qtv_t2samps[cur_t2samp].timelo;
-      }
-      nxt_t2samp += qtv_t2samps[cur_t2samp].cnt;
-    }
-
     if ( (i == nxt_s2chunk) && ((cur_s2chunk+1) < qtv_s2chunk_num) )
     {
       cur_s2chunk++;
@@ -1523,7 +1644,7 @@ DEBUG_LEVEL2 fprintf(stderr,"T2S: cur-t2 %ld cur-smp %ld nxt-t2 %ld tot t2 %ld\n
     /* Check tags and possibly move to new codec */
     if (qtv_s2chunks[cur_s2chunk].tag >= qtv_codec_num) 
     {
-      fprintf(stderr,"QT Data: Warning stsc chunk invalid %ld tag %ld\n",
+      fprintf(stdout,"QT Data: Warning stsc chunk invalid %d tag %d\n",
 		cur_s2chunk,qtv_s2chunks[cur_s2chunk].tag);
     } 
     else if (qtv_s2chunks[cur_s2chunk].tag != tag)
@@ -1540,6 +1661,19 @@ DEBUG_LEVEL2 fprintf(stderr,"T2S: cur-t2 %ld cur-smp %ld nxt-t2 %ld tot t2 %ld\n
     cur_off = chunk_off;
     while(num_samps--)
     {
+
+DEBUG_LEVEL2 fprintf(stdout,"T2S: cur-t2 %d cur-smp %d nxt-t2 %d tot t2 %d\n", cur_t2samp,cur_samp,nxt_t2samp,qtv_t2samp_num);
+    if ( (cur_samp >= nxt_t2samp) && (cur_t2samp < qtv_t2samp_num) )
+    {
+      cur_t2samp++;
+      if (xa_jiffy_flag) { qt->vid_time = xa_jiffy_flag; qt->vid_timelo = 0; }
+      else
+      { qt->vid_time   = qtv_t2samps[cur_t2samp].time;
+	qt->vid_timelo = qtv_t2samps[cur_t2samp].timelo;
+      }
+      nxt_t2samp += qtv_t2samps[cur_t2samp].cnt;
+    }
+
       size = qtv_samp_sizes[cur_samp];
 
       act = ACT_Get_Action(anim_hdr,ACT_DELTA);
@@ -1561,14 +1695,43 @@ DEBUG_LEVEL2 fprintf(stderr,"T2S: cur-t2 %ld cur-smp %ld nxt-t2 %ld tot t2 %ld\n
 	act->data = (xaUBYTE *)dlta_hdr;
 	dlta_hdr->flags = ACT_SNGL_BUF | DLTA_DATA;
 	dlta_hdr->fpos = 0; dlta_hdr->fsize = size;
-	fseek(fin,cur_off,0);
-	ret = fread( dlta_hdr->data, size, 1, fin);
-	if (ret != 1) 
-		{ fprintf(stderr,"QT codec: read failed\n"); return(xaFALSE); }
+	xin->Seek_FPos(xin,cur_off,0);
+	ret = xin->Read_Block(xin, dlta_hdr->data, size);
+	if (ret != size) 
+        { fprintf(stdout,"QT: video read err\n"); 
+          if (qt_frame_cnt)	return(xaTRUE);
+	  else			return(xaFALSE); }
       }
       cur_off += size;
 
-      QT_Add_Frame(qt->vid_time,qt->vid_timelo,act);
+      if (qtv_init_duration)
+      { xaLONG t_time, t_timelo; double ftime;
+
+        ftime = (1000.0 * (double)(qtv_init_duration)) 
+					/ (double)(qtv_tk_timescale);
+        t_time = (xaULONG)(ftime);
+        ftime -= (double)(t_time);
+        t_timelo = (xaULONG)(ftime * (double)(1<<24));
+	t_time   += qt->vid_time;
+	t_timelo += qt->vid_timelo;
+	while(t_timelo >= 1<<24) { t_timelo -= 1<<24; t_time++; }
+
+/* Some Quicktimes have two tracks. One chock full of video and one
+ * with a single image and a duration of the entire clip.
+ * Unfortunately, by the time XAnim is done with that image, it's
+ * too late for the others.
+ *
+ * TODO: Need a routine to detect overlaps and shorten as necessary.
+ *
+ */
+/*TESTING*/
+/* if (t_time > 500) t_time = 0; */
+
+        QT_Add_Frame(t_time,t_timelo,act);
+        qtv_init_duration = 0;
+      }
+      else 
+	QT_Add_Frame(qt->vid_time,qt->vid_timelo,act);
       dlta_hdr->xpos = dlta_hdr->ypos = 0;
       dlta_hdr->xsize = qt->imagex;
       dlta_hdr->ysize = qt->imagey;
@@ -1582,13 +1745,14 @@ DEBUG_LEVEL2 fprintf(stderr,"T2S: cur-t2 %ld cur-smp %ld nxt-t2 %ld tot t2 %ld\n
       {
 	if (unsupported_flag == xaFALSE) /* only output single warning */
 	{
-	  fprintf(stderr,"QT: Sections of this movie use an unsupported Video Codec\n");
-	  fprintf(stderr," and are therefore NOT viewable.\n");
+	  fprintf(stdout,
+		"QT: Sections of this movie use an unsupported Video Codec\n");
+	  fprintf(stdout," and are therefore NOT viewable.\n");
 	  unsupported_flag = xaTRUE;
         }
         act->type = ACT_NOP;
       }
-      ACT_Setup_Delta(qt,act,dlta_hdr,fin);
+      ACT_Setup_Delta(qt,act,dlta_hdr,xin);
       cur_samp++;
       if (cur_samp >= qtv_samp_num) break;
     } /* end of sample number */
@@ -1598,1648 +1762,30 @@ DEBUG_LEVEL2 fprintf(stderr,"T2S: cur-t2 %ld cur-smp %ld nxt-t2 %ld tot t2 %ld\n
 }
 
 
-xaULONG
-QT_Decode_RLE(image,delta,dsize,dec_info)
-xaUBYTE *image;         /* Image Buffer. */
-xaUBYTE *delta;         /* delta data. */
-xaULONG dsize;          /* delta size */
-XA_DEC_INFO *dec_info;  /* Decoder Info Header */
-{ xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
-  xaLONG y,lines,d; /* xaLONG min_x,max_x,min_y,max_y;  */
-  xaUBYTE *dptr;
-
-  dptr = delta;
-  dptr += 4;    /* skip codec size */
-  d = (*dptr++) << 8;  d |= *dptr++;   /* read code either 0008 or 0000 */
-  if (dsize < 8) /* NOP */
-  { dec_info->xs = dec_info->ys = dec_info->xe = dec_info->ye = 0;
-    return(ACT_DLTA_NOP);
-  }
-  if (d & 0x0008) /* Header present */
-  {
-    y = (*dptr++) << 8; y |= *dptr++;           /* start line */
-    dptr += 2;                                  /* unknown */
-    lines = (*dptr++) << 8; lines |= *dptr++;   /* number of lines */
-    dptr += 2;                                  /* unknown */
-  }
-  else { y = 0; lines = imagey; }
-  while(lines--)
-  {
-    xaULONG xskip,cnt;
-    xskip = *dptr++;				/* skip x pixels */
-    if (xskip==0) break;			/* exit */
-    cnt = *dptr++;				/* RLE code */
-    if ( (x11_bytes_pixel==1) || (map_flag==xaFALSE) )
-    { xaUBYTE *iptr = (xaUBYTE *)(image + (y * imagex) + (4 * (xskip-1)) );
-      while(cnt != 0xff)
-      {
-        if (cnt == 0x00) { xskip = *dptr++; iptr += 4 * (xskip-1); }
-        else if (cnt < 0x80)			/* run of data */
-        {
-          cnt *= 4; if (map_flag==xaFALSE) while(cnt--) *iptr++ = (xaUBYTE)*dptr++;
-          else while(cnt--) *iptr++ = (xaUBYTE)map[*dptr++];
-        } else					/* repeat data */
-        { xaUBYTE d1,d2,d3,d4;	cnt = 0x100 - cnt;
-          if (map_flag==xaTRUE) { d1=(xaUBYTE)map[*dptr++]; d2=(xaUBYTE)map[*dptr++];
-			      d3=(xaUBYTE)map[*dptr++]; d4=(xaUBYTE)map[*dptr++]; }
-	  else	{ d1 = (xaUBYTE)*dptr++; d2 = (xaUBYTE)*dptr++;
-		  d3 = (xaUBYTE)*dptr++; d4 = (xaUBYTE)*dptr++; }
-          while(cnt--) { *iptr++ =d1; *iptr++ =d2; *iptr++ =d3; *iptr++ =d4; }
-        } /* end of  >= 0x80 */
-        cnt = *dptr++;
-      } /* end while cnt */
-    } else if (x11_bytes_pixel==2)
-    { xaUSHORT *iptr = (xaUSHORT *)(image + 2 *((y * imagex) + (4 * (xskip-1))) );
-      while(cnt != 0xff)
-      {
-        if (cnt == 0x00) { xskip = *dptr++; iptr += 4 * (xskip-1); }
-        else if (cnt < 0x80)			/* run of data */
-        {
-          cnt *= 4; while(cnt--) *iptr++ = (xaUSHORT)map[*dptr++];
-        } else					/* repeat data */
-        { xaUSHORT d1,d2,d3,d4;	cnt = 0x100 - cnt;
-	  { d1 = (xaUSHORT)map[*dptr++]; d2 = (xaUSHORT)map[*dptr++];
-	    d3 = (xaUSHORT)map[*dptr++]; d4 = (xaUSHORT)map[*dptr++]; }
-          while(cnt--) { *iptr++ =d1; *iptr++ =d2; *iptr++ =d3; *iptr++ =d4; }
-        } /* end of  >= 0x80 */
-        cnt = *dptr++;
-      } /* end while cnt */
-    } else /* bytes == 4 */
-    { xaULONG *iptr = (xaULONG *)(image + 4 * ((y * imagex) + (4 * (xskip-1))) );
-      while(cnt != 0xff)
-      {
-        if (cnt == 0x00) { xskip = *dptr++; iptr += 4 * (xskip-1); }
-        else if (cnt < 0x80)			/* run of data */
-        {
-          cnt *= 4; while(cnt--) *iptr++ = (xaULONG)map[*dptr++];
-        } else					/* repeat data */
-        { xaULONG d1,d2,d3,d4; cnt = 0x100 - cnt;
-	  { d1 = (xaULONG)map[*dptr++]; d2 = (xaULONG)map[*dptr++]; 
-	    d3 = (xaULONG)map[*dptr++]; d4 = (xaULONG)map[*dptr++]; }
-          while(cnt--) { *iptr++ =d1; *iptr++ =d2; *iptr++ =d3; *iptr++ =d4; }
-        } /* end of  >= 0x80 */
-        cnt = *dptr++;
-      } /* end while cnt */
-    }
-    y++;
-  } /* end of lines */
- /* one more zero byte */
- dec_info->xs = dec_info->ys = 0; dec_info->xe = imagex; dec_info->ye = imagey;
- if (map_flag==xaTRUE) return(ACT_DLTA_MAPD);
- else return(ACT_DLTA_NORM);
-}
-
-xaULONG QT_Parse_Bin(fin)
-FILE *fin;
-{
-  xaULONG pos,len,csize,cid,total;
- 
-  fseek(fin,0,2);
-  total = ftell(fin);
- 
-/* Read over Header */
-  fseek(fin,0,0);
-  pos = len = UTIL_Get_MSB_Long(fin);
-  cid = UTIL_Get_MSB_Long(fin);
-  if (cid == QT_mdat)
-  {
-    fseek(fin,0,0);
-    if (len == 0)
-    {
-      fprintf(stderr,"QT: This is only .data fork. Need .rsrc fork\n");
-      return(0);
-    }
-    else return(1);
-  }
-  else if (cid == QT_moov) return(1);
- 
-DEBUG_LEVEL1 fprintf(stderr,"QT_Parse_Bin: %lx\n",pos);
- 
-  while( pos < total )
-  {
-    fseek(fin,pos,0);
- 
-    len = UTIL_Get_MSB_Long(fin);
-    pos += 4;        /* binary size is 4 bytes */
-    csize = UTIL_Get_MSB_Long(fin);
-    cid   = UTIL_Get_MSB_Long(fin);
-    if (cid == QT_moov)
-    {
-      fseek(fin,pos,0);
-      return(1);
-    }
-    if (len == 0) return(0);
-    pos += len;
-  }
-  return(0);
-}
-
-#define QT_BLOCK_INC(x,y,imagex) { x += 4; if (x>=imagex) { x=0; y += 4; }}
-
-#define QT_RPZA_BLOCK_INC(x,y,imagex,im0,im1,im2,im3,binc,rinc) \
-{ x += 4; im0 += binc; im1 += binc; im2 += binc; im3 += binc;	\
-  if (x>=imagex)					\
-  { x=0; y += 4; im0 += rinc; im1 += rinc; im2 += rinc; im3 += rinc; } }
-
-#define QT_MIN_MAX_CHECK(x,y,min_x,min_y,max_x,max_y) {	\
-  if (x > max_x) max_x=x; if (y > max_y) max_y=y;	\
-  if (x < min_x) min_x=x; if (y < min_y) min_y=y;  }
-
-#define QT_RPZA_C1(ip0,ip1,ip2,ip3,c,CAST) { \
- ip0[0] = ip0[1] = ip0[2] = ip0[3] = (CAST)c; \
- ip1[0] = ip1[1] = ip1[2] = ip1[3] = (CAST)c; \
- ip2[0] = ip2[1] = ip2[2] = ip2[3] = (CAST)c; \
- ip3[0] = ip3[1] = ip3[2] = ip3[3] = (CAST)c; }
-
-#define QT_RPZA_C4(ip,c,mask,CAST); { \
- ip[0] =(CAST)(c[((mask>>6)&0x03)]); ip[1] =(CAST)(c[((mask>>4)&0x03)]); \
- ip[2] =(CAST)(c[((mask>>2)&0x03)]); ip[3] =(CAST)(c[ (mask & 0x03)]); }
-
-#define QT_RPZA_C16(ip0,ip1,ip2,ip3,c,CAST) { \
- ip0[0] = (CAST)(*c++); ip0[1] = (CAST)(*c++); \
- ip0[2] = (CAST)(*c++); ip0[3] = (CAST)(*c++); \
- ip1[0] = (CAST)(*c++); ip1[1] = (CAST)(*c++); \
- ip1[2] = (CAST)(*c++); ip1[3] = (CAST)(*c++); \
- ip2[0] = (CAST)(*c++); ip2[1] = (CAST)(*c++); \
- ip2[2] = (CAST)(*c++); ip2[3] = (CAST)(*c++); \
- ip3[0] = (CAST)(*c++); ip3[1] = (CAST)(*c++); \
- ip3[2] = (CAST)(*c++); ip3[3] = (CAST)(*c  ); }
-
-#define QT_RPZA_rgbC1(ip,r,g,b) { \
- ip[0] = ip[3] = ip[6] = ip[9]  = r; \
- ip[1] = ip[4] = ip[7] = ip[10] = g; \
- ip[2] = ip[5] = ip[8] = ip[11] = b; }
-
-#define QT_RPZA_rgbC4(ip,r,g,b,mask); { xaULONG _idx; \
- _idx = (mask>>6)&0x03; ip[0] = r[_idx]; ip[1] = g[_idx]; ip[2] = b[_idx]; \
- _idx = (mask>>4)&0x03; ip[3] = r[_idx]; ip[4] = g[_idx]; ip[5] = b[_idx]; \
- _idx = (mask>>2)&0x03; ip[6] = r[_idx]; ip[7] = g[_idx]; ip[8] = b[_idx]; \
- _idx =  mask    &0x03; ip[9] = r[_idx]; ip[10] = g[_idx]; ip[11] = b[_idx]; }
-
-#define QT_RPZA_rgbC16(ip,r,g,b) { \
- ip[0]= *r++; ip[1]= *g++; ip[2]= *b++; \
- ip[3]= *r++; ip[4]= *g++; ip[5]= *b++; \
- ip[6]= *r++; ip[7]= *g++; ip[8]= *b++; \
- ip[9]= *r++; ip[10]= *g++; ip[11]= *b++; }
-
-xaULONG
-QT_Decode_RPZA(image,delta,dsize,dec_info)
-xaUBYTE *image;         /* Image Buffer. */
-xaUBYTE *delta;         /* delta data. */
-xaULONG dsize;          /* delta size */
-XA_DEC_INFO *dec_info;  /* Decoder Info Header */
-{ xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
-  xaLONG x,y,len,row_inc,blk_inc; 
-  xaLONG min_x,max_x,min_y,max_y;
-  xaUBYTE *dptr;
-  xaULONG code,changed;
-  xaUBYTE *im0,*im1,*im2,*im3;
-
-  if (chdr) { if (chdr->new_chdr) chdr = chdr->new_chdr; }
-  dec_info->xs = dec_info->ys = 0; dec_info->xe = imagex; dec_info->ye = imagey;
-  max_x = max_y = 0; min_x = imagex; min_y = imagey; changed = 0;
-  dptr = delta;
-  x = y = 0;
-  if (special) blk_inc = 3;
-  else if ( (x11_bytes_pixel==1) || (map_flag == xaFALSE) ) blk_inc = 1;
-  else if (x11_bytes_pixel==2) blk_inc = 2;
-  else blk_inc = 4;
-  row_inc = blk_inc * imagex;
-  blk_inc *= 4;
-  im1 = im0 = image;	im1 += row_inc; 
-  im2 = im1;		im2 += row_inc;
-  im3 = im2;		im3 += row_inc;
-  row_inc *= 3; /* skip 3 rows at a time */
-  
-  dptr++;			/* for 0xe1 */
-  len =(*dptr++)<<16; len |= (*dptr++)<< 8; len |= (*dptr++); /* Read Len */
-  if (len != dsize) /* CHECK FOR CORRUPTION - FAIRLY COMMON */
-  {
-    if (xa_verbose==xaTRUE) 
-	fprintf(stderr,"QT corruption-skipping this frame %lx %lx\n",dsize,len);
-    return(ACT_DLTA_NOP);
-  }
-  len -= 4;				/* read 4 already */
-  while(len > 0)
-  {
-    code = *dptr++; len--;
-
-    if ( (code >= 0xa0) && (code <= 0xbf) )			/* SINGLE */
-    {
-      xaULONG color,skip;
-      changed = 1;
-      color = (*dptr++) << 8; color |= *dptr++; len -= 2;
-      skip = (code-0x9f);
-      if (special)
-      { xaUBYTE r,g,b;
-        QT_Get_RGBColor(&r,&g,&b,color); 
-        while(skip--)
-        { xaUBYTE *ip0=im0; xaUBYTE *ip1=im1; xaUBYTE *ip2=im2; xaUBYTE *ip3=im3;
-	  QT_RPZA_rgbC1(ip0,r,g,b);
-	  QT_RPZA_rgbC1(ip1,r,g,b);
-	  QT_RPZA_rgbC1(ip2,r,g,b);
-	  QT_RPZA_rgbC1(ip3,r,g,b);
-	  QT_MIN_MAX_CHECK(x,y,min_x,min_y,max_x,max_y);
-	  QT_RPZA_BLOCK_INC(x,y,imagex,im0,im1,im2,im3,blk_inc,row_inc);
-	}
-      }
-      else /* not special */
-      {
-        color = QT_Get_Color(color,map_flag,map,chdr); 
-        while(skip--)
-        {
-          if ( (x11_bytes_pixel==1) || (map_flag == xaFALSE) )
-          { xaUBYTE *ip0=im0; xaUBYTE *ip1=im1; xaUBYTE *ip2=im2; xaUBYTE *ip3=im3;
-	    QT_RPZA_C1(ip0,ip1,ip2,ip3,color,xaUBYTE);
-	  }
-          else if (x11_bytes_pixel==4)
-          { xaULONG *ip0= (xaULONG *)im0; xaULONG *ip1= (xaULONG *)im1; 
-	    xaULONG *ip2= (xaULONG *)im2; xaULONG *ip3= (xaULONG *)im3;
-	    QT_RPZA_C1(ip0,ip1,ip2,ip3,color,xaULONG);
-	  }
-          else /* if (x11_bytes_pixel==2) */
-          { xaUSHORT *ip0= (xaUSHORT *)im0; xaUSHORT *ip1= (xaUSHORT *)im1; 
-	    xaUSHORT *ip2= (xaUSHORT *)im2; xaUSHORT *ip3= (xaUSHORT *)im3;
-	    QT_RPZA_C1(ip0,ip1,ip2,ip3,color,xaUSHORT);
-	  }
-	  QT_MIN_MAX_CHECK(x,y,min_x,min_y,max_x,max_y);
-	  QT_RPZA_BLOCK_INC(x,y,imagex,im0,im1,im2,im3,blk_inc,row_inc);
-        } /* end of skip-- */
-      } /* end not special */
-    }
-    else if ( (code >= 0x80) && (code <= 0x9f) )		/* SKIP */
-    { xaULONG skip = (code-0x7f);
-      while(skip--) 
-		QT_RPZA_BLOCK_INC(x,y,imagex,im0,im1,im2,im3,blk_inc,row_inc);
-    }
-    else if ( (code < 0x80) 				/* FOUR/SIXTEEN */ 
-	     || ((code >= 0xc0) && (code <= 0xdf)) )
-    { xaULONG cA,cB;
-      changed = 1;
-      /* Get 1st two colors */
-      if (code >= 0xc0) { cA = (*dptr++) << 8; cA |= *dptr++; len -= 2; }
-      else {cA = (code << 8) | *dptr++; len -= 1;}
-      cB = (*dptr++) << 8; cB |= *dptr++; len -= 2;
-
-      /****** SIXTEEN COLOR *******/
-      if ( (code < 0x80) && ((cB & 0x8000)==0) ) /* 16 color */
-      {
-        xaULONG i,d,*clr,c[16];
-        xaUBYTE r[16],g[16],b[16];
-	if (special)
-	{
-          QT_Get_RGBColor(&r[0],&g[0],&b[0],cA);
-          QT_Get_RGBColor(&r[1],&g[1],&b[1],cB);
-          for(i=2; i<16; i++)
-          {
-            d = (*dptr++) << 8; d |= *dptr++; len -= 2;
-            QT_Get_RGBColor(&r[i],&g[i],&b[i],d);
-          }
-	}
-	else
-	{
-	  clr = c;
-          *clr++ = QT_Get_Color(cA,map_flag,map,chdr);
-          *clr++ = QT_Get_Color(cB,map_flag,map,chdr);
-          for(i=2; i<16; i++)
-          {
-            d = (*dptr++) << 8; d |= *dptr++; len -= 2;
-            *clr++ = QT_Get_Color(d,map_flag,map,chdr);
-          }
-	}
-	clr = c;
-	if (special)
-        { xaUBYTE *ip0=im0; xaUBYTE *ip1=im1; xaUBYTE *ip2=im2; xaUBYTE *ip3=im3;
-	  xaUBYTE *tr,*tg,*tb; tr=r; tg=g; tb=b;
-	  QT_RPZA_rgbC16(ip0,tr,tg,tb);
-	  QT_RPZA_rgbC16(ip1,tr,tg,tb);
-	  QT_RPZA_rgbC16(ip2,tr,tg,tb);
-	  QT_RPZA_rgbC16(ip3,tr,tg,tb);
-	}
-	else if ( (x11_bytes_pixel==1) || (map_flag==xaFALSE) )
-        { xaUBYTE *ip0=im0; xaUBYTE *ip1=im1; xaUBYTE *ip2=im2; xaUBYTE *ip3=im3;
-	  QT_RPZA_C16(ip0,ip1,ip2,ip3,clr,xaUBYTE);
-	}
-	else if (x11_bytes_pixel==4)
-        { xaULONG *ip0= (xaULONG *)im0; xaULONG *ip1= (xaULONG *)im1; 
-	  xaULONG *ip2= (xaULONG *)im2; xaULONG *ip3= (xaULONG *)im3;
-	  QT_RPZA_C16(ip0,ip1,ip2,ip3,clr,xaULONG);
-	}
-	else /* if (x11_bytes_pixel==2) */
-        { xaUSHORT *ip0= (xaUSHORT *)im0; xaUSHORT *ip1= (xaUSHORT *)im1; 
-	  xaUSHORT *ip2= (xaUSHORT *)im2; xaUSHORT *ip3= (xaUSHORT *)im3;
-	  QT_RPZA_C16(ip0,ip1,ip2,ip3,clr,xaUSHORT);
-	}
-	QT_MIN_MAX_CHECK(x,y,min_x,min_y,max_x,max_y);
-	QT_RPZA_BLOCK_INC(x,y,imagex,im0,im1,im2,im3,blk_inc,row_inc);
-      } /*** END of SIXTEEN COLOR */
-      else					/****** FOUR COLOR *******/
-      { xaULONG m_cnt,msk0,msk1,msk2,msk3,c[4];
-	xaUBYTE r[4],g[4],b[4];
-
-        if (code < 0x80) m_cnt = 1; 
-	else m_cnt = code - 0xbf; 
-
-	if (special) QT_Get_AV_RGBColors(c,r,g,b,cA,cB);
-	else QT_Get_AV_Colors(c,cA,cB,map_flag,map,chdr);
-
-        while(m_cnt--)
-        { msk0 = *dptr++; msk1 = *dptr++;
-	  msk2 = *dptr++; msk3 = *dptr++; len -= 4;
-	  if (special)
-          { xaUBYTE *ip0=im0; xaUBYTE *ip1=im1; xaUBYTE *ip2=im2; xaUBYTE *ip3=im3;
-	    QT_RPZA_rgbC4(ip0,r,g,b,msk0);
-	    QT_RPZA_rgbC4(ip1,r,g,b,msk1);
-	    QT_RPZA_rgbC4(ip2,r,g,b,msk2);
-	    QT_RPZA_rgbC4(ip3,r,g,b,msk3);
-	  }
-	  else if ( (x11_bytes_pixel==1) || (map_flag==xaFALSE) )
-          { xaUBYTE *ip0=im0; xaUBYTE *ip1=im1; xaUBYTE *ip2=im2; xaUBYTE *ip3=im3;
-	    QT_RPZA_C4(ip0,c,msk0,xaUBYTE);
-	    QT_RPZA_C4(ip1,c,msk1,xaUBYTE);
-	    QT_RPZA_C4(ip2,c,msk2,xaUBYTE);
-	    QT_RPZA_C4(ip3,c,msk3,xaUBYTE);
-	  }
-	  else if (x11_bytes_pixel==4)
-          { xaULONG *ip0= (xaULONG *)im0; xaULONG *ip1= (xaULONG *)im1; 
-	    xaULONG *ip2= (xaULONG *)im2; xaULONG *ip3= (xaULONG *)im3;
-	    QT_RPZA_C4(ip0,c,msk0,xaULONG);
-	    QT_RPZA_C4(ip1,c,msk1,xaULONG);
-	    QT_RPZA_C4(ip2,c,msk2,xaULONG);
-	    QT_RPZA_C4(ip3,c,msk3,xaULONG);
-	  }
-	  else /* if (x11_bytes_pixel==2) */
-          { xaUSHORT *ip0= (xaUSHORT *)im0; xaUSHORT *ip1= (xaUSHORT *)im1; 
-	    xaUSHORT *ip2= (xaUSHORT *)im2; xaUSHORT *ip3= (xaUSHORT *)im3;
-	    QT_RPZA_C4(ip0,c,msk0,xaUSHORT);
-	    QT_RPZA_C4(ip1,c,msk1,xaUSHORT);
-	    QT_RPZA_C4(ip2,c,msk2,xaUSHORT);
-	    QT_RPZA_C4(ip3,c,msk3,xaUSHORT);
-	  }
-	  QT_MIN_MAX_CHECK(x,y,min_x,min_y,max_x,max_y);
-	  QT_RPZA_BLOCK_INC(x,y,imagex,im0,im1,im2,im3,blk_inc,row_inc);
-        }  
-      } /*** END of FOUR COLOR *******/
-    } /*** END of 4/16 COLOR BLOCKS ****/
-    else /* UNKNOWN */
-    {
-      fprintf(stderr,"QT RPZA: Unknown %lx\n",code);
-      return(ACT_DLTA_NOP);
-    }
-  }
-  if (xa_optimize_flag == xaTRUE)
-  {
-    if (changed) { dec_info->xs=min_x; dec_info->ys=min_y;
-		   dec_info->xe=max_x + 4; dec_info->ye=max_y + 4; }
-    else  { dec_info->xs = dec_info->ys = dec_info->xe = dec_info->ye = 0;
-	    return(ACT_DLTA_NOP); }
-  }
-  else { dec_info->xs = dec_info->ys = 0; 
-	 dec_info->xe = imagex; dec_info->ye = imagey; }
-  if (map_flag) return(ACT_DLTA_MAPD);
-  else return(ACT_DLTA_NORM);
-}
-
-void QT_Get_RGBColor(r,g,b,color)
-xaUBYTE *r,*g,*b;
-xaULONG color;
-{ xaULONG ra,ga,ba;
-  ra = (color >> 10) & 0x1f;	ra = (ra << 3) | (ra >> 2);
-  ga = (color >>  5) & 0x1f;	ga = (ga << 3) | (ga >> 2);
-  ba =  color & 0x1f;		ba = (ba << 3) | (ba >> 2);
-  *r = ra; *g = ga; *b = ba;
-}
-
-xaULONG QT_Get_Color(color,map_flag,map,chdr)
-xaULONG color,map_flag,*map;
-XA_CHDR *chdr;
-{
-  register xaULONG clr,ra,ga,ba,ra5,ga5,ba5;
-
-  ra5 = (color >> 10) & 0x1f;
-  ga5 = (color >>  5) & 0x1f;
-  ba5 =  color & 0x1f;
-  ra = qt_gamma_adj[ra5]; ga = qt_gamma_adj[ga5]; ba = qt_gamma_adj[ba5];
-
-  if (x11_display_type & XA_X11_TRUE) clr = X11_Get_True_Color(ra,ga,ba,16);
-  else 
-  { 
-    if ((cmap_color_func == 4) && (chdr))
-    { register xaULONG cache_i = color & 0x7fff;
-      if (cmap_cache == 0) CMAP_Cache_Init(0);
-      if (chdr != cmap_cache_chdr)
-      {
-        CMAP_Cache_Clear();
-        cmap_cache_chdr = chdr;
-      }
-      if (cmap_cache[cache_i] == 0xffff)
-      {
-        clr = chdr->coff +
-           CMAP_Find_Closest(chdr->cmap,chdr->csize,ra,ga,ba,16,16,16,xaTRUE);
-        cmap_cache[cache_i] = (xaUSHORT)clr;
-      }
-      else clr = (xaULONG)cmap_cache[cache_i];
-    }
-    else
-    {
-      if (cmap_true_to_332 == xaTRUE) clr = CMAP_GET_332(ra5,ga5,ba5,CMAP_SCALE5);
-      else			  clr = CMAP_GET_GRAY(ra5,ga5,ba5,CMAP_SCALE10);
-      if (map_flag) clr = map[clr];
-    }
-  }
-  return(clr);
-}
-
-
-void QT_Get_AV_RGBColors(c,r,g,b,cA,cB)
-xaULONG *c;
-xaUBYTE *r,*g,*b;
-xaULONG cA,cB;
-{ xaULONG rA,gA,bA,rB,gB,bB,ra,ga,ba;
-/**color 3 ***/
-  rA = (cA >> 10) & 0x1f;	r[3] = (rA << 3) | (rA >> 2);
-  gA = (cA >>  5) & 0x1f;	g[3] = (gA << 3) | (gA >> 2);
-  bA =  cA & 0x1f;		b[3] = (bA << 3) | (bA >> 2);
-/**color 0 ***/
-  rB = (cB >> 10) & 0x1f;	r[0] = (rB << 3) | (rB >> 2);
-  gB = (cB >>  5) & 0x1f;	g[0] = (gB << 3) | (gB >> 2);
-  bB =  cB & 0x1f;		b[0] = (bB << 3) | (bB >> 2);
-/**color 2 ***/
-  ra = (21*rA + 11*rB) >> 5;	r[2] = (ra << 3) | (ra >> 2);
-  ga = (21*gA + 11*gB) >> 5;	g[2] = (ga << 3) | (ga >> 2);
-  ba = (21*bA + 11*bB) >> 5;	b[2] = (ba << 3) | (ba >> 2);
-/**color 1 ***/
-  ra = (11*rA + 21*rB) >> 5;	r[1] = (ra << 3) | (ra >> 2);
-  ga = (11*gA + 21*gB) >> 5;	g[1] = (ga << 3) | (ga >> 2);
-  ba = (11*bA + 21*bB) >> 5;	b[1] = (ba << 3) | (ba >> 2);
-}
-
-void QT_Get_AV_Colors(c,cA,cB,map_flag,map,chdr)
-xaULONG *c;
-xaULONG cA,cB,map_flag,*map;
-XA_CHDR *chdr;
-{
-  xaULONG clr,rA,gA,bA,rB,gB,bB,r0,g0,b0,r1,g1,b1;
-  xaULONG rA5,gA5,bA5,rB5,gB5,bB5;
-  xaULONG r05,g05,b05,r15,g15,b15;
-
-/*color 3*/
-  rA5 = (cA >> 10) & 0x1f;
-  gA5 = (cA >>  5) & 0x1f;
-  bA5 =  cA & 0x1f;
-/*color 0*/
-  rB5 = (cB >> 10) & 0x1f;
-  gB5 = (cB >>  5) & 0x1f;
-  bB5 =  cB & 0x1f;
-/*color 2*/
-  r05 = (21*rA5 + 11*rB5) >> 5;
-  g05 = (21*gA5 + 11*gB5) >> 5;
-  b05 = (21*bA5 + 11*bB5) >> 5;
-/*color 1*/
-  r15 = (11*rA5 + 21*rB5) >> 5;
-  g15 = (11*gA5 + 21*gB5) >> 5;
-  b15 = (11*bA5 + 21*bB5) >> 5;
-/*adj and scale to 16 bits */
-  rA=qt_gamma_adj[rA5]; gA=qt_gamma_adj[gA5]; bA=qt_gamma_adj[bA5];
-  rB=qt_gamma_adj[rB5]; gB=qt_gamma_adj[gB5]; bB=qt_gamma_adj[bB5];
-  r0=qt_gamma_adj[r05]; g0=qt_gamma_adj[g05]; b0=qt_gamma_adj[b05];
-  r1=qt_gamma_adj[r15]; g1=qt_gamma_adj[g15]; b1=qt_gamma_adj[b15];
-
-  /*** 1st Color **/
-  if (x11_display_type & XA_X11_TRUE) clr = X11_Get_True_Color(rA,gA,bA,16);
-  else 
-  { 
-    if ((cmap_color_func == 4) && (chdr))
-    { register xaULONG cache_i = cA & 0x7fff;
-      if (cmap_cache == 0) CMAP_Cache_Init(0);
-      if (chdr != cmap_cache_chdr)
-      {
-        CMAP_Cache_Clear();
-        cmap_cache_chdr = chdr;
-      }
-      if (cmap_cache[cache_i] == 0xffff)
-      {
-        clr = chdr->coff +
-           CMAP_Find_Closest(chdr->cmap,chdr->csize,rA,gA,bA,16,16,16,xaTRUE);
-        cmap_cache[cache_i] = (xaUSHORT)clr;
-      }
-      else clr = (xaULONG)cmap_cache[cache_i];
-    }
-    else
-    { if (cmap_true_to_332 == xaTRUE) clr = CMAP_GET_332(rA5,gA5,bA5,CMAP_SCALE5);
-      else	clr = CMAP_GET_GRAY(rA5,gA5,bA5,CMAP_SCALE10);
-      if (map_flag) clr = map[clr];
-    }
-  }
-  c[3] = clr;
-
-  /*** 2nd Color **/
-  if (x11_display_type & XA_X11_TRUE) clr = X11_Get_True_Color(rB,gB,bB,16);
-  else 
-  { 
-    if ((cmap_color_func == 4) && (chdr))
-    { register xaULONG cache_i = cB & 0x7fff;
-      if (cmap_cache[cache_i] == 0xffff)
-      {
-        clr = chdr->coff +
-           CMAP_Find_Closest(chdr->cmap,chdr->csize,rB,gB,bB,16,16,16,xaTRUE);
-        cmap_cache[cache_i] = (xaUSHORT)clr;
-      }
-      else clr = (xaULONG)cmap_cache[cache_i];
-    }
-    else
-    { if (cmap_true_to_332 == xaTRUE) clr = CMAP_GET_332(rB5,gB5,bB5,CMAP_SCALE5);
-      else	clr = CMAP_GET_GRAY(rB5,gB5,bB5,CMAP_SCALE10);
-      if (map_flag) clr = map[clr];
-    }
-  }
-  c[0] = clr;
-
-  /*** 1st Av ****/
-  if (x11_display_type & XA_X11_TRUE) clr = X11_Get_True_Color(r0,g0,b0,16);
-  else 
-  { 
-    if ((cmap_color_func == 4) && (chdr))
-    { register xaULONG cache_i;
-      cache_i = (xaULONG)(r05 << 10) | (g05 << 5) | b05;
-      if (cmap_cache[cache_i] == 0xffff)
-      {
-        clr = chdr->coff +
-           CMAP_Find_Closest(chdr->cmap,chdr->csize,r0,g0,b0,16,16,16,xaTRUE);
-        cmap_cache[cache_i] = (xaUSHORT)clr;
-      }
-      else clr = (xaULONG)cmap_cache[cache_i];
-    }
-    else
-    { if (cmap_true_to_332 == xaTRUE) clr = CMAP_GET_332(r05,g05,b05,CMAP_SCALE5);
-      else	clr = CMAP_GET_GRAY(r05,g05,b05,CMAP_SCALE10);
-      if (map_flag) clr = map[clr];
-    }
-  }
-  c[2] = clr;
-
-  /*** 2nd Av ****/
-  if (x11_display_type & XA_X11_TRUE) clr = X11_Get_True_Color(r1,g1,b1,16);
-  else 
-  { 
-    if ((cmap_color_func == 4) && (chdr))
-    { register xaULONG cache_i;
-      cache_i = (xaULONG)(r15 << 10) | (g15 << 5) | b15;
-      if (cmap_cache[cache_i] == 0xffff)
-      {
-        clr = chdr->coff +
-           CMAP_Find_Closest(chdr->cmap,chdr->csize,r1,g1,b1,16,16,16,xaTRUE);
-        cmap_cache[cache_i] = (xaUSHORT)clr;
-      }
-      else clr = (xaULONG)cmap_cache[cache_i];
-    }
-    else
-    { if (cmap_true_to_332 == xaTRUE) clr = CMAP_GET_332(r15,g15,b15,CMAP_SCALE5);
-      else	clr = CMAP_GET_GRAY(r15,g15,b15,CMAP_SCALE10);
-      if (map_flag) clr = map[clr];
-    }
-  }
-  c[1] = clr;
-}
-
-
-xaULONG
-QT_Decode_RLE16(image,delta,dsize,dec_info)
-xaUBYTE *image;         /* Image Buffer. */
-xaUBYTE *delta;         /* delta data. */
-xaULONG dsize;          /* delta size */
-XA_DEC_INFO *dec_info;  /* Decoder Info Header */
-{ xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
-  xaLONG y,d,lines; /* xaLONG min_x,max_x,min_y,max_y; */
-  xaULONG special_flag;
-  xaUBYTE r,g,b,*dptr;
-
-  if (chdr) { if (chdr->new_chdr) chdr = chdr->new_chdr; }
-
-  special_flag = special & 0x0001;
-
-  dptr = delta;
-  dptr += 4;    /* skip codec size */
-  d = (*dptr++) << 8;  d |= *dptr++;   /* read code either 0008 or 0000 */
-  if (dsize < 8) /* NOP */
-  {
-    dec_info->xs = dec_info->ys = dec_info->xe = dec_info->ye = 0;
-    return(ACT_DLTA_NOP);
-  }
-  if (d & 0x0008) /* Header present */
-  {
-    y = (*dptr++) << 8; y |= *dptr++;           /* start line */
-    dptr += 2;                                  /* unknown */
-    lines = (*dptr++) << 8; lines |= *dptr++;   /* number of lines */
-    dptr += 2;                                  /* unknown */
-  }
-  else { y = 0; lines = imagey; }
-  while(lines--)				/* loop thru lines */
-  {
-    xaULONG d,xskip,cnt;
-    xskip = *dptr++;				/* skip x pixels */
-    if (xskip==0) break;			/* exit */
-    cnt = *dptr++;				/* RLE code */
-
-    if (special_flag)
-    { xaUBYTE *iptr = (xaUBYTE *)(image + 3*((y * imagex) + (xskip-1)) );
-      while(cnt != 0xff)				/* while not EOL */
-      {
-        if (cnt == 0x00) { xskip = *dptr++; iptr += 3*(xskip-1); }
-        else if (cnt < 0x80)				/* run of data */
-          while(cnt--) { d = (*dptr++ << 8); d |= *dptr++;
-			 QT_Get_RGBColor(&r,&g,&b,d);
-			*iptr++ = r; *iptr++ = g; *iptr++ = b; }
-        else						/* repeat data */
-        { cnt = 0x100 - cnt; d = (*dptr++ << 8); d |= *dptr++;
-          QT_Get_RGBColor(&r,&g,&b,d);
-          while(cnt--) { *iptr++ = r; *iptr++ = g; *iptr++ = b; }
-        }
-        cnt = *dptr++;				/* get new RLE code */
-      } /* end of line */
-    }
-    else if ( (x11_bytes_pixel==1) || (map_flag==xaFALSE) )
-    { xaUBYTE *iptr = (xaUBYTE *)(image + (y * imagex) + (xskip-1) );
-      while(cnt != 0xff)				/* while not EOL */
-      {
-        if (cnt == 0x00) { xskip = *dptr++; iptr += (xskip-1); }
-        else if (cnt < 0x80)				/* run of data */
-          while(cnt--) { d = (*dptr++ << 8); d |= *dptr++;
-		*iptr++ = (xaUBYTE)QT_Get_Color(d,map_flag,map,chdr); }
-        else						/* repeat data */
-        { cnt = 0x100 - cnt; d = (*dptr++ << 8); d |= *dptr++;
-          d = QT_Get_Color(d,map_flag,map,chdr);
-          while(cnt--) { *iptr++ = (xaUBYTE)d; }
-        }
-        cnt = *dptr++;				/* get new RLE code */
-      } /* end of line */
-    }
-    else if (x11_bytes_pixel==4)
-    { xaULONG *iptr = (xaULONG *)(image + 4*((y * imagex)+(xskip-1)) );
-      while(cnt != 0xff)				/* while not EOL */
-      {
-        if (cnt == 0x00) { xskip = *dptr++; iptr += (xskip-1); }
-        else if (cnt < 0x80)				/* run of data */
-          while(cnt--) { d = (*dptr++ << 8); d |= *dptr++;
-		*iptr++ = (xaULONG)QT_Get_Color(d,map_flag,map,chdr); }
-        else						/* repeat data */
-        { cnt = 0x100 - cnt; d = (*dptr++ << 8); d |= *dptr++;
-          d = QT_Get_Color(d,map_flag,map,chdr);
-          while(cnt--) { *iptr++ = (xaULONG)d; }
-        }
-        cnt = *dptr++;				/* get new RLE code */
-      } /* end of line */
-    }
-    else /* if (x11_bytes_pixel==2) */
-    { xaUSHORT *iptr = (xaUSHORT *)(image + 2*((y * imagex)+(xskip-1)) );
-      while(cnt != 0xff)				/* while not EOL */
-      {
-        if (cnt == 0x00) { xskip = *dptr++; iptr += (xskip-1); }
-        else if (cnt < 0x80)				/* run of data */
-          while(cnt--) { d = (*dptr++ << 8); d |= *dptr++;
-		*iptr++ = (xaUSHORT)QT_Get_Color(d,map_flag,map,chdr); }
-        else						/* repeat data */
-        { cnt = 0x100 - cnt; d = (*dptr++ << 8); d |= *dptr++;
-          d = QT_Get_Color(d,map_flag,map,chdr);
-          while(cnt--) { *iptr++ = (xaUSHORT)d; }
-        }
-        cnt = *dptr++;				/* get new RLE code */
-      } /* end of line */
-    }
-    y++;
-  } /* end of lines */
- /* one more zero byte */
- dec_info->xs = dec_info->ys = 0; dec_info->xe = imagex; dec_info->ye = imagey;
- if (map_flag==xaTRUE) return(ACT_DLTA_MAPD);
- else return(ACT_DLTA_NORM);
-}
-
-
-xaULONG
-QT_Decode_RLE1(image,delta,dsize,dec_info)
-xaUBYTE *image;         /* Image Buffer. */
-xaUBYTE *delta;         /* delta data. */
-xaULONG dsize;          /* delta size */
-XA_DEC_INFO *dec_info;  /* Decoder Info Header */
-{ xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
-  xaLONG x,y,d,lines; /* xaLONG min_x,max_x,min_y,max_y; */
-  xaUBYTE *dptr;
-
-  dptr = delta;
-  dptr += 4;    /* skip codec size */
-  d = (*dptr++) << 8;  d |= *dptr++;   /* read code either 0008 or 0000 */
-  if (dsize < 8) /* NOP */
-  { 
-    dec_info->xs = dec_info->ys = dec_info->xe = dec_info->ye = 0;
-    return(ACT_DLTA_NOP);
-  }
-  if (d & 0x0008) /* Header present */
-  {
-    y = (*dptr++) << 8; y |= *dptr++;           /* start line */
-    dptr += 2;                                  /* unknown */
-    lines = (*dptr++) << 8; lines |= *dptr++;   /* number of lines */
-    dptr += 2;                                  /* unknown */
-  }
-  else { y = 0; lines = imagey; }
-  x = 0; y--; lines++;
-  while(lines)				/* loop thru lines */
-  {
-    xaULONG d,xskip,cnt;
-
-    xskip = *dptr++;				/* skip x pixels */
-    cnt = *dptr++;				/* RLE code */
-    if (cnt == 0) break; 			/* exit */
-    
-/* this can be removed */
-    if ((xskip == 0x80) && (cnt == 0x00))  /* end of codec */
-    {
-	  lines = 0; y++; x = 0; 
-    }
-    else if ((xskip == 0x80) && (cnt == 0xff)) /* skip line */
-	{lines--; y++; x = 0; }
-    else
-    {
-      if (xskip & 0x80) {lines--; y++; x = xskip & 0x7f;}
-      else x += xskip;
-
-      if (cnt < 0x80)				/* run of data */
-      { 
-        xaUBYTE *bptr; xaUSHORT *sptr; xaULONG *lptr;
-	if ((x11_bytes_pixel==1) || (map_flag==xaFALSE) )
-		bptr = (xaUBYTE *)(image + (y * imagex) + (x << 4) );
-	else if (x11_bytes_pixel==2)
-		sptr = (xaUSHORT *)(image + 2*(y * imagex) + (x << 5) );
-        else lptr = (xaULONG *)(image + 4*(y * imagex) + (x << 6) );
-        x += cnt;
-        while(cnt--) 
-        { xaULONG i,mask;
-          d = (*dptr++ << 8); d |= *dptr++;
-          mask = 0x8000;
-          for(i=0;i<16;i++)
-          {
-            if (map_flag==xaFALSE) 
-		{ if (d & mask) *bptr++ = 0;  else *bptr++ = 1; }
-            else if (x11_bytes_pixel==1) {if (d & mask) *bptr++=(xaUBYTE)map[0];
-					else *bptr++=(xaUBYTE)map[1];}
-            else if (x11_bytes_pixel==2) {if (d & mask) *sptr++ =(xaUSHORT)map[0];
-					else *sptr++ =(xaUSHORT)map[1]; }
-            else { if (d & mask) *lptr++ = (xaULONG)map[0]; 
-					else *lptr++ = (xaULONG)map[1]; }
-            mask >>= 1;
-          }
-        }
-      } /* end run */ 
-      else				/* repeat data */
-      { 
-        xaUBYTE *bptr; xaUSHORT *sptr; xaULONG *lptr;
-	if ((x11_bytes_pixel==1) || (map_flag==xaFALSE) )
-		bptr = (xaUBYTE *)(image + (y * imagex) + (x << 4) );
-	else if (x11_bytes_pixel==2)
-		sptr = (xaUSHORT *)(image + 2*(y * imagex) + (x << 5) );
-        else lptr = (xaULONG *)(image + 4*(y * imagex) + (x << 6) );
-        cnt = 0x100 - cnt;
-        x += cnt;
-        d = (*dptr++ << 8); d |= *dptr++;
-        while(cnt--) 
-        { xaULONG i,mask;
-          mask = 0x8000;
-          for(i=0;i<16;i++)
-          {
-            if (map_flag==xaFALSE) 
-		{ if (d & mask) *bptr++ = 0;  else *bptr++ = 1; }
-            else if (x11_bytes_pixel==1) {if (d & mask) *bptr++=(xaUBYTE)map[0];
-					else *bptr++=(xaUBYTE)map[1];}
-            else if (x11_bytes_pixel==2) {if (d & mask) *sptr++ =(xaUSHORT)map[0];
-					else *sptr++ =(xaUSHORT)map[1]; }
-            else { if (d & mask) *lptr++ = (xaULONG)map[0]; 
-					else *lptr++ = (xaULONG)map[1]; }
-            mask >>= 1;
-          }
-        }
-      } /* end repeat */
-    } /* end of code */
-  } /* end of lines */
- dec_info->xs = dec_info->ys = 0; dec_info->xe = imagex; dec_info->ye = imagey;
- if (map_flag==xaTRUE) return(ACT_DLTA_MAPD);
- else return(ACT_DLTA_NORM);
-}
-
-xaULONG
-QT_Decode_RAW(image,delta,dsize,dec_info)
-xaUBYTE *image;         /* Image Buffer. */
-xaUBYTE *delta;         /* delta data. */
-xaULONG dsize;          /* delta size */
-XA_DEC_INFO *dec_info;  /* Decoder Info Header */
-{ xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
-  xaUBYTE *dptr = delta;
-  xaLONG i = imagex * imagey;
-  
-  if (map_flag==xaFALSE) { xaUBYTE *iptr = (xaUBYTE *)image; 
-				while(i--) *iptr++ = (xaUBYTE)*dptr++; }
-  else if (x11_bytes_pixel==1) { xaUBYTE *iptr = (xaUBYTE *)image; 
-				while(i--) *iptr++ = (xaUBYTE)map[*dptr++]; }
-  else if (x11_bytes_pixel==2) { xaUSHORT *iptr = (xaUSHORT *)image; 
-				while(i--) *iptr++ = (xaUSHORT)map[*dptr++]; }
-  else { xaULONG *iptr = (xaULONG *)image; 
-				while(i--) *iptr++ = (xaULONG)map[*dptr++]; }
-
-  dec_info->xs = dec_info->ys = 0; dec_info->xe = imagex; dec_info->ye = imagey;
-  if (map_flag==xaTRUE) return(ACT_DLTA_MAPD);
-  else return(ACT_DLTA_NORM);
-}
-
-
-xaULONG
-QT_Decode_RAW4(image,delta,dsize,dec_info)
-xaUBYTE *image;         /* Image Buffer. */
-xaUBYTE *delta;         /* delta data. */
-xaULONG dsize;          /* delta size */
-XA_DEC_INFO *dec_info;  /* Decoder Info Header */
-{ xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
-  xaUBYTE *dp = delta;
-  xaLONG i = (imagex * imagey) >> 1;
-
-{ FILE *fo;
-  fo = fopen("raw4.out","a");
-  while(i--)
-  { xaULONG d0,d = *dp++;  d0 = (d>>4)&0x0f;
-    fputc(d0,fo);
-    fputc((d&0x0f),fo);
-  }
-  fclose(fo);
-}
-  dp = delta;
-  i = (imagex * imagey) >> 1;
-
-/* POD QUESTION: is imagex a multiple of 2??? */
-  if (map_flag==xaFALSE) { xaUBYTE *iptr = (xaUBYTE *)image; 
-    while(i--) { xaUBYTE d = *dp++; *iptr++ = (d>>4); *iptr++ = d & 0xf; }
-  }
-  else if (x11_bytes_pixel==1) { xaUBYTE *iptr = (xaUBYTE *)image; 
-    while(i--) { xaULONG d = (xaULONG)*dp++;
-                 *iptr++ = (xaUBYTE)map[d>>4]; *iptr++ = (xaUBYTE)map[d&15]; }
-  }
-  else if (x11_bytes_pixel==4) { xaULONG *iptr = (xaULONG *)image; 
-    while(i--) { xaULONG d = (xaULONG)*dp++;
-                 *iptr++ = (xaULONG)map[d>>4]; *iptr++ = (xaULONG)map[d&15]; }
-  }
-  else /*(x11_bytes_pixel==2)*/ { xaUSHORT *iptr = (xaUSHORT *)image; 
-    while(i--) { xaULONG d = (xaULONG)*dp++;
-                 *iptr++ = (xaUSHORT)map[d>>4]; *iptr++ = (xaUSHORT)map[d&15]; }
-  }
-  dec_info->xs = dec_info->ys = 0; dec_info->xe = imagex; dec_info->ye = imagey;
-  if (map_flag==xaTRUE) return(ACT_DLTA_MAPD);
-  else return(ACT_DLTA_NORM);
-}
-
-#define QT_RAW_READ16RGB(dp,r,g,b) { xaULONG _d = *dp++ << 8; _d |= *dp++; \
-  r = (_d >> 10) & 0x1f; g = (_d >> 5) & 0x1f; b = _d & 0x1f;	\
-  r = (r << 3) | (r >> 2); g = (g << 3) | (g >> 2); b = (b << 3) | (b >> 2); }
-
-/****************** RAW CODEC DEPTH 16 *********************************
- *  1 unused bit. 5 bits R, G, B
- *
- *********************************************************************/
-xaULONG
-QT_Decode_RAW16(image,delta,dsize,dec_info)
-xaUBYTE *image;         /* Image Buffer. */
-xaUBYTE *delta;         /* delta data. */
-xaULONG dsize;          /* delta size */
-XA_DEC_INFO *dec_info;  /* Decoder Info Header */
-{ xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
-  xaUBYTE *dp = delta;
-  xaULONG special_flag = special & 0x0001;
-  xaLONG i = imagex * imagey;
-  
-  if (chdr) { if (chdr->new_chdr) chdr = chdr->new_chdr; }
-
-  if (special_flag)
-  { xaUBYTE *iptr = (xaUBYTE *)image; 
-    while(i--) 
-    { xaULONG r,g,b;  QT_RAW_READ16RGB(dp,r,g,b);
-      *iptr++ = r; *iptr++ = g; *iptr++ = b;}
-  }
-  else if ( (map_flag==xaFALSE) || (x11_bytes_pixel==1) )
-  { xaUBYTE *iptr = (xaUBYTE *)image; 
-    while(i--) 
-    { xaULONG r,g,b; QT_RAW_READ16RGB(dp,r,g,b);
-      *iptr++ = (xaUBYTE)XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-    }
-  }
-  else if (x11_bytes_pixel==4)
-  { xaULONG *iptr = (xaULONG *)image; 
-    while(i--) 
-    { xaULONG r,g,b;  QT_RAW_READ16RGB(dp,r,g,b);
-      *iptr++ = (xaULONG)XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-    }
-  }
-  else /* (x11_bytes_pixel==2) */
-  { xaUSHORT *iptr = (xaUSHORT *)image; 
-    while(i--) 
-    { xaULONG r,g,b;  QT_RAW_READ16RGB(dp,r,g,b);
-      *iptr++ = (xaUSHORT)XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-    }
-  }
-  dec_info->xs = dec_info->ys = 0; dec_info->xe = imagex; dec_info->ye = imagey;
-  if (map_flag==xaTRUE) return(ACT_DLTA_MAPD);
-  else return(ACT_DLTA_NORM);
-}
-
-
-/****************** RAW CODEC DEPTH 24 *********************************
- *  R G B
- *
- *********************************************************************/
-xaULONG
-QT_Decode_RAW24(image,delta,dsize,dec_info)
-xaUBYTE *image;         /* Image Buffer. */
-xaUBYTE *delta;         /* delta data. */
-xaULONG dsize;          /* delta size */
-XA_DEC_INFO *dec_info;  /* Decoder Info Header */
-{ xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
-  xaUBYTE *dp = delta;
-  xaULONG special_flag = special & 0x0001;
-  xaLONG i = imagex * imagey;
-  
-  if (chdr) { if (chdr->new_chdr) chdr = chdr->new_chdr; }
-
-  dp = delta;
-  i = imagex * imagey;
-
-  if (special_flag)
-  { xaUBYTE *iptr = (xaUBYTE *)image; 
-    while(i--) { *iptr++ = *dp++; *iptr++ = *dp++; *iptr++ = *dp++;}
-  }
-  else if ( (map_flag==xaFALSE) || (x11_bytes_pixel==1) )
-  { xaUBYTE *iptr = (xaUBYTE *)image; 
-    while(i--) 
-    { xaULONG r,g,b;
-      r = (xaULONG)*dp++; g = (xaULONG)*dp++; b = (xaULONG)*dp++;
-      *iptr++ = (xaUBYTE)XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-    }
-  }
-  else if (x11_bytes_pixel==4)
-  { xaULONG *iptr = (xaULONG *)image; 
-    while(i--) 
-    { xaULONG r,g,b; 
-      r = (xaULONG)*dp++; g = (xaULONG)*dp++; b = (xaULONG)*dp++;
-      *iptr++ = (xaULONG)XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-    }
-  }
-  else /* (x11_bytes_pixel==2) */
-  { xaUSHORT *iptr = (xaUSHORT *)image; 
-    while(i--) 
-    { xaULONG r,g,b; 
-      r = (xaULONG)*dp++; g = (xaULONG)*dp++; b = (xaULONG)*dp++;
-      *iptr++ = (xaUSHORT)XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-    }
-  }
-  dec_info->xs = dec_info->ys = 0; dec_info->xe = imagex; dec_info->ye = imagey;
-  if (map_flag==xaTRUE) return(ACT_DLTA_MAPD);
-  else return(ACT_DLTA_NORM);
-}
-
-/****************** RAW CODEC DEPTH 32 *********************************
- *  0 R G B
- *
- *********************************************************************/
-xaULONG
-QT_Decode_RAW32(image,delta,dsize,dec_info)
-xaUBYTE *image;         /* Image Buffer. */
-xaUBYTE *delta;         /* delta data. */
-xaULONG dsize;          /* delta size */
-XA_DEC_INFO *dec_info;  /* Decoder Info Header */
-{ xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
-  xaUBYTE *dp = delta;
-  xaULONG special_flag = special & 0x0001;
-  xaLONG i = imagex * imagey;
-  
-  if (chdr) { if (chdr->new_chdr) chdr = chdr->new_chdr; }
-
-  if (special_flag)
-  { xaUBYTE *iptr = (xaUBYTE *)image; 
-    while(i--) {dp++; *iptr++ = *dp++; *iptr++ = *dp++; *iptr++ = *dp++;}
-  }
-  else if ( (map_flag==xaFALSE) || (x11_bytes_pixel==1) )
-  { xaUBYTE *iptr = (xaUBYTE *)image; 
-    while(i--) 
-    { xaULONG r,g,b;
-      dp++; r = (xaULONG)*dp++; g = (xaULONG)*dp++; b = (xaULONG)*dp++;
-      *iptr++ = (xaUBYTE)XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-    }
-  }
-  else if (x11_bytes_pixel==4)
-  { xaULONG *iptr = (xaULONG *)image; 
-    while(i--) 
-    { xaULONG r,g,b; 
-      dp++; r = (xaULONG)*dp++; g = (xaULONG)*dp++; b = (xaULONG)*dp++;
-      *iptr++ = (xaULONG)XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-    }
-  }
-  else /* (x11_bytes_pixel==2) */
-  { xaUSHORT *iptr = (xaUSHORT *)image; 
-    while(i--) 
-    { xaULONG r,g,b; 
-      dp++; r = (xaULONG)*dp++; g = (xaULONG)*dp++; b = (xaULONG)*dp++;
-      *iptr++ = (xaUSHORT)XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-    }
-  }
-  dec_info->xs = dec_info->ys = 0; dec_info->xe = imagex; dec_info->ye = imagey;
-  if (map_flag==xaTRUE) return(ACT_DLTA_MAPD);
-  else return(ACT_DLTA_NORM);
-}
-
-
-#define QT_SMC_O2I(i,o,rinc) { \
-*i++ = *o++; *i++ = *o++; *i++ = *o++; *i++ = *o++; i += rinc; o += rinc; \
-*i++ = *o++; *i++ = *o++; *i++ = *o++; *i++ = *o++; i += rinc; o += rinc; \
-*i++ = *o++; *i++ = *o++; *i++ = *o++; *i++ = *o++; i += rinc; o += rinc; \
-*i++ = *o++; *i++ = *o++; *i++ = *o++; *i++ = *o++;  } 
-
-#define QT_SMC_C1(i,c,rinc) { \
-*i++ = c; *i++ = c; *i++ = c; *i++ = c;  i += rinc; \
-*i++ = c; *i++ = c; *i++ = c; *i++ = c;  i += rinc; \
-*i++ = c; *i++ = c; *i++ = c; *i++ = c;  i += rinc; \
-*i++ = c; *i++ = c; *i++ = c; *i++ = c;  i += rinc; }
-
-#define QT_SMC_C2(i,c0,c1,msk,rinc) { \
-*i++ =(msk&0x80)?c1:c0; *i++ =(msk&0x40)?c1:c0; \
-*i++ =(msk&0x20)?c1:c0; *i++ =(msk&0x10)?c1:c0; i += rinc; \
-*i++ =(msk&0x08)?c1:c0; *i++ =(msk&0x04)?c1:c0; \
-*i++ =(msk&0x02)?c1:c0; *i++ =(msk&0x01)?c1:c0; }
-
-#define QT_SMC_C4(i,CST,c,mska,mskb,rinc) { \
-*i++ = (CST)(c[(mska>>6) & 0x03]); *i++ = (CST)(c[(mska>>4) & 0x03]); \
-*i++ = (CST)(c[(mska>>2) & 0x03]); *i++ = (CST)(c[mska & 0x03]); i+=rinc; \
-*i++ = (CST)(c[(mskb>>6) & 0x03]); *i++ = (CST)(c[(mskb>>4) & 0x03]); \
-*i++ = (CST)(c[(mskb>>2) & 0x03]); *i++ = (CST)(c[mskb & 0x03]); }
-
-#define QT_SMC_C8(i,CST,c,msk,rinc) { \
-*i++ = (CST)(c[(msk>>21) & 0x07]); *i++ = (CST)(c[(msk>>18) & 0x07]); \
-*i++ = (CST)(c[(msk>>15) & 0x07]); *i++ = (CST)(c[(msk>>12) & 0x07]); i+=rinc; \
-*i++ = (CST)(c[(msk>> 9) & 0x07]); *i++ = (CST)(c[(msk>> 6) & 0x07]); \
-*i++ = (CST)(c[(msk>> 3) & 0x07]); *i++ = (CST)(c[msk & 0x07]); }
-
-#define QT_SMC_C16m(i,dp,CST,map,rinc) { \
-*i++ =(CST)map[*dp++]; *i++ =(CST)map[*dp++]; \
-*i++ =(CST)map[*dp++]; *i++ =(CST)map[*dp++]; i += rinc; \
-*i++ =(CST)map[*dp++]; *i++ =(CST)map[*dp++]; \
-*i++ =(CST)map[*dp++]; *i++ =(CST)map[*dp++]; }
-
-#define QT_SMC_C16(i,dp,CST) { \
-*i++ =(CST)(*dp++); *i++ =(CST)(*dp++); \
-*i++ =(CST)(*dp++); *i++ =(CST)(*dp++); }
-
-xaULONG
-QT_Decode_SMC(image,delta,dsize,dec_info)
-xaUBYTE *image;         /* Image Buffer. */
-xaUBYTE *delta;         /* delta data. */
-xaULONG dsize;          /* delta size */
-XA_DEC_INFO *dec_info;  /* Decoder Info Header */
-{ xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
-  xaLONG x,y,len,row_inc; /* xaLONG min_x,max_x,min_y,max_y; */
-  xaUBYTE *dptr;
-  xaULONG i,cnt,hicode,code;
-  xaULONG *c;
-
-  smc_8cnt = smc_Acnt = smc_Ccnt = 0;
-
-  dec_info->xs = dec_info->ys = 0; dec_info->xe = imagex; dec_info->ye = imagey;
-  dptr = delta;
-  x = y = 0;
-  row_inc = imagex - 4;
-
-  dptr++;				/* skip over 0xe1 */
-  len =(*dptr++)<<16; len |= (*dptr++)<< 8; len |= (*dptr++); /* Read Len */
-  len -= 4;				/* read 4 already */
-  while(len > 0)
-  {
-    code = *dptr++; len--; hicode = code & 0xf0;
-    switch(hicode)
-    {
-      case 0x00: /* SKIPs */
-      case 0x10:
-	if (hicode == 0x10) {cnt = 1 + *dptr++; len -= 1;}
-	else cnt = 1 + (code & 0x0f);
-        while(cnt--) {x += 4; if (x >= imagex) { x = 0; y += 4; } }
-	break;
-      case 0x20: /* Repeat Last Block */
-      case 0x30:
-	{ xaLONG tx,ty;
-	  if (hicode == 0x30) {cnt = 1 + *dptr++; len--;}
-	  else cnt = 1 + (code & 0x0f);
-	  if (x==0) {ty = y-4; tx = imagex-4;} else {ty=y; tx = x-4;}
-
-	  while(cnt--)
-	  { 
-	    if ( (x11_bytes_pixel==1) || (map_flag==xaFALSE) )
-	    { xaUBYTE *i_ptr = (xaUBYTE *)(image + y * imagex + x);
-	      xaUBYTE *o_ptr = (xaUBYTE *)(image + ty * imagex + tx);
-	      QT_SMC_O2I(i_ptr,o_ptr,row_inc);
-	    } else if (x11_bytes_pixel==2)
-	    { xaUSHORT *i_ptr = (xaUSHORT *)(image + 2*(y * imagex + x) );
-	      xaUSHORT *o_ptr = (xaUSHORT *)(image + 2*(ty * imagex + tx) );
-	      QT_SMC_O2I(i_ptr,o_ptr,row_inc);
-	    } else /* if (x11_bytes_pixel==4) */
-	    { xaULONG *i_ptr = (xaULONG *)(image + 4*(y * imagex + x) );
-	      xaULONG *o_ptr = (xaULONG *)(image + 4*(ty * imagex + tx) );
-	      QT_SMC_O2I(i_ptr,o_ptr,row_inc);
-	    }
-	    x += 4; if (x >= imagex) { x = 0; y += 4; }
-	  }
-	}
-	break;
-      case 0x40: /* */
-      case 0x50:
-	{ xaULONG cnt,cnt1;
-	  xaULONG m_cnt,m_cnt1;
-	  xaLONG m_tx,m_ty;
-          xaLONG tx,ty;
-	  if (hicode == 0x50) 
-	  {  
-	     m_cnt1 = 1 + *dptr++; len--; 
-	     m_cnt = 2;
-	  }
-          else 
-	  {
-	    m_cnt1 = (1 + (code & 0x0f));
-	    m_cnt = 2;
-	  }
-          m_tx = x-(xaLONG)(4 * m_cnt); m_ty = y; 
-	  if (m_tx < 0) {m_tx += imagex; m_ty -= 4;}
-	  cnt1 = m_cnt1;
-	  while(cnt1--)
-	  {
-	    cnt = m_cnt; tx = m_tx; ty = m_ty;
-	    while(cnt--)
-	    { 
-	      if ( (x11_bytes_pixel==1) || (map_flag==xaFALSE) )
-	      { xaUBYTE *i_ptr = (xaUBYTE *)(image + y * imagex + x);
-		xaUBYTE *o_ptr = (xaUBYTE *)(image + ty * imagex + tx);
-		QT_SMC_O2I(i_ptr,o_ptr,row_inc);
-	      } else if (x11_bytes_pixel==2)
-	      { xaUSHORT *i_ptr = (xaUSHORT *)(image + 2*(y * imagex + x));
-		xaUSHORT *o_ptr = (xaUSHORT *)(image + 2*(ty * imagex + tx));
-		QT_SMC_O2I(i_ptr,o_ptr,row_inc);
-	      } else 
-	      { xaULONG *i_ptr = (xaULONG *)(image + 4*(y * imagex + x));
-		xaULONG *o_ptr = (xaULONG *)(image + 4*(ty * imagex + tx));
-		QT_SMC_O2I(i_ptr,o_ptr,row_inc);
-	      }
-	      x += 4; if (x >= imagex) { x = 0; y += 4; }
-	      tx += 4; if (tx >= imagex) { tx = 0; ty += 4; }
-	    } /* end of cnt */
-	  } /* end of cnt1 */
-	}
-	break;
-
-      case 0x60: /* Repeat Data */
-      case 0x70:
-	{ xaULONG ct,cnt;
-	  if (hicode == 0x70) {cnt = 1 + *dptr++; len--;}
-	  else cnt = 1 + (code & 0x0f);
-	  ct = (map_flag)?(map[*dptr++]):(xaULONG)(*dptr++); len--;
-	  while(cnt--)
-	  {
-	    if ( (x11_bytes_pixel==1) || (map_flag==xaFALSE) )
-	    { xaUBYTE *i_ptr = (xaUBYTE *)(image + y * imagex + x);
-	      xaUBYTE d = (xaUBYTE)(ct);
-	      QT_SMC_C1(i_ptr,d,row_inc);
-	    } else if (x11_bytes_pixel==2)
-	    { xaUSHORT *i_ptr = (xaUSHORT *)(image + 2*(y * imagex + x));
-	      xaUSHORT d = (xaUBYTE)(ct);
-	      QT_SMC_C1(i_ptr,d,row_inc);
-	    } else
-	    { xaULONG *i_ptr = (xaULONG *)(image + 4*(y * imagex + x));
-	      QT_SMC_C1(i_ptr,ct,row_inc);
-	    }
-	    x += 4; if (x >= imagex) { x = 0; y += 4; }
-	  }
-	}
-	break;
-
-      case 0x80: /* 2 colors plus 16 mbits per */
-      case 0x90:
-        { xaULONG cnt = 1 + (code & 0x0f);
-	  if (hicode == 0x80)
-	  {
-            c = (xaULONG *)&smc_8[ (smc_8cnt * 2) ];  len -= 2;
-	    smc_8cnt++; if (smc_8cnt >= SMC_MAX_CNT) smc_8cnt -= SMC_MAX_CNT;
-	    for(i=0;i<2;i++) {c[i]=(map_flag)?map[*dptr++]:(xaULONG)(*dptr++);}
-	  }
-          else { c = (xaULONG *)&smc_8[ ((xaULONG)(*dptr++) << 1) ]; len--; }
-	  while(cnt--)
-	  { xaULONG msk1,msk0;
-	    msk0 = *dptr++; msk1 = *dptr++;  len-= 2;
-	    if ( (x11_bytes_pixel==1) || (map_flag==xaFALSE) )
-	    { xaUBYTE *i_ptr = (xaUBYTE *)(image + y * imagex + x);
-	      xaUBYTE c0=(xaUBYTE)c[0];	xaUBYTE c1=(xaUBYTE)c[1];
-	      QT_SMC_C2(i_ptr,c0,c1,msk0,row_inc); i_ptr += row_inc;
-	      QT_SMC_C2(i_ptr,c0,c1,msk1,row_inc);
-	    } else if (x11_bytes_pixel==2)
-	    { xaUSHORT *i_ptr = (xaUSHORT *)(image + 2*(y * imagex + x));
-	      xaUSHORT c0=(xaUSHORT)c[0];	xaUSHORT c1=(xaUSHORT)c[1];
-	      QT_SMC_C2(i_ptr,c0,c1,msk0,row_inc); i_ptr += row_inc;
-	      QT_SMC_C2(i_ptr,c0,c1,msk1,row_inc);
-	    } else
-	    { xaULONG *i_ptr = (xaULONG *)(image + 4*(y * imagex + x));
-	      xaULONG c0=(xaULONG)c[0];	xaULONG c1=(xaULONG)c[1];
-	      QT_SMC_C2(i_ptr,c0,c1,msk0,row_inc); i_ptr += row_inc;
-	      QT_SMC_C2(i_ptr,c0,c1,msk1,row_inc);
-	    }
-	    x += 4; if (x >= imagex) { x = 0; y += 4; }
-          } 
-        } 
-	break;
-
-      case 0xA0: /* 4 color + 32 mbits */
-      case 0xB0:
-        { xaULONG cnt = 1 + (code & 0xf);
-          if (hicode == 0xA0)
-          {
-            c = (xaULONG *)&smc_A[ (smc_Acnt << 2) ]; len -= 4;
-            smc_Acnt++; if (smc_Acnt >= SMC_MAX_CNT) smc_Acnt -= SMC_MAX_CNT;
-            for(i=0;i<4;i++) {c[i]=(map_flag)?map[*dptr++]:(xaULONG)(*dptr++);}
-          }
-          else { c = (xaULONG *)&smc_A[ ((xaULONG)(*dptr++) << 2) ]; len--; }
-	  while(cnt--)
-	  { xaUBYTE msk0,msk1,msk2,msk3; 
-	    msk0 = *dptr++;	msk1 = *dptr++; 
-	    msk2 = *dptr++;	msk3 = *dptr++;		len -= 4;
-	    if ( (x11_bytes_pixel==1) || (map_flag==xaFALSE) )
-	    { xaUBYTE *i_ptr = (xaUBYTE *)(image + y * imagex + x);
-	      QT_SMC_C4(i_ptr,xaUBYTE,c,msk0,msk1,row_inc); i_ptr += row_inc;
-	      QT_SMC_C4(i_ptr,xaUBYTE,c,msk2,msk3,row_inc);
-	    } else if (x11_bytes_pixel==2)
-	    { xaUSHORT *i_ptr = (xaUSHORT *)(image + 2*(y * imagex + x));
-	      QT_SMC_C4(i_ptr,xaUSHORT,c,msk0,msk1,row_inc); i_ptr += row_inc;
-	      QT_SMC_C4(i_ptr,xaUSHORT,c,msk2,msk3,row_inc);
-	    } else
-	    { xaULONG *i_ptr = (xaULONG *)(image + 4*(y * imagex + x));
-	      QT_SMC_C4(i_ptr,xaULONG,c,msk0,msk1,row_inc); i_ptr += row_inc;
-	      QT_SMC_C4(i_ptr,xaULONG,c,msk2,msk3,row_inc);
-	    }
-	    x += 4; if (x >= imagex) { x = 0; y += 4; }
-          } 
-        } 
-	break;
-
-      case 0xC0: /* 8 colors + 48 mbits */
-      case 0xD0:
-        { xaULONG cnt = 1 + (code & 0xf);
-          if (hicode == 0xC0)
-          {
-            c = (xaULONG *)&smc_C[ (smc_Ccnt << 3) ];   len -= 8;
-            smc_Ccnt++; if (smc_Ccnt >= SMC_MAX_CNT) smc_Ccnt -= SMC_MAX_CNT;
-            for(i=0;i<8;i++) {c[i]=(map_flag)?map[*dptr++]:(xaULONG)(*dptr++);}
-          }
-          else { c = (xaULONG *)&smc_C[ ((xaULONG)(*dptr++) << 3) ]; len--; }
-
-	  while(cnt--)
-	  { xaULONG t,mbits0,mbits1;
-	    t = (*dptr++) << 8; t |= *dptr++;
-	    mbits0  = (t & 0xfff0) << 8;  mbits1  = (t & 0x000f) << 8;
-	    t = (*dptr++) << 8; t |= *dptr++;
-	    mbits0 |= (t & 0xfff0) >> 4;  mbits1 |= (t & 0x000f) << 4;
-	    t = (*dptr++) << 8; t |= *dptr++;
-	    mbits1 |= (t & 0xfff0) << 8;  mbits1 |= (t & 0x000f);
-	    len -= 6;
-	    if ( (x11_bytes_pixel==1) || (map_flag==xaFALSE) )
-	    { xaUBYTE *i_ptr = (xaUBYTE *)(image + y * imagex + x);
-	      QT_SMC_C8(i_ptr,xaUBYTE,c,mbits0,row_inc); i_ptr += row_inc;
-	      QT_SMC_C8(i_ptr,xaUBYTE,c,mbits1,row_inc);
-	    } else if (x11_bytes_pixel==2)
-	    { xaUSHORT *i_ptr = (xaUSHORT *)(image + 2*(y * imagex + x));
-	      QT_SMC_C8(i_ptr,xaUSHORT,c,mbits0,row_inc); i_ptr += row_inc;
-	      QT_SMC_C8(i_ptr,xaUSHORT,c,mbits1,row_inc);
-	    } else
-	    { xaULONG *i_ptr = (xaULONG *)(image + 4*(y * imagex + x));
-	      QT_SMC_C8(i_ptr,xaULONG,c,mbits0,row_inc); i_ptr += row_inc;
-	      QT_SMC_C8(i_ptr,xaULONG,c,mbits1,row_inc);
-	    }
-	    x += 4; if (x >= imagex) { x = 0; y += 4; }
-          } 
-        } 
-	break;
-
-      case 0xE0: /* 16 colors */
-        { xaULONG cnt = 1 + (code & 0x0f);
-	  while(cnt--)
-	  { 
-	    if (map_flag==xaFALSE)
-	    { xaUBYTE *i_ptr = (xaUBYTE *)(image + y * imagex + x);
-	      QT_SMC_C16(i_ptr,dptr,xaUBYTE); i_ptr += row_inc;
-	      QT_SMC_C16(i_ptr,dptr,xaUBYTE); i_ptr += row_inc;
-	      QT_SMC_C16(i_ptr,dptr,xaUBYTE); i_ptr += row_inc;
-	      QT_SMC_C16(i_ptr,dptr,xaUBYTE);
-	    } else if (x11_bytes_pixel==1)
-	    { xaUBYTE *i_ptr = (xaUBYTE *)(image + y * imagex + x);
-	      QT_SMC_C16m(i_ptr,dptr,xaUBYTE,map,row_inc); i_ptr += row_inc;
-	      QT_SMC_C16m(i_ptr,dptr,xaUBYTE,map,row_inc);
-	    } else if (x11_bytes_pixel==2)
-	    { xaUSHORT *i_ptr = (xaUSHORT *)(image + 2*(y * imagex + x));
-	      QT_SMC_C16m(i_ptr,dptr,xaUSHORT,map,row_inc); i_ptr += row_inc;
-	      QT_SMC_C16m(i_ptr,dptr,xaUSHORT,map,row_inc);
-	    } else
-	    { xaULONG *i_ptr = (xaULONG *)(image + 4*(y * imagex + x));
-	      QT_SMC_C16m(i_ptr,dptr,xaULONG,map,row_inc); i_ptr += row_inc;
-	      QT_SMC_C16m(i_ptr,dptr,xaULONG,map,row_inc);
-	    }
-	    len -= 16; x += 4; if (x >= imagex) { x = 0; y += 4; }
-	  }
-	}
-	break;
-
-      default:   /* 0xF0 */
-	fprintf(stderr,"SMC opcode %lx is unknown\n",code);
-	break;
-    }
-  }
-  if (map_flag) return(ACT_DLTA_MAPD);
-  else return(ACT_DLTA_NORM);
-}
-
-xaULONG
-QT_Decode_RLE24(image,delta,dsize,dec_info)
-xaUBYTE *image;         /* Image Buffer. */
-xaUBYTE *delta;         /* delta data. */
-xaULONG dsize;          /* delta size */
-XA_DEC_INFO *dec_info;  /* Decoder Info Header */
-{ xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
-  xaLONG y,d,lines; /* xaULONG min_x,max_x,min_y,max_y; */
-  xaULONG special_flag,r,g,b;
-  xaUBYTE *dptr;
-
-  if (chdr) { if (chdr->new_chdr) chdr = chdr->new_chdr; }
-
-  special_flag = special & 0x0001;
-
-  dptr = delta;
-  dptr += 4;    /* skip codec size */
-  d = (*dptr++) << 8;  d |= *dptr++;   /* read code either 0008 or 0000 */
-  if (dsize < 8) /* NOP */
-  {  
-    dec_info->xs = dec_info->ys = dec_info->xe = dec_info->ye = 0;
-    return(ACT_DLTA_NOP);
-  }
-  if (d & 0x0008) /* Header present */
-  {
-    y = (*dptr++) << 8; y |= *dptr++;		/* start line */
-    dptr += 2;					/* unknown */
-    lines = (*dptr++) << 8; lines |= *dptr++;	/* number of lines */
-    dptr += 2;					/* unknown */
-  }
-  else { y = 0; lines = imagey; }
-
-  while(lines--)				/* loop thru lines */
-  {
-    xaULONG d,xskip,cnt;
-    xskip = *dptr++;				/* skip x pixels */
-    if (xskip == 0) break; 			/* exit */
-    cnt = *dptr++;				/* RLE code */
-
-    if (special_flag)
-    { xaUBYTE *iptr = (xaUBYTE *)(image + 3*((y * imagex) + (xskip-1)) );
-      while(cnt != 0xff)				/* while not EOL */
-      {
-        if (cnt == 0x00) { xskip = *dptr++; iptr += 3*(xskip-1); }
-        else if (cnt < 0x80)				/* run of data */
-          while(cnt--) { r = *dptr++; g = *dptr++; b = *dptr++;
-			*iptr++ = (xaUBYTE)r; *iptr++ = (xaUBYTE)g; 
-					    *iptr++ = (xaUBYTE)b; }
-        else						/* repeat data */
-        { cnt = 0x100 - cnt; r = *dptr++; g = *dptr++; b = *dptr++;
-          while(cnt--) { *iptr++ = (xaUBYTE)r; *iptr++ = (xaUBYTE)g; 
-					     *iptr++ = (xaUBYTE)b; }
-        }
-        cnt = *dptr++;				/* get new RLE code */
-      } /* end of line */
-    }
-    else if ( (x11_bytes_pixel==1) || (map_flag==xaFALSE) )
-    { xaUBYTE *iptr = (xaUBYTE *)(image + (y * imagex) + (xskip-1) );
-      while(cnt != 0xff)				/* while not EOL */
-      {
-        if (cnt == 0x00) { xskip = *dptr++; iptr += (xskip-1); }
-        else if (cnt < 0x80)				/* run of data */
-          while(cnt--) { r = *dptr++; g = *dptr++; b = *dptr++;
-		*iptr++ = (xaUBYTE)XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr); }
-        else						/* repeat data */
-        { cnt = 0x100 - cnt; r = *dptr++; g = *dptr++; b = *dptr++;
-          d = XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-          while(cnt--) { *iptr++ = (xaUBYTE)d; }
-        }
-        cnt = *dptr++;				/* get new RLE code */
-      } /* end of line */
-    }
-    else if (x11_bytes_pixel==4)
-    { xaULONG *iptr = (xaULONG *)(image + 4*((y * imagex)+(xskip-1)) );
-      while(cnt != 0xff)				/* while not EOL */
-      {
-        if (cnt == 0x00) { xskip = *dptr++; iptr += (xskip-1); }
-        else if (cnt < 0x80)				/* run of data */
-          while(cnt--) { r = *dptr++; g = *dptr++; b = *dptr++;
-		*iptr++ = (xaULONG)XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr); }
-        else						/* repeat data */
-        { cnt = 0x100 - cnt; r = *dptr++; g = *dptr++; b = *dptr++;
-          d = XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-          while(cnt--) { *iptr++ = (xaULONG)d; }
-        }
-        cnt = *dptr++;				/* get new RLE code */
-      } /* end of line */
-    }
-    else /* if (x11_bytes_pixel==2) */
-    { xaUSHORT *iptr = (xaUSHORT *)(image + 2*((y * imagex)+(xskip-1)) );
-      while(cnt != 0xff)				/* while not EOL */
-      {
-        if (cnt == 0x00) { xskip = *dptr++; iptr += (xskip-1); }
-        else if (cnt < 0x80)				/* run of data */
-          while(cnt--) { r = *dptr++; g = *dptr++; b = *dptr++;
-		*iptr++ = (xaUSHORT)XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr); }
-        else						/* repeat data */
-        { cnt = 0x100 - cnt; r = *dptr++; g = *dptr++; b = *dptr++;
-          d = XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-          while(cnt--) { *iptr++ = (xaUSHORT)d; }
-        }
-        cnt = *dptr++;				/* get new RLE code */
-      } /* end of line */
-    }
-    y++;
-  } /* end of lines */
- /* one more zero byte */
-  dec_info->xs = dec_info->ys = 0; dec_info->xe = imagex; dec_info->ye = imagey;
-  if (map_flag==xaTRUE) return(ACT_DLTA_MAPD);
-  else return(ACT_DLTA_NORM);
-}
-
-xaULONG
-QT_Decode_RLE32(image,delta,dsize,dec_info)
-xaUBYTE *image;         /* Image Buffer. */
-xaUBYTE *delta;         /* delta data. */
-xaULONG dsize;          /* delta size */
-XA_DEC_INFO *dec_info;  /* Decoder Info Header */
-{ xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
-  xaLONG y,d,lines; /* xaULONG min_x,max_x,min_y,max_y; */
-  xaULONG special_flag,r,g,b;
-  xaUBYTE *dp;
-
-  if (chdr) { if (chdr->new_chdr) chdr = chdr->new_chdr; }
-
-  special_flag = special & 0x0001;
-
-  dp = delta;
-  dp += 4;    /* skip codec size */
-  d = (*dp++) << 8;  d |= *dp++;   /* read code either 0008 or 0000 */
-  if (dsize < 8) /* NOP */
-  {
-    dec_info->xs = dec_info->ys = dec_info->xe = dec_info->ye = 0;
-    return(ACT_DLTA_NOP);
-  }
-  if (d & 0x0008) /* Header present */
-  {
-    y = (*dp++) << 8; y |= *dp++;           /* start line */
-    dp += 2;                                  /* unknown */
-    lines = (*dp++) << 8; lines |= *dp++;   /* number of lines */
-    dp += 2;                                  /* unknown */
-  }
-  else { y = 0; lines = imagey; }
-  while(lines--)				/* loop thru lines */
-  {
-    xaULONG d,xskip,cnt;
-    xskip = *dp++;				/* skip x pixels */
-    if (xskip == 0) break;			/* exit */
-    cnt = *dp++;				/* RLE code */
-
-    if (special_flag)
-    { xaUBYTE *iptr = (xaUBYTE *)(image + 3*((y * imagex) + (xskip-1)) );
-      while(cnt != 0xff)				/* while not EOL */
-      {
-        if (cnt == 0x00) { xskip = *dp++; iptr += 3*(xskip-1); }
-        else if (cnt < 0x80)				/* run of data */
-          while(cnt--) { dp++; r = *dp++; g = *dp++; b = *dp++;
-			*iptr++ = (xaUBYTE)r; *iptr++ = (xaUBYTE)g; 
-					    *iptr++ = (xaUBYTE)b; }
-        else						/* repeat data */
-        { cnt = 0x100 - cnt; dp++; r = *dp++; g = *dp++; b = *dp++;
-          while(cnt--) { *iptr++ = (xaUBYTE)r; *iptr++ = (xaUBYTE)g; 
-					     *iptr++ = (xaUBYTE)b; }
-        }
-        cnt = *dp++;				/* get new RLE code */
-      } /* end of line */
-    }
-    else if ( (x11_bytes_pixel==1) || (map_flag==xaFALSE) )
-    { xaUBYTE *iptr = (xaUBYTE *)(image + (y * imagex) + (xskip-1) );
-      while(cnt != 0xff)				/* while not EOL */
-      {
-        if (cnt == 0x00) { xskip = *dp++; iptr += (xskip-1); }
-        else if (cnt < 0x80)				/* run of data */
-          while(cnt--) { dp++; r = *dp++; g = *dp++; b = *dp++;
-		*iptr++ = (xaUBYTE)XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr); }
-        else						/* repeat data */
-        { cnt = 0x100 - cnt; dp++; r = *dp++; g = *dp++; b = *dp++;
-          d = XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-          while(cnt--) { *iptr++ = (xaUBYTE)d; }
-        }
-        cnt = *dp++;				/* get new RLE code */
-      } /* end of line */
-    }
-    else if (x11_bytes_pixel==4)
-    { xaULONG *iptr = (xaULONG *)(image + 4*((y * imagex)+(xskip-1)) );
-      while(cnt != 0xff)				/* while not EOL */
-      {
-        if (cnt == 0x00) { xskip = *dp++; iptr += (xskip-1); }
-        else if (cnt < 0x80)				/* run of data */
-          while(cnt--) { dp++; r = *dp++; g = *dp++; b = *dp++;
-		*iptr++ = (xaULONG)XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr); }
-        else						/* repeat data */
-        { cnt = 0x100 - cnt; dp++; r = *dp++; g = *dp++; b = *dp++;
-          d = XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-          while(cnt--) { *iptr++ = (xaULONG)d; }
-        }
-        cnt = *dp++;				/* get new RLE code */
-      } /* end of line */
-    }
-    else /* if (x11_bytes_pixel==2) */
-    { xaUSHORT *iptr = (xaUSHORT *)(image + 2*((y * imagex)+(xskip-1)) );
-      while(cnt != 0xff)				/* while not EOL */
-      {
-        if (cnt == 0x00) { xskip = *dp++; iptr += (xskip-1); }
-        else if (cnt < 0x80)				/* run of data */
-          while(cnt--) { dp++; r = *dp++; g = *dp++; b = *dp++;
-		*iptr++ = (xaUSHORT)XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr); }
-        else						/* repeat data */
-        { cnt = 0x100 - cnt; dp++; r = *dp++; g = *dp++; b = *dp++;
-          d = XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-          while(cnt--) { *iptr++ = (xaUSHORT)d; }
-        }
-        cnt = *dp++;				/* get new RLE code */
-      } /* end of line */
-    }
-    y++;
-  } /* end of lines */
- /* one more zero byte */
-  dec_info->xs = dec_info->ys = 0; dec_info->xe = imagex; dec_info->ye = imagey;
- if (map_flag==xaTRUE) return(ACT_DLTA_MAPD);
- else return(ACT_DLTA_NORM);
-}
-
-
 
 /*********************************************
  * Read and Parse Audio Codecs
  *
  **********/
-void QT_Read_Audio_STSD(fin)
-FILE *fin;
+void QT_Read_Audio_STSD(xin,clen)
+XA_INPUT	*xin;
+xaLONG	clen;
 { xaULONG i,version,num,cur,sup;
-  version = UTIL_Get_MSB_Long(fin);
-  num = UTIL_Get_MSB_Long(fin);
-  DEBUG_LEVEL2 fprintf(stderr,"     ver = %lx  num = %lx\n", version,num);
+  version	= xin->Read_MSB_U32(xin);
+  num		= xin->Read_MSB_U32(xin);
+  clen -= 8;
+  DEBUG_LEVEL2 fprintf(stdout,"     ver = %x  num = %x\n", version,num);
   if (qts_codecs == 0)
   { qts_codec_num = num;
-    qts_codecs = (QTS_CODEC_HDR *)malloc(qts_codec_num * sizeof(QTS_CODEC_HDR));
+    qts_codecs = (QTS_CODEC_HDR *)malloc(qts_codec_num 
+						* sizeof(QTS_CODEC_HDR));
     if (qts_codecs==0) TheEnd1("QT STSD: malloc err");
     cur = 0;
   }
   else
   { QTS_CODEC_HDR *tcodecs;
-    tcodecs = (QTS_CODEC_HDR *)malloc((qts_codec_num+num) * sizeof(QTS_CODEC_HDR))
-;
+    tcodecs = (QTS_CODEC_HDR *)malloc((qts_codec_num + num)
+						* sizeof(QTS_CODEC_HDR));
     if (tcodecs==0) TheEnd1("QT STSD: malloc err");
     for(i=0;i<qts_codec_num;i++) tcodecs[i] = qts_codecs[i];
     cur = qts_codec_num;
@@ -3250,49 +1796,101 @@ FILE *fin;
   sup = 0;
   for(i=0; i < num; i++)
   {
-    sup |= QT_Read_Audio_Codec_HDR( &qts_codecs[cur], fin );
+    sup |= QT_Read_Audio_Codec_HDR( &qts_codecs[cur], xin, &clen );
     cur++;
   }
   if (sup == 0)
   {
     if (qt_audio_attempt == xaTRUE) 
     {
-      fprintf(stderr,"QT Audio Codec not supported\n");
       qt_audio_attempt = xaFALSE;
     }
+  }
+  else qt_audio_flag = 1; 
+
+	/** If Extra bytes, skip over them **/
+  if (clen)
+  { DEBUG_LEVEL1 fprintf(stdout,"QT Audio STSD len mismatch %x\n",clen); 
+    xin->Seek_FPos(xin,clen,1);
   }
 }
 
 
-xaULONG QT_Read_Audio_Codec_HDR(c_hdr,fin)
-QTS_CODEC_HDR *c_hdr;
-FILE *fin;
+xaULONG QT_Read_Audio_Codec_HDR(c_hdr,xin, clen)
+QTS_CODEC_HDR	*c_hdr;
+XA_INPUT		*xin;
+xaLONG		*clen;
 { xaULONG len;
   xaULONG ret = 1;
-  len			= UTIL_Get_MSB_Long(fin);
-  c_hdr->compression	= UTIL_Get_MSB_Long(fin);
-  c_hdr->dref_id	= UTIL_Get_MSB_Long(fin);
-  c_hdr->version	= UTIL_Get_MSB_Long(fin);
-  c_hdr->codec_rev	= UTIL_Get_MSB_Long(fin);
-  c_hdr->vendor		= UTIL_Get_MSB_Long(fin);
-  c_hdr->chan_num	= UTIL_Get_MSB_UShort(fin);
-  c_hdr->bits_samp	= UTIL_Get_MSB_UShort(fin);
-  c_hdr->comp_id	= UTIL_Get_MSB_UShort(fin);
-  c_hdr->pack_size	= UTIL_Get_MSB_UShort(fin);
-  c_hdr->samp_rate	= UTIL_Get_MSB_UShort(fin);
-  c_hdr->pad		= UTIL_Get_MSB_UShort(fin);
+  len			= xin->Read_MSB_U32(xin);
+  c_hdr->format		= xin->Read_MSB_U32(xin);
+  c_hdr->compression	= XA_AUDIO_INVALID;
+  c_hdr->dref_id	= xin->Read_MSB_U32(xin);
+  c_hdr->version	= xin->Read_MSB_U32(xin);
+  c_hdr->codec_rev	= xin->Read_MSB_U32(xin);
+  c_hdr->vendor		= xin->Read_MSB_U32(xin);
+  c_hdr->chan_num	= xin->Read_MSB_U16(xin);
+  c_hdr->bits_samp	= xin->Read_MSB_U16(xin);
 
-  if (xa_verbose)
-  {
-    fprintf(stderr,"  Audio Codec: "); QT_Audio_Type(c_hdr->compression);
-    fprintf(stderr," Rate=%ld Chans=%ld Bps=%ld cmp_id=%lx\n",
-	c_hdr->samp_rate,c_hdr->chan_num,c_hdr->bits_samp,c_hdr->comp_id);
+/* Some Mac Shareware program screws up when converting AVI's to QT's */
+  if (   (c_hdr->bits_samp == 1)
+      && (   (c_hdr->format == QT_twos)
+          || (c_hdr->format == QT_raw)
+          || (c_hdr->format == QT_raw00)
+     )  )                                       c_hdr->bits_samp = 8;
+
+  c_hdr->comp_id	= xin->Read_MSB_U16(xin);
+  c_hdr->pack_size	= xin->Read_MSB_U16(xin);
+  c_hdr->samp_rate	= xin->Read_MSB_U16(xin);
+  c_hdr->pad		= xin->Read_MSB_U16(xin);
+
+  *clen -= 36;
+
+  if (c_hdr->format == QT_twos) c_hdr->compression = XA_AUDIO_SIGNED;
+  else if (c_hdr->format == QT_raw) c_hdr->compression = XA_AUDIO_LINEAR;
+  else if (c_hdr->format == QT_raw00) c_hdr->compression = XA_AUDIO_LINEAR;
+  else if (c_hdr->format == QT_ima4) c_hdr->compression = XA_AUDIO_IMA4;
+  else if (c_hdr->format == QT_agsm) c_hdr->compression = XA_AUDIO_GSM;
+  else if (c_hdr->format == QT_ulaw)
+  {  c_hdr->compression = XA_AUDIO_ULAW;
+     c_hdr->bits_samp = 8;  /* why they list it at 16 I have no clue */
+  }
+  else if (c_hdr->format == QT_MAC3)
+  { fprintf(stdout,
+	"  Audio Codec: Apple MAC3 not yet supported.\n");
+     ret = 0;
+  }
+  else if (c_hdr->format == QT_MAC6)
+  { fprintf(stdout,
+	"  Audio Codec: Apple MAC6 not yet supported.\n");
+     ret = 0;
+  }
+  else if (c_hdr->format == QT_QDMC)
+  { fprintf(stdout,
+	"  Audio Codec: QDesign Music Codec (QDMC) not yet supported.\n");
+     ret = 0;
+  }
+  else if (c_hdr->format == QT_Qclp)
+  { fprintf(stdout,
+	"  Audio Codec: QualComm PureVoice (Qclp) not yet supported.\n");
+     ret = 0;
+  }
+  else
+  { xaULONG t = c_hdr->format;
+    fprintf(stdout,"Unknown(and unsupported) Audio Codec: %c%c%c%c(0x%x).\n",
+		((t>>24) & 0x7f), ((t>>16) & 0x7f), 
+		((t>>8) & 0x7f), (t & 0x7f),		 t);
+    ret = 0;
   }
 
-  if (c_hdr->compression == QT_twos) c_hdr->compression =XA_AUDIO_SIGNED;
-  else if (c_hdr->compression == QT_raw) c_hdr->compression =XA_AUDIO_LINEAR;
-  else if (c_hdr->compression == QT_raw00) c_hdr->compression =XA_AUDIO_LINEAR;
-  else ret = 0;
+/*** If not supported, then already output ***/
+  if (ret & xa_verbose)
+  {
+    fprintf(stdout,"  Audio Codec: "); QT_Audio_Type(c_hdr->format);
+    fprintf(stdout," Rate=%d Chans=%d Bps=%d\n",
+	c_hdr->samp_rate,c_hdr->chan_num,c_hdr->bits_samp);
+  }
+
   if (c_hdr->bits_samp==8) c_hdr->bps = 1;
   else if (c_hdr->bits_samp==16) c_hdr->bps = 2;
   else if (c_hdr->bits_samp==32) c_hdr->bps = 4;
@@ -3301,7 +1899,12 @@ FILE *fin;
   if (c_hdr->bps > 2) ret = 0;
   if (c_hdr->chan_num > 2) ret = 0;
 
-  if (c_hdr->bps==2)		
+/* This is only valid for PCM type samples */
+  if ( (c_hdr->bps==2)  &&
+	 (   ((c_hdr->compression & XA_AUDIO_TYPE_MASK) == XA_AUDIO_LINEAR)
+	  || ((c_hdr->compression & XA_AUDIO_TYPE_MASK) == XA_AUDIO_SIGNED)
+	 )
+     )
   {
     c_hdr->compression |= XA_AUDIO_BPS_2_MSK;
     c_hdr->compression |= XA_AUDIO_BIGEND_MSK; /* only has meaning >= 2 bps */
@@ -3317,16 +1920,17 @@ FILE *fin;
 
 void QT_Audio_Type(type)
 xaULONG type;
-{
-  switch(type)
-  {
-    case QT_raw:	fprintf(stderr,"PCM"); break;
-    case QT_raw00:	fprintf(stderr,"PCM0"); break;
-    case QT_twos:	fprintf(stderr,"TWOS"); break;
-    case QT_MAC6:	fprintf(stderr,"MAC6"); break;
-    default:		
-	fprintf(stderr,"(%c%c%c%c)(%08lx)",((type>>24)&0xff),((type>>16)&0xff),
-			((type>>8)&0xff),((type)&0xff),type); 
+{ switch(type)
+  { case QT_raw:	fprintf(stdout,"PCM"); break;
+    case QT_raw00:	fprintf(stdout,"PCM0"); break;
+    case QT_twos:	fprintf(stdout,"TWOS"); break;
+    case QT_MAC3:	fprintf(stdout,"MAC3"); break;
+    case QT_MAC6:	fprintf(stdout,"MAC6"); break;
+    case QT_ima4:	fprintf(stdout,"IMA4"); break;
+    case QT_ulaw:	fprintf(stdout,"uLaw"); break;
+    default:		fprintf(stdout,"(%c%c%c%c)(%08x)",
+			  (char)((type>>24)&0xff), (char)((type>>16)&0xff),
+			  (char)((type>>8)&0xff),(char)((type)&0xff),type); 
 	break;
   }
 }
@@ -3335,25 +1939,18 @@ xaULONG type;
  *
  * 
  *******/
-void QT_Read_Audio_Data(qt,fin,anim_hdr)
+xaULONG QT_Read_Audio_Data(qt,xin,anim_hdr)
 XA_ANIM_SETUP *qt;
-FILE *fin;
+XA_INPUT *xin;
 XA_ANIM_HDR *anim_hdr;
 {
   xaULONG ret,i;
   xaULONG cur_s2chunk,nxt_s2chunk;
-  xaULONG cur_off,tag;
+  xaULONG tag;
 
-DEBUG_LEVEL1 fprintf(stderr,"QT_Read_Audio: attempt %lx co# %ld\n",
+DEBUG_LEVEL1 fprintf(stdout,"QT_Read_Audio: attempt %x co# %d\n",
 				qt_audio_attempt,qts_chunkoff_num);
-  if (qt_audio_attempt==xaFALSE) return;
-  if (qts_samp_sizes == 0)
-  {
-    if (xa_verbose) fprintf(stderr,"  Audio Codec: No Audio Present.\n");
-    return; 
-  } 
 
-  cur_off	= 0;
   cur_s2chunk	= 0;
   nxt_s2chunk	= qts_s2chunks[cur_s2chunk + 1].first;
   tag		= qts_s2chunks[cur_s2chunk].tag;
@@ -3364,24 +1961,22 @@ DEBUG_LEVEL1 fprintf(stderr,"QT_Read_Audio: attempt %lx co# %ld\n",
   qt_audio_end	 = 1;
 
   /* Initial Silence if any. PODNOTE: Eventually Modify for Middle silence */
+  /**** TODO: detect middle silences and add NOP audio chunks ****/
+  qts_init_duration += qtv_start_offset;
   if (qts_init_duration)
-  { xaULONG num,snd_size,d;
-    xaUBYTE *snd_data;
-    num  = (qt_audio_freq * qts_init_duration) / qt_tk_timescale;
-    snd_size = num * qt_audio_bps;
-    if ((qt_audio_type & XA_AUDIO_TYPE_MASK)==XA_AUDIO_LINEAR) d = 0x80;
-    else d = 0x00;
-    snd_data = (xaUBYTE *)malloc(snd_size);
-    if (snd_data==0) TheEnd1("QT aud_dat: malloc err0");
-    memset((char *)(snd_data),d,snd_size); 
-    if (XA_Add_Sound(anim_hdr,snd_data,qt_audio_type, -1, qt_audio_freq,
-	snd_size, &qt->aud_time, &qt->aud_timelo) == xaFALSE) return;
+  { xaULONG snd_size;
+
+    snd_size = (qt_audio_freq * qts_init_duration) / qts_tk_timescale;
+    if (XA_Add_Sound(anim_hdr,0,XA_AUDIO_NOP, -1, qt_audio_freq,
+	snd_size, &qt->aud_time, &qt->aud_timelo, 0, 0) == xaFALSE) 
+							return(xaFALSE);
   }
 
 
   /* Loop through chunk offsets */
   for(i=0; i < qts_chunkoff_num; i++)
   { xaULONG size,chunk_off,num_samps,snd_size;
+    xaULONG blockalign, sampsblock;
 
     if ( (i == nxt_s2chunk) && ((cur_s2chunk+1) < qts_s2chunk_num) )
     {
@@ -3393,7 +1988,7 @@ DEBUG_LEVEL1 fprintf(stderr,"QT_Read_Audio: attempt %lx co# %ld\n",
     /* Check tags and possibly move to new codec */
     if (qts_s2chunks[cur_s2chunk].tag >= qts_codec_num) 
     {
-      fprintf(stderr,"QT Data: Warning stsc chunk invalid %ld tag %ld\n",
+      fprintf(stdout,"QT Data: Warning stsc chunk invalid %d tag %d\n",
 		cur_s2chunk,qts_s2chunks[cur_s2chunk].tag);
     } 
     else if (qts_s2chunks[cur_s2chunk].tag != tag)
@@ -3414,31 +2009,65 @@ DEBUG_LEVEL1 fprintf(stderr,"QT_Read_Audio: attempt %lx co# %ld\n",
 
     if (size > qt_audio_bps) 
     {
-	fprintf(stderr,"QT UNIQE AUDIO: sz %ld bps %ld\n",size,qt_audio_bps);
+	fprintf(stdout,"QT UNIQE AUDIO: sz %d bps %d\n",size,qt_audio_bps);
     }
 
     chunk_off =  qts_chunkoffs[i];
-    snd_size = num_samps * qt_audio_bps;
 
-DEBUG_LEVEL1 fprintf(stderr,"snd_size %ld  numsamps %ld size %ld bps %ld\n",
-		snd_size,num_samps,size,qt_audio_bps);
+
+/*
+fprintf(stdout,"SND: off %08x size %08x\n",chunk_off, size);
+*/
+    if (qt_audio_type == XA_AUDIO_IMA4_M)
+    { xaULONG numblks = num_samps / 0x40;
+      snd_size = numblks * 0x22; 
+      blockalign = 0x22;
+      sampsblock = 0x40;
+    }
+    else if (qt_audio_type == XA_AUDIO_IMA4_S)
+    { xaULONG numblks = num_samps / 0x40;
+      snd_size = numblks * 0x44; 
+      blockalign = 0x44;
+      sampsblock = 0x40;
+    }
+    else if (qt_audio_type == XA_AUDIO_GSM_M)
+    { xaULONG numblks = num_samps / 160;
+      snd_size = numblks * 33; 
+      blockalign = 33;
+      sampsblock = 160;
+    }
+    else
+    { snd_size = num_samps * qt_audio_bps;
+      blockalign = qt_audio_bps; /* not really valid yet */
+      sampsblock = 0x1;
+    }
+
+DEBUG_LEVEL1 fprintf(stdout,"snd_size %x  numsamps %x size %x bps %d off %x\n",
+		snd_size,num_samps,size,qt_audio_bps,chunk_off);
 
     if (xa_file_flag == xaTRUE)
     {
       if (XA_Add_Sound(anim_hdr,0,qt_audio_type, chunk_off, qt_audio_freq,
-	snd_size, &qt->aud_time, &qt->aud_timelo) == xaFALSE) return;
+		snd_size, &qt->aud_time, &qt->aud_timelo, 
+		blockalign,sampsblock) == xaFALSE) return(xaFALSE);
       if (snd_size > qt->max_faud_size) qt->max_faud_size = snd_size;
     }
     else
     { xaUBYTE *snd_data = (xaUBYTE *)malloc(snd_size);
       if (snd_data==0) TheEnd1("QT aud_dat: malloc err");
-      fseek(fin,chunk_off,0);  /* move to start of chunk data */
-      ret = fread(snd_data, snd_size, 1, fin);
-      if (ret != 1) { fprintf(stderr,"QT: snd rd err\n"); return; }
+      xin->Seek_FPos(xin,chunk_off,0);  /* move to start of chunk data */
+      ret = xin->Read_Block(xin, snd_data, snd_size);
+      if (ret != snd_size)
+      { fprintf(stdout,"QT: snd rd err\n"); 
+        return(xaTRUE);
+      }
       if (XA_Add_Sound(anim_hdr,snd_data,qt_audio_type, -1, qt_audio_freq,
-	snd_size, &qt->aud_time, &qt->aud_timelo) == xaFALSE) return;
+		snd_size, &qt->aud_time, &qt->aud_timelo,
+		blockalign,sampsblock) == xaFALSE) return(xaFALSE);
+
     }
   } /* end of chunk_offset loop */
+  return(xaTRUE);
 }
 
 
@@ -3446,70 +2075,31 @@ DEBUG_LEVEL1 fprintf(stderr,"snd_size %ld  numsamps %ld size %ld bps %ld\n",
  * Have No Clue
  *
  ****/
-void QT_Read_STGS(fin,len)
-FILE *fin;
+void QT_Read_STGS(xin,len)
+XA_INPUT *xin;
 xaLONG len;
 {
   xaULONG i,version,num;
   xaULONG samps,pad;
 
-  version	= UTIL_Get_MSB_Long(fin);
-  num		= UTIL_Get_MSB_Long(fin); len -= 16;
+  version	= xin->Read_MSB_U32(xin);
+  num		= xin->Read_MSB_U32(xin); len -= 16;
   qt_stgs_num = 0;
   for(i=0; i<num; i++)
   {
-    samps	= UTIL_Get_MSB_Long(fin);
-    pad		= UTIL_Get_MSB_Long(fin);	len -= 8;
+    samps	= xin->Read_MSB_U32(xin);
+    pad		= xin->Read_MSB_U32(xin);	len -= 8;
     qt_stgs_num += samps;
   }
-  while(len > 0) {len--; getc(fin); }
+  while(len > 0) {len--; xin->Read_U8(xin); }
 }
 
-
-xaULONG
-QT_Decode_YUV2(image,delta,dsize,dec_info)
-xaUBYTE *image;         /* Image Buffer. */
-xaUBYTE *delta;         /* delta data. */
-xaULONG dsize;          /* delta size */
-XA_DEC_INFO *dec_info;  /* Decoder Info Header */
-{ xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
-  xaLONG size;
-  xaUBYTE *dptr;
-  xaUBYTE *iptr;
-
-  dptr = delta;
-
-  if (chdr) { if (chdr->new_chdr) chdr = chdr->new_chdr; }
-  
-  size = imagex * imagey;
-  iptr = image;
-/*POD NOT: switch entire while for loop */
-  while(size > 0)
-  { xaULONG y0,y1,u,v,r,g,b;
-
-/* THIS IS IT.  Y0 U Y1 V  encodes two pixel Y0/U/V and Y1/U/V */
-    y0  = *dptr++;
-    u   = (*dptr++)^0x80;
-    y1  = *dptr++;
-    v   = (*dptr++)^0x80;  size -= 2; /* note: size in pixels */
-
-    yuv_to_rgb(y0,u,v,&r,&g,&b);
-    if (special) { *iptr++ = r; *iptr++ = g; *iptr++ = b; }
-    else *iptr++  = XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-
-    yuv_to_rgb(y1,u,v,&r,&g,&b);
-    if (special) { *iptr++ = r; *iptr++ = g; *iptr++ = b; }
-    else *iptr++  = XA_RGB24_To_CLR32(r,g,b,map_flag,map,chdr);
-  } 
- dec_info->xs = dec_info->ys = 0; dec_info->xe = imagex; dec_info->ye = imagey;
- if (map_flag==xaTRUE) return(ACT_DLTA_MAPD);
- else return(ACT_DLTA_NORM);
-}
-
-
+int qt_2map[] = {
+0x93, 0x65, 0x5e,
+0xff, 0xff, 0xff,
+0xdf, 0xd0, 0xab,
+0x00, 0x00, 0x00
+};
 
 /* MAX */
 int qt_4map[] = {
@@ -3527,7 +2117,8 @@ int qt_4map[] = {
 0xdf, 0xd0, 0xab,
 0xff, 0xfb, 0xf9,
 0xe8, 0xca, 0xc5,
-0x8a, 0x7c, 0x77
+0x8a, 0x7c, 0x77,
+0x00, 0x00, 0x00
 };
 
 
@@ -3544,9 +2135,18 @@ xaULONG cnum;
 {
   xaLONG r,g,b,i;
 
-  if (cnum == 16)
+  if (cnum == 4)
   { 
-    for(i=0;i<15;i++)
+    for(i=0;i<4;i++)
+    { int d = i * 3;
+      cmap[i].red   = 0x101 * qt_2map[d];
+      cmap[i].green = 0x101 * qt_2map[d+1];
+      cmap[i].blue  = 0x101 * qt_2map[d+2];
+    }
+  }
+  else if (cnum == 16)
+  { 
+    for(i=0;i<16;i++)
     { int d = i * 3;
       cmap[i].red   = 0x101 * qt_4map[d];
       cmap[i].green = 0x101 * qt_4map[d+1];
@@ -3616,188 +2216,4 @@ xaULONG num;	/* size of color map */
 }
 
 
-/****************************
- *
- *
- ****************/
-xaLONG QT_Codec_Query(codec)
-XA_CODEC_HDR *codec;
-{ xaLONG ret = CODEC_UNKNOWN;   /* default */
-  codec->extra = 0;
-  codec->xapi_rev = 0x0001;
-  codec->decoder = 0;
-  codec->description = 0;
-  codec->avi_read_ext = 0;
-
-  switch(codec->compression)
-  {
-    case QT_rle:
-        codec->compression      = QT_rle;
-        codec->description      = "Apple Animation(RLE)";
-        ret = CODEC_SUPPORTED;
-	switch(codec->depth)
-	{
-	  case 40:
-	  case 8:	codec->decoder = QT_Decode_RLE;
-			codec->x = 4 * ((codec->x + 3)/4);
-			break;
-	  case 16:	codec->decoder = QT_Decode_RLE16;
-			break;
-	  case 24:	codec->decoder = QT_Decode_RLE24;
-			break;
-	  case 32:	codec->decoder = QT_Decode_RLE32;
-			break;
-	  case 33:
-	  case  1:	codec->decoder = QT_Decode_RLE1;
-			codec->x = 16 * ((codec->x + 15)/16);
-			codec->depth = 1;
-			break;
-	  default:	ret = CODEC_UNSUPPORTED;	break;
-	}
-	break;
-
-    case QT_smc:
-        codec->compression      = QT_smc;
-        codec->description      = "Apple Graphics(SMC)";
-        ret = CODEC_SUPPORTED;
-	if ((codec->depth==8) || (codec->depth==40))
-	{ codec->decoder = QT_Decode_SMC;
-	  codec->x = 4 * ((codec->x + 3)/4);
-	  codec->y = 4 * ((codec->y + 3)/4);
-	}
-	else ret = CODEC_UNSUPPORTED;
-	break;
-
-    case QT_raw:
-        codec->compression      = QT_raw;
-        codec->description      = "Apple Uncompressed";
-        ret = CODEC_SUPPORTED;
-	switch(codec->depth)
-	{
-	  case 36:
-	  case 4:	codec->decoder = QT_Decode_RAW4;
-			break;
-	  case 40:
-	  case 8:	codec->decoder = QT_Decode_RAW;
-			break;
-	  case 16:	codec->decoder = QT_Decode_RAW16;
-			break;
-	  case 24:	codec->decoder = QT_Decode_RAW24;
-			break;
-	  case 32:	codec->decoder = QT_Decode_RAW32;
-			break;
-	  default:	ret = CODEC_UNSUPPORTED;	break;
-	}
-	break;
-
-    case QT_rpza:
-        codec->compression      = QT_rpza;
-        codec->description      = "Apple Video(RPZA)";
-        ret = CODEC_SUPPORTED;
-	if (codec->depth == 16)
-	{ codec->decoder = QT_Decode_RPZA;
-	  codec->x = 4 * ((codec->x + 3)/4);
-	  codec->y = 4 * ((codec->y + 3)/4);
-	}
-	else ret = CODEC_UNSUPPORTED;
-	break;
-
-    case QT_jpeg:
-        codec->compression      = QT_jpeg;
-        codec->description      = "JPEG";
-        ret = CODEC_SUPPORTED;
-	if ((codec->depth == 8) || (codec->depth == 24)
-	    || (codec->depth == 40) )
-	{ JPG_Alloc_MCU_Bufs(codec->anim_hdr,codec->x,0,xaFALSE);
-	  codec->x = 4 * ((codec->x + 3)/4);
-	  codec->y = 2 * ((codec->y + 1)/2);
-	  codec->decoder = JFIF_Decode_JPEG;
-	  if (codec->depth == 24) XA_Gen_YUV_Tabs(codec->anim_hdr);
-	}
-	else ret = CODEC_UNSUPPORTED;
-	break;
-
-    case QT_yuv2:
-        codec->compression      = QT_yuv2;
-        codec->description      = "Component Video(YUV2)";
-        ret = CODEC_SUPPORTED;
-	codec->decoder = QT_Decode_YUV2;
-	codec->x = 2 * ((codec->x + 1)/2);
-	codec->y = 2 * ((codec->y + 1)/2);
-	break;
-	
-    default:
-        ret = CODEC_UNKNOWN;
-        break;
-  }
-  return(ret);
-}
-
-/****************************
- *
- ****************/
-xaLONG QT_UNK_Codec_Query(codec)
-XA_CODEC_HDR *codec;
-{ xaLONG ret = CODEC_UNKNOWN;   /* default */
-  codec->extra = 0;
-  codec->xapi_rev = 0x0001;
-  codec->decoder = 0;
-  codec->description = 0;
-  codec->avi_read_ext = 0;
-
-  switch(codec->compression)
-  {
-    case QT_PGVV:
-        codec->compression      = QT_PGVV;
-        codec->description      = "Radius (PGVV)";
-        ret = CODEC_UNSUPPORTED;
-	break;
-
-    case QT_cvid:
-    case QT_CVID:
-        codec->compression      = QT_CVID;
-        codec->description      = "Radius Cinepak";
-        ret = CODEC_UNSUPPORTED;
-	break;
-
-    case QT_SPIG:
-        codec->compression      = QT_SPIG;
-        codec->description      = "Radius Spigot";
-        ret = CODEC_UNSUPPORTED;
-	break;
-
-    case QT_rt21:
-    case QT_RT21:
-        codec->compression      = QT_RT21;
-        codec->description      = "Intel Indeo R2.1";
-        ret = CODEC_UNSUPPORTED;
-	break;
-
-    case QT_iv31:
-    case QT_IV31:
-        codec->compression      = QT_IV31;
-        codec->description      = "Intel Indeo R3.1";
-        ret = CODEC_UNSUPPORTED;
-	break;
-
-    case QT_iv32:
-    case QT_IV32:
-        codec->compression      = QT_IV32;
-        codec->description      = "Intel Indeo R3.2";
-        ret = CODEC_UNSUPPORTED;
-	break;
-
-    case QT_YVU9:
-    case QT_YUV9:
-        codec->compression      = QT_YUV9;
-        codec->description      = "Intel Raw(YUV9)";
-        ret = CODEC_UNSUPPORTED;
-	break;
-
-    default:
-        ret = CODEC_UNKNOWN;
-        break;
-  }
-  return(ret);
-}
 

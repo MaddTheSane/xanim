@@ -1,0 +1,147 @@
+
+
+XAnim 2.70.7.0 supports the following Animation/Video/Audio formats:
+
+    +  FLI and FLC animations.
+    +  IFF animations/images.
+        + Color cycling during single images and anims.
+        + IFF Compressions Supported:
+            + Anim3 
+            + Anim5 
+            + Anim7 
+            + Anim8 
+            + AnimJ (Movies) 
+            + Animl
+        + Following Amiga display modes are supported: 
+            + normal (Bit-Planes)    depth 1-8. 
+            + EHB (Extra Half-Brite) depth 6. 
+            + HAM (Hold And Modify)  depth 6 and 8.
+    +  GIF87a and GIF89a images/animations.
+        + single and multiple images supported.
+        + GIF89a animation extensions supported.
+    +  a kludgy text file listing gifs and what order to show them in.
+    +  DL animations. Formats 1, 2 and most of 3.
+    +  Amiga PFX(PageFlipper Plus F/X) animations. DISABLED TEMPORARILY.
+    +  Amiga MovieSetter animations(For those Eric Schwartz fans).
+    +  Utah Raster Toolkit RLE images and anims.
+    +  AVI animations. 
+        + AVI Video Codecs supported:
+            + IBM Ultimotion     (ULTI) depth 16.
+            + JPEG               (JPEG) depth 24.
+            + Motion JPEG        (MJPG) depth 24.
+            + Intergraph JPEG    (IJPG) depth 24.
+            + Microsoft Video 1  (CRAM) depth 8 and 16.
+            + Microsoft Video 1  (WHAM) depth 8 and 16.
+            + Microsoft Video 1  (MSVC) depth 8 and 16.
+            + Radius Cinepak     (CVID) depth 24. (see cinepak.readme)
+            + Intel Indeo R3.1   (IV31) depth 24. (see indeo.readme)
+            + Intel Indeo R3.2   (IV32) depth 24. (see indeo.readme)
+            + Intel Indeo R4.1   (IV41) depth 24. (see README.dll)
+            + Intel Indeo R5.0   (IV50) depth 24. (see README.dll)
+            + CCITT H.261        (H261) depth 24. (see README.dll)
+            + CCITT H.263        (M263) depth 24. (see README.dll)
+            + Intel RAW YUV9     (YUV9) depth 24. (see indeo.readme)
+            + Creative CYUV      (CYUV) depth 16. (see creative.readme)
+            + Uncompressed       (RGB ) depth 4,8,16,24.
+            + Run length encoded (RLE8) depth 8.
+            + YUY2 4:2:2         (YUY2) depth 24.
+            + YV12               (YV12) depth 24.
+            + V422               (V422) depth 24.
+            + VYUY               (VYUY) depth 24.
+            + I420               (I420) depth 24.
+            + Y41P               (Y41P) depth 24.
+            + RainbowRunner JPG  (DMB1) depth 24.
+            + Editable MPEG      (XMPG) depth 24.
+            + Broadway MPEG      (BW10) depth 24.
+        + AVI Audio Codecs supported:
+            + PCM                0x0001 mono/stereo and 8/16 bits.
+            + MS ADPCM           0x0002 mono/stereo     4 bits.
+            + ALAW               0x0006 mono            8 bits.
+            + ULAW               0x0007 mono            8 bits.
+            + DVI/IMA ADPCM      0x0011 mono/stereo     4 bits. * Old Format
+            + DVI/IMA ADPCM      0x0011 mono/stereo     4 bits. * New Format
+            + GSM 6.10           0x0011 mono
+    +  Quicktime Animations.
+        + Quicktime Video Codecs supported:
+            + Uncompressed      (RAW )      depth  1,4,8,16,24 and 24+
+            + Uncompressed      (RAW ) Gray depth  1,4 and 8.
+            + Apple Graphics    (RLE )      depth  1,8,16 and 24.
+            + Apple Graphics    (RLE ) Gray depth  8.
+            + Apple Animation   (SMC )      depth  8.
+            + Apple Animation   (SMC ) Gray depth  8.
+            + Apple Video       (RPZA)      depth 16.
+            + Radius Cinepak    (CVID) Gray depth 24. (see cinepak.readme)
+            + Radius Cinepak    (CVID) Gray depth  8. (see cinepak.readme)
+            + Intel Indeo R3.1  (IV31)      depth 24. (see indeo.readme)
+            + Intel Indeo R3.2  (IV32)      depth 24. (see indeo.readme)
+            + Intel Indeo R4.1  (IV41)      depth 24. (see README.dll)
+            + Intel Indeo R5.0  (IV50)      depth 24. (see README.dll)
+            + Intel RAW YUV9    (YUV9)      depth 24. (see indeo.readme)
+            + Component Video   (YUV2)      depth 24.
+            + Photo JPEG        (JPEG)      depth  8 and 24.
+            + Motion JPEG A     (MJPA)      depth  8 and 24.
+            + Kodak Photo CD    (KPCD)      depth 24.
+            + Microsoft Video 1 (CRAM)      depth 8 and 16.
+            + Microsoft Video 1 (WHAM)      depth 8 and 16.
+            + Microsoft Video 1 (MSVC)      depth 8 and 16.
+            + Photoshop         (8BPS)      depth 8,16,24 and 32.
+            + Photoshop         (8BPS) Gray depth 8.
+        + Quicktime Audio Codecs supported:
+            + PCM               (raw )      mono/stereo  and 8/16 bits
+            + Signed PCM        (twos)      mono/stereo  and 8/16 bits
+            + IMA ADPCM         (ima4)      mono/stereo  and  4   bits
+            + uLAW              (ulaw)      mono/stereo
+            + GSM 6.10          (agsm)      mono
+        + Compressed Headers.
+        + Supports multiple video trak's.
+        + Supports animations with multiple codecs.
+	+ NOTE: support for separated .rsrc/.data forks has been temporarily
+                commented out.
+    +  Replay Movie Format(for Acorn computers).
+        + Replay Movie Video Codecs supported:
+            + Moving Lines RGB              depth 24
+            + Moving Lines YUV              depth 24
+        + Replay Movie Audio Codecs supported:
+            + Signed PCM                    mono/stereo  and 8/16 bits
+            + Logarithmic                   mono/stereo  and 8/16 bits
+    +  SGI Movie Format.
+        + SGI Movie Video Codecs supported:
+            + MVC1
+            + MVC2
+            + JPEG
+        + SGI Movie Audio Codecs supported:
+            + Signed PCM                    mono/stereo  and 8/16 bits
+    +  JFIF images. NOTE: use XV for single images. This is more
+                          for animation of a sequence of JPEG images.
+                          or "xanim +bC1d image.jpg"
+    +  MPEG animations. NOT FULLY SUPPORTED
+                        Currently only Type  I  Frames  are
+                        displayed.  Type  B  and Type P frames 
+                        are currently ignored, but will be added
+                        in future revs.
+			
+    +  WAV audio files. The audio may either be added to the
+                        animation preceding it or played by itself.
+        + WAV Audio Codecs supported:
+            + PCM                0x0001 mono/stereo and 8/16 bits.
+            + MS ADPCM           0x0002 mono/stereo     4 bits.
+            + ALAW               0x0006 mono            8 bits.
+            + ULAW               0x0007 mono            8 bits.
+            + DVI/IMA ADPCM      0x0011 mono/stereo     4 bits. * Old Format
+            + DVI/IMA ADPCM      0x0011 mono/stereo     4 bits. * New Format
+            + GSM 6.10           0x0011 mono
+    +  AU audio files. The audio may either be added to the
+                        animation preceding it or played by itself.
+        + AU Audio Codecs supported:
+            + ulaw               1 mono  8 bits.
+            + PCM                2 mono/stereo  8 bits.
+            + PCM                3 mono/stereo 16 bits.
+    +  any combination of the above  on  the  same  command
+       line.
+
+  * DVI ADPCM format has two implementations. The old way and the new way.
+    Unfortunately, it is impossible for a software program to distinguish
+    between the two.  If it sounds bad, use the +k2 option to tell XAnim
+    to use the Old DVI ADPCM Format. k is for kludge by the way.
+
+

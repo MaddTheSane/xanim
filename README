@@ -1,269 +1,208 @@
 
 
-      XAnim Revision 2.70.1  Beta
+Welcome to XAnim Revision 2.80.1
 
-NOTE: VMS users - The make.com files etc are configured yet with
-      the new changes. Let me know if you succeed in doing so. Thanks.
+This readme file covers some important topics in addition to describing
+what all is contain in this archive.
+
+You can also visit the XAnim Home Pages:
+
+        http://xanim.va.pubnix.com/home.html
+        http://smurfland.cit.buffalo.edu/xanim/home.html
+	http://xanim.resnet.gatech.edu/home.html
+	http://www.tm.informatik.uni-frankfurt.de/xanim/
+
+1) CopyRight/Disclaimer
+ 
+   XAnim Copyright (C) 1990-1999 by Mark Podlipec.  All rights reserved.
+ 
+   This software may be freely used, copied and redistributed without
+   fee for non-commerical purposes provided that this copyright notice is
+   preserved intact on all copies.
+ 
+   There is no warranty or other guarantee of fitness of this software.
+   It is provided solely "as is". The author(s) disclaim(s) all
+   responsibility and liability with respect to this software's usage
+   and its effect upon hardware or computer systems.
 
 
-This release contains experimental code that forks off a new process
-in order to handle the audio stream. It uses pipe(), fork() and
-select() to create this process and setup communication between
-the parent video process and the child audio process. I'm working
-on eliminating the need for select(), but I might find I have
-to go the other way as well. We'll see.
+2) But Is It Free?
 
-Having a separate audio process will prevent cpu intensive video
-codecs(like jpeg and mpeg) from causing starvation of audio device(this
-definitely did occur with the prior revs under heavy loads). It
-also prevents audio device blocking from affecting video.
+   Yes, for non-commercial use. No money, donations, etc are required.
 
-WARNING: It's possible that the child process will live on if the
-parent process core dumps. In this release,  the audio child checks
-the parents pid IF it hasn't heard from the parent in over 5 seconds.
-If the pid returned isn't the same as it was at birth, the child dies.
-However, you should be familiar with "ps" and "kill" in order to 
-find and terminate the child and thereby free up the audio device
-if this fails on your machine.
+   However, I do collect coins from around the World, so if you use
+   and like XAnim and want to help motivate me to put more effort
+   into it, you can send whatever coins you feel like donating to:
 
-It has been compiled and tested on a Sparc 10 running SunOS 4.1.3 and X11R5.
+		Mark Podlipec
+		15 Meadow Lane
+		Shrewsbury MA 01545 USA
 
-I am very interested in hearing about how this ports to other machines
-and what needed to be done, if anything. I'm also interested in how
-well the video/audio stays in sync, etc.
+   Doesn't matter what the value or condition they are in. However,
+   since I do have the majority of the 20th century US coins, I'm not
+   as interested in them. Again, this is strictly voluntary.
+   You can see the collection by visting:
 
-I try to answer all email, but not all messages have correct return
-addresses. Also, please mention which Rev of XAnim and what machine
-you have for bug reports, etc.
+	http://home.ici.net/~podlipec/coins.html
+	
 
-Thanks,
+   For commercial use, a licensing agreement is required.  You
+   may send enquiries to:
+
+			podlipec@ici.net
+
+
+3) Now What?
+
+   XAnim is distributed as source code and needs to be compiled on
+   your machine before you'll be able to use it.   You'll need to
+   have the following installed on your machine:
+
+		C compiler 
+		X11 includes
+		X11 libraries
+
+   1) Read through the "README.dll" file.
+
+   2) Read through the "README.zlib" file.
+
+   3) Read through the README.* file that corresponds to the type
+      of machine that you have. For example, README.sunos
+
+   4) Now read the "Compile_Help.doc" file provides step by step 
+      instructions on how to compile XAnim on unix machines.
+
+   If you have a VMS machine, please see the "VMS_Help.doc" file. I
+   apologize that the VMS instructions aren't as detailed, but
+   I don't know much about that OS, yet.
+
+   The "Compile_Errs.doc" file contains common compile errors and their
+   solutions. 
+
+   The "Problems.doc" file describes common warning and error messages
+   that you might encounter while running XAnim.
+
+   The "audio.readme" contains machine specific audio information.
+   This file is slowly being rolled up into the specific readmes.
+
+   The file "Examples.doc" gives some common usage examples on running
+   xanim. The "xanim.readme" or "xanim.man" page contians much more
+   detailed description of all the options and has sections describing
+   various features in depth.
+
+
+3) What are all these other files?
+
+   This archive contains the source to XAnim(all the .xbm, .h and .c files)
+   and needs to be compiled on your machine in order to produce an
+   XAnim executable. Below is a list and brief description of all
+   the files in this archive.
+
+        ---------------------------------
+	README			-This file
+        ---------------------------------
+	buttons/*.xbm		-These files are bitmaps for the Remote Control.
+	*.h			-These are part of the XAnim source code.
+	*.c			-These are part of the XAnim source code.
+	Imakefile		-This file is used to compile XAnim on machines
+				 that have Imake setup correctly. 
+				 see "Compile_Help.doc" for more info.
+	Makefile.unx 		-This file is used to compile XAnim on machines
+				 that don't have Imake setup correctly.
+				 see "Compile_Help.doc" for more info.
+        ---------------------------------
+	xanim.readme		-This is a text file describing all the options
+				 and functionality of XAnim.
+	xanim.man		-This is the unix man page equivalent of the
+				 xanim.readme file.
+	audio.readme		-Machine Specific Audio information.
+	cinepak.readme		-This file describes how to add support for
+				 the Radius Cinepak Video Codec to XAnim.
+	indeo.readme		-This file describes how to add support for
+				 the Radius Cinepak Video Codec to XAnim.
+        ---------------------------------
+	Compile_Help.doc	-Step by step instructions for compiling XAnim.
+	Compile_Errs.doc	-Common compile errors and solutions.
+	Problems.doc		-Common Error and Warning messages.
+	Audio_Checklist.doc	-A Chart of which Audio Codecs work with which
+				 hardware platform
+	Formats.doc		-Detailed list of all the formats that
+				 XAnim supports.
+	Codecs.doc		-List of Quicktime and AVI Video and Audio
+				 that I know about.
+	Rev_History.doc		-Revision history of XAnim.
+        WWW_Helper.doc		-Getting WWW Browsers to work with XAnim.
+        ---------------------------------
+	VMS_Help.doc		-Help file for VMS users.
+	make.com		-This file is used to compile XAnim on
+				 some VMS systems. See vms.help for more info.
+	descrip.mms		-This file is used to compile XAnim on
+				 some VMS systems. See vms.help for more info.
+        ---------------------------------
+	ijg.readme		-Since I based the XAnim JPEG code on the IJG
+				 jpeg code, I need to distribute this file.
+
+4) If you have a problem running or compiling that the documentation
+   doesn't cover or if you find a bug  you can contact me at:
+
+		podlipec@ici.net
+
+   Please include the following information in your email message:
+
+	1) The rev of XAnim.
+	2) Type of machine and OS.
+	3) A description of the problem:
+		+ including the type of animation.
+	   	+ any options used.
+		+ full error messages and/or xanim output.
+
+5) XAnim Mailing List
+
+   I have an announcement email list that you may join if you wish
+   to get email when there are new XAnim releases.
+
+   To Subscribe/Unsubscribe send email to:
+
+           podlipec@ici.net
+
+   with the words "xanim subscribe" or "xanim unsubscribe" in either the
+   Subject or Message Body. It would also be best to include
+   your email address since I've found a lot of mailer's do not
+   include the correct reply address in the mail headers.
+
+   Unfortunately, this part of the list maintenance isn't automated yet, so 
+   bare with me as I usually only make the additions before each new
+   XAnim releases.
+
+   Bug reports should still be sent to:
+
+           podlipec@ici.net
+
+   I do attempt to reply to all the email messages I receive, however, I get
+   quite a few with invalid return addresses. If you don't hear from me
+   within a week, double check that your return address is correct.
+
+
+6) Alright, What's New?  The Rev_History.doc should/will/has a complete
+   list of what's new to this particular revision, but this section
+   will list just the highlights.
+
+-------------------------------------------------------------------------
+2.80.0
+-------------------------------------------------------------------------
+  + Added support for the following AVI codecs:
+	DMB1,BW10,Y41P,I420,VYUY,V422,YV12,Y41P,YUY2,IV41,IV50,H261,M263
+  + Added support for the following QT codecs:
+	MJPA, 8BPS, IV41, IV50
+  + Added support for QT3.0 compressed headers.
+  + Added support for video decompression dlls.
+  + Fixed problems with X11 remote displays of different endianness.
+  + Minor bugs fixes.
+
+
 
 Mark
----
-podlipec@wellfleet.com
-podlipec@baynetworks.com
-podlipec@shell.portal.com
+--
+Mark Podlipec
+podlipec@ici.net
 
-
-NOTE: see compile.help for compiling information.
-
-
---------------------------------------------------------------
-What's Supported
---------------------------------------------------------------
-
- XAnim supports the following AVI/Quicktime Audio Codecs:
-
-     AVI 8 and 16 bit RAW(PCM) mono/stereo.
-     AVI ADPCM is supported(mono only for now).
-     Quicktime 8 and 16 bit RAW(PCM) mono/stereo.
-     Quicktime 8 and 16 bit TWOS(signed PCM) mono/stereo.
-     Quicktime MAC3/MAC6/IMA4 are *NOT* supported.
-
- XAnim supports audio on the following machines:
-
-        Sun Sparcs
-        NEC EWS workstations
-	Sony NEWS 5000 series workstations
-        SGI Indigo
-        PC  with soundcards running unix/linux/QNX
-        Any machine running AudioFile(AF)
-        Any machine(or Xterminal) running Net Audio (NAS)
-        HP 9000/715 - sort of working - still has problems.
-	IBM AIX S6000 machines with audio.
-	DEC Alpha workstations running Multimedia Services
-
---------------------------------------------------------------
-Generic Bug's
---------------------------------------------------------------
-  + Remote Control Window colors not selectable.
-  + HP support pseudo functional. Still needs a lot of work.
-  + Some MPEG Type I frames aren't correctly support. I know what's
-    wrong, just need to find time to fix it.
-  + The NAS xanim audio code is new and has problems when you stop/restart
-    it(echoing). I'm going to look into debugging it before backing it out.
-
---------------------------------------------------------------
-New(or Fixes) to 2.70.1
---------------------------------------------------------------
-  + Dithering added to MPEG (+F option on by default)
-  + Dithering added to JPEG (+F option on by default)
-  + AUDIO:  SOLARIS define replaces with SVR4
-  + BOFL: audio code now checks for parent pid if it hasn't
-    heard from the parent in over 5 seconds. If parent pid
-    has changes(ie the child is orphaned, then it dies). I think
-    this is cleaner that setting an arbitrary time limit. There
-    is still a 24 hour failsafe.
-  + audio_exit bug fixed for those running without audio.
-
---------------------------------------------------------------
-New(or Fixes) to 2.70.0
---------------------------------------------------------------
-  + Makefile partitioned a litte better and hopefully makes
-    configuration easier.
-  + WAV and AU audio only files now work(by creating fake anim).
-  + Added Sun AU audio file support
-  + QT: greyscale colormap fix with +CF4 option.
-  + AUDIO: DEC Multimedia Services added by Tom Morris.
-  + AUDIO: NetBSD audio support by Roland C Dowdeswell.
-  + AUDIO: Sony audio patch for SVR4/NEWS-OS 6.x by Takashi Hagiwara
-  + Acorn Replay Movie support.
-  + Parallax Motion JPEG with ULAW audio support.
-  + Keyboard commands now work in Remote Control window as well as
-    animation window.
-
-
-
---------------------------------------------------------------
-New(or Fixes) to 2.69.7.8a
---------------------------------------------------------------
-  + Radius Cinepak support removed by request from Radius(hopefully
-    temporary).
-
---------------------------------------------------------------
-Configuring For Your Machine
---------------------------------------------------------------
-
-  You'll need to edit the Makefile or the Imakefile. Go to the Audio 
-  section and uncomment out the DEFINE's associated with your machine
-  type. Make sure no other machine's DEFINE's are uncommented. That 
-  would be bad. 
-
-
-NOTE: Below needs to be updated for various machines and is
-definitely incomplete, but may also be out-of-date.
-
---------------------------------------------------------------
-Sun Sparc Specific Info
---------------------------------------------------------------
-
-  IF YOUR ARE USING OPENWINDOWS THEN YOU MUST USE Makefile.unx
-  AND YOU MUST EDIT THE CHANGES REQUIRED. This is because of
-  bugs/deficiencies with the OpenWindows Athena libraries.
-  See top of Makefile.unx for more details.
-
-  Having some problems with gcc, because it wants to use it's
-  own include files and they're usually wrong(or out of date).
-  Use cc if this happens.
-
-  If you are using Solaris, use the -DSVR4 define in the Makefile.
-
---------------------------------------------------------------
-Linux(soundcard) Specific Info
---------------------------------------------------------------
-
-  Compiles and runs on 8 bit and 16 bit sound cards(sound driver 2.5 and 2.99).
-  Some video/audio syncing problem with driver 2.5 that got better with 2.99.
-
---------------------------------------------------------------
-SGI Specific Info
---------------------------------------------------------------
-
-  NEWSFLASH. The audio stuff should be included now in Irix 5.3.
-  If you still have 5.1 or 5.2 and you owned the development CD
-  under a previous release of Irix, you can complain about 
-  "loss of functionality" and get the new copy.
-
-  If you have Irix 5.1 or greater then make sure you have installed 
-  the digital media development subsystem (dmedia_dev.sw.audio) off
-  of the CD-ROM.  
-
-  If this isn't on your CD_ROM then read on...
-
-  "according to the 5.2 readme first page, it says
-   that the Audio Development software has been moved from
-   the IDO to a purchasable option, IRIS media libraries. "
-
-  And you either have to contact SGI and buy it($495) OR
-
-  In the meantime, you can compile XAnim on an Irix 4.0.5 machine
-  and the XAnim binary should work back on the original Irix 5.1
-  or 5.2 machine. 
-
-  Once XAnim audio is stablized on SGI's, I should be able to provide
-  an xanim executable.  NOTE: I don't have nor can I legally distribute
-  the SGI audio libraries and include files.
-
-
-
---------------------------------------------------------------
-HP Specific Info
---------------------------------------------------------------
-
-  Written and getting better, but still has a ways to go.
-
-  With HP's you need to start up the system Audio Server before
-  you can use ANY audio program. Here's how(from the Audio.man
-  page on an HP 700/915):
-
-           Step 1.   Start the NCS Local Location Broker Daemon.
-                     Task 1.   If you are not already superuser, log in as
-                               superuser.
-                     Task 2.   Enter the command line /usr/etc/ncs/llbd&&&&.
-                               To make llbd start automatically at boot
-                               time, edit the file /etc/netncsrc and change
-                               the line START_LLBD=0 to START_LLBD=1.
-           Step 2.   Reboot.
-           Step 3.   Set the AUDIO environment variable to specify the node
-                     where the audio client should look for the audio
-                     server.  If AUDIO is not set or if it is set to :0, the
-                     client connects with a server on the same node.
-
-                     To specify that the client should connect to a server
-                     on another node, set
-
-                          AUDIO = node_name: (Korn, Bourne, and POSIX
-                          shells)
-                          export AUDIO
-
-                     or
-
-                          setenv AUDIO node_name: (C shell)
-
-           Step 4.   Normally, the audio server starts whenever the system
-                     is booted.  Check for the existence of the Aserver
-                     processes by typing
-
-                     ps -e | grep Aserver
-
-           You should see two Aserver processes.  If the server is not
-           running, start the audio server by hand by typing
-
-                /usr/audio/bin/Aserver
-
-           Then type
-
-                ps -e | grep Aserver
-
-           and check that there are two active server processes.
-
---------------------------------------------------------------
-IBM RS6000  Specific Info
---------------------------------------------------------------
-
-  Waiting for feedback on how it works.
-
---------------------------------------------------------------
-AudioFile (AF) Specific Info
---------------------------------------------------------------
-
-  I haven't brought up AF yet on my machine, but have gotten
-  reports that it works okay.
-
---------------------------------------------------------------
-Net Audio (NAS) Specific Info
---------------------------------------------------------------
-
-  I have brought NAS up on my machine and have fine tuned it. NAS
-  has some deficiencies that make it difficult to keep audio/video
-  in sync. Hopefully they'll improve it and likewise I'll improve 
-  my understanding of it and work from there.
-
---------------------------------------------------------------
-Any comments, questions, bugs, fixes, etc  email me at 
-podlipec@wellfleet.com or podlipec@shell.portal.com
-
-If you make changes to the audio code, please send entire 
-xanim_audio.c file unless the patches are minor.
-
---------------------------------------------------------------

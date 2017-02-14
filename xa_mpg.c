@@ -2,15 +2,15 @@
 /*
  * xa_mpg.c
  *
- * Copyright (C) 1995 by Mark Podlipec.
+ * Copyright (C) 1995-1998,1999 by Mark Podlipec.
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  *
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
@@ -48,6 +48,7 @@
  * 03apr95 - fixed incorrect warning message(DCT-A and DCT-B errs).
  * 29jun95 - modified timing to account for skipped P and B frames.
  * 22Aug95 - +F dithering to MPEG.
+ * 29Jan99 - Added MPG_Decode_FULLI (no slice parsing stuff)
  *
  */
 
@@ -59,7 +60,6 @@ extern YUVBufs jpg_YUVBufs;
 extern YUVTabs def_yuv_tabs;
 
 /* internal FUNCTIONS */
-xaLONG Is_MPG_File();
 xaULONG MPG_Read_File();
 xaULONG mpg_get_start_code();
 xaULONG mpg_read_SEQ_HDR();
@@ -67,8 +67,10 @@ xaULONG mpg_read_GOP_HDR();
 xaULONG mpg_read_PIC_HDR();
 xaULONG MPG_Setup_Delta();
 xaULONG MPG_Decode_I();
+#ifdef NOTYET
 xaULONG MPG_Decode_P();
 xaULONG MPG_Decode_B();
+#endif
 void MPG_Init_Stuff();
 void mpg_init_motion_vectors();
 void mpg_init_mb_type_B();
@@ -89,13 +91,13 @@ extern xaLONG xa_dither_flag;
 
 /* external FUNCTIONS */
 extern void XA_Gen_YUV_Tabs();
-extern void XA_YUV411_To_RGB();
-extern void XA_YUV411_To_CLR8();
-extern void XA_YUV411_To_CLR16();
-extern void XA_YUV411_To_CLR32();
-extern void XA_YUV411_To_CF4();
-extern void XA_YUV411_To_332_Dither();
-extern void XA_YUV411_To_332();
+extern void XA_MCU221111_To_RGB();
+extern void XA_MCU221111_To_CLR8();
+extern void XA_MCU221111_To_CLR16();
+extern void XA_MCU221111_To_CLR32();
+extern void XA_MCU221111_To_CF4();
+extern void XA_MCU221111_To_332_Dither();
+extern void XA_MCU221111_To_332();
 
 XA_ACTION *ACT_Get_Action();
 extern XA_ANIM_SETUP *XA_Get_Anim_Setup();
@@ -113,6 +115,9 @@ void ACT_Add_CHDR_To_Action();
 extern void JPG_Alloc_MCU_Bufs();
 extern void JPG_Setup_Samp_Limit_Table();
 extern xaULONG UTIL_Get_MSB_Long();
+extern void ACT_Setup_Delta();
+extern void CMAP_Cache_Init();
+extern void CMAP_Cache_Clear();
 
 /* external Buffers */
 extern xaUBYTE *xa_byte_limit;
@@ -123,6 +128,9 @@ extern int xa_vid_fd;
 #define MPG_RDCT j_orig_rev_dct
 */
 
+#define MPG_FROM_BUFF	0
+#define MPG_FROM_FILE	1
+
 xaSHORT mpg_dct_buf[64];
 
 xaUBYTE  *mpg_buff = 0;
@@ -131,7 +139,7 @@ xaLONG   mpg_bsize = 0;
 /* BUFFER reading global vars */
 xaLONG   mpg_b_bnum;
 xaULONG  mpg_b_bbuf;
-FILE *mpg_f_file;
+XA_INPUT *mpg_f_file;
 
 /* FILE reading global vars */
 xaLONG   mpg_f_bnum;  /* this must be signed */
@@ -192,8 +200,8 @@ xaULONG mpg_Icnt,mpg_Pcnt,mpg_Bcnt;
 /*******
  *
  */
-#define MPG_INIT_FBUF(fin) \
-  { mpg_f_file = fin; mpg_f_bnum = 0; mpg_f_bbuf = 0; }
+#define MPG_INIT_FBUF(xin) \
+  { mpg_f_file = xin; mpg_f_bnum = 0; mpg_f_bbuf = 0; }
 
 /*******
  *
@@ -240,12 +248,13 @@ xaULONG mpg_Icnt,mpg_Pcnt,mpg_Bcnt;
  */
 #define MPG_GET_FBITS(num,result) \
 { while(mpg_f_bnum < (num)) { mpg_f_bnum += 8; mpg_count++; \
-		mpg_f_bbuf = (fgetc(mpg_f_file)) | (mpg_f_bbuf << 8); } \
+	mpg_f_bbuf = (mpg_f_file->Read_U8(mpg_f_file)) | (mpg_f_bbuf << 8); } \
   mpg_f_bnum -= (num); \
   result = (mpg_f_bbuf >> mpg_f_bnum) & MPG_BIT_MASK(num); \
 }
 
 #define MPG_ALIGN_FBUF() { mpg_f_bnum -= (mpg_f_bnum % 8); }
+#define MPG_ALIGN_BBUF() { mpg_b_bnum -= (mpg_b_bnum % 8); }
 
 void MPG_Time_Adjust(mpg,ret_time,ret_timelo,skipped_frames)
 XA_ANIM_SETUP *mpg;
@@ -304,36 +313,14 @@ MPG_FRAME *fframes;
 }
 
 
-/* TEMPORARY 
- */
-xaLONG Is_MPG_File(filename)
-char *filename;
-{
-  FILE *fin;
-  xaULONG data0;
-  if ( (fin=fopen(filename,XA_OPEN_MODE)) == 0) return(xaNOFILE);
-  data0 = UTIL_Get_MSB_Long(fin);
-  fclose(fin);
-  if ( (data0 == 0x000001b3) || (data0 == 0x000001ba)) return(xaTRUE);
-  return(xaFALSE);
-}
-
-
 xaULONG MPG_Read_File(fname,anim_hdr)
 char *fname;
 XA_ANIM_HDR *anim_hdr;
-{
-  FILE *fin;
+{ XA_INPUT *xin = anim_hdr->xin;
   xaULONG i,t_timelo;
   xaULONG t_time;
   xaULONG skipped_frames = 0;
   XA_ANIM_SETUP *mpg;
-
-  if ( (fin=fopen(fname,XA_OPEN_MODE)) == 0)
-  {
-    fprintf(stderr,"can't open MPEG File %s for reading\n",fname);
-    return(xaFALSE);
-  }
 
   mpg = XA_Get_Anim_Setup();
   mpg->vid_time = XA_GET_TIME( 200 ); /* default */
@@ -351,12 +338,13 @@ XA_ANIM_HDR *anim_hdr;
   MPG_Init_Stuff(anim_hdr);
 
    /* find file size */
-  MPG_INIT_FBUF(fin); /* init file bit buffer */
+  MPG_INIT_FBUF(xin); /* init file bit buffer */
   if (mpg_get_start_code() == xaFALSE) return(xaFALSE);
-  while( !feof(mpg_f_file) )
+  while( !mpg_f_file->At_EOF(mpg_f_file,-1) )
   { xaULONG ret,need_nxt_flag = xaTRUE;
 
-    DEBUG_LEVEL1 fprintf(stderr,"MPG CODE %lx\n",mpg_start_code);
+    DEBUG_LEVEL1 fprintf(stderr,"MPG CODE %x cnt %x\n",
+						mpg_start_code,mpg_count);
     if (mpg_start_code == MPG_SEQ_START)
     { XA_ACTION *act = 0;
       act = ACT_Get_Action(anim_hdr,ACT_NOP);
@@ -376,7 +364,7 @@ XA_ANIM_HDR *anim_hdr;
 	mpg_Gpic_hdr->slices[0].fsize = 0;
 	mpg_Gpic_hdr->slices[0].act   = 0;
       }
-      mpg_read_PIC_HDR(mpg_Gpic_hdr);
+      mpg_read_PIC_HDR(mpg_Gpic_hdr,MPG_FROM_FILE);
       mpg_Gpic_hdr->seq_hdr = mpg_seq_hdr;
 
       mpg->compression = mpg_Gpic_hdr->type;
@@ -405,21 +393,24 @@ XA_ANIM_HDR *anim_hdr;
 	case MPG_TYPE_P: mpg_Pcnt++; skipped_frames++; break;
 	case MPG_TYPE_B: mpg_Bcnt++; skipped_frames++; break;
 	default: 
-	  fprintf(stderr,"MPG Unk type %lx\n",mpg->compression);
+	  fprintf(stderr,"MPG Unk type %x\n",mpg->compression);
 	  break;
       }
     }
-    else if (mpg_start_code == MPG_UNK_BA)
-		{ DEBUG_LEVEL1 fprintf(stderr,"MPG: BA code  - ignored\n"); }
-    else if (mpg_start_code == MPG_UNK_BB)
-		{ DEBUG_LEVEL1 fprintf(stderr,"MPG: BB code  - ignored\n"); }
-    else if (mpg_start_code == MPG_UNK_BC)
-		{ DEBUG_LEVEL1 fprintf(stderr,"MPG: BB code  - ignored\n"); }
-    else if (mpg_start_code == MPG_UNK_C0)
-		{ DEBUG_LEVEL1 fprintf(stderr,"MPG: C0 code  - ignored\n"); }
-    else if (mpg_start_code == MPG_UNK_E0)
-		{ DEBUG_LEVEL1 fprintf(stderr,"MPG: E0 code  - ignored\n"); }
-    else if (mpg_start_code == MPG_GOP_START)	mpg_read_GOP_HDR();
+	/* For now skip system and most packet start codes */
+    else if ( (mpg_start_code >= 0xb9)
+		&& (mpg_start_code <= 0xdf) )
+    { 
+      DEBUG_LEVEL1 fprintf(stderr,
+		"MPG: unsupported code %02x - ignored\n", mpg_start_code);
+    }
+    else if ( (mpg_start_code >= 0xe1)
+		&& (mpg_start_code <= 0xff) )
+    { 
+      DEBUG_LEVEL1 fprintf(stderr,
+		"MPG: unsupported code %02x - ignored\n", mpg_start_code);
+    }
+    else if (mpg_start_code == MPG_GOP_START)	mpg_read_GOP_HDR(MPG_FROM_FILE);
     else if (mpg_start_code == MPG_SEQ_END)	break; /* END??? */
     else if (mpg_start_code == MPG_USR_START)	
 	{ DEBUG_LEVEL1 fprintf(stderr,"USR START:\n"); }
@@ -428,7 +419,7 @@ XA_ANIM_HDR *anim_hdr;
     else if (   (mpg_start_code >= MPG_MIN_SLICE)
 	     && (mpg_start_code <= MPG_MAX_SLICE) )
     { xaULONG except_flag = 0;
-      DEBUG_LEVEL1 fprintf(stderr,"SLICE %lx\n",mpg_start_code);
+      DEBUG_LEVEL1 fprintf(stderr,"SLICE %x\n",mpg_start_code);
       if (mpg_seq_hdr == 0)
 	   { fprintf(stderr,"Slice without Sequence Header Err\n"); break; }
       if (   (mpg->compression == MPG_TYPE_I)
@@ -466,7 +457,7 @@ XA_ANIM_HDR *anim_hdr;
 	mpg_pic_hdr->slice_cnt++;
 
 	slice_hdr->vert_pos = mpg_start_code & 0xff;
-	slice_hdr->fpos = ftell(mpg_f_file);  /* get file position */
+	slice_hdr->fpos = mpg_f_file->Get_FPos(mpg_f_file);
 	mpg_count = 0;
 	ret = mpg_get_start_code(); need_nxt_flag = xaFALSE;
 	slice_hdr->fsize = mpg_count; /* get slice size */
@@ -474,7 +465,36 @@ XA_ANIM_HDR *anim_hdr;
       }
       if (except_flag) mpg_pic_hdr = 0; /* one slice only per pic_hdr*/
     }
-    else fprintf(stderr,"MPG_UNK CODE: %02lx\n",mpg_start_code);
+#ifdef NOTHING
+    else if (mpg_start_code == MPG_UNK_E0)  /* Slice Continuation */
+    { xaULONG sys_clk_ref, mux_rate;
+      { MPG_SLICE_HDR *slice_hdr;
+        XA_ACTION *act = 0;
+
+        /* alloc SLICE_HDR and ADD to current PIC_HDR */
+        act = ACT_Get_Action(anim_hdr,ACT_NOP);
+        slice_hdr = (MPG_SLICE_HDR *)malloc(sizeof(MPG_SLICE_HDR));
+        act->data = (xaUBYTE *)slice_hdr;
+        slice_hdr->next = 0;
+        slice_hdr->act  = act;
+        if (mpg_pic_hdr->slice_1st) mpg_pic_hdr->slice_last->next = slice_hdr;
+        else                        mpg_pic_hdr->slice_1st = slice_hdr;
+        mpg_pic_hdr->slice_last = slice_hdr;
+        mpg_pic_hdr->slice_cnt++;
+
+        slice_hdr->vert_pos = mpg_start_code & 0xff;
+        slice_hdr->fpos = mpg_f_file->Get_FPos(mpg_f_file);
+        mpg_count = 0;
+        ret = mpg_get_start_code(); need_nxt_flag = xaFALSE;
+        slice_hdr->fsize = mpg_count; /* get slice size */
+        if (mpg_count > mpg->max_fvid_size) mpg->max_fvid_size = mpg_count;
+      }
+    }
+#endif
+    else
+    {
+      fprintf(stderr,"MPG_UNK CODE: %02x\n",mpg_start_code);
+    }
 
     /* get next if necessary */
     if (need_nxt_flag == xaTRUE) ret = mpg_get_start_code(); 
@@ -486,7 +506,7 @@ XA_ANIM_HDR *anim_hdr;
     return(xaFALSE);
   }
   if (xa_verbose)
-	fprintf(stdout,"MPG %ldx%ld frames %ld  I's %ld  P's %ld  B's %ld\n",
+	fprintf(stdout,"MPG %dx%d frames %d  I's %d  P's %d  B's %d\n",
 	  mpg->imagex,mpg->imagey,mpg_frame_cnt,mpg_Icnt,mpg_Pcnt,mpg_Bcnt);
 
   mpg_pic_hdr = 0; /* force err if used */
@@ -541,10 +561,10 @@ XA_ANIM_HDR *anim_hdr;
         if ( (xa_buffer_flag == xaFALSE) && (xa_file_flag == xaFALSE) )
         {  /* need to read in the data */
           xaUBYTE *tmp = 0;
-          fseek(mpg_f_file,fpos,0);
+          mpg_f_file->Seek_FPos(mpg_f_file,fpos,0);
           tmp = (xaUBYTE *)malloc( fsize );
           if (tmp==0) TheEnd1("MPG: alloc err 3");
-          fread((char *)tmp,fsize,1,mpg_f_file);
+          mpg_f_file->Read_Block(mpg_f_file,(char *)tmp,fsize);
           s_act->data = tmp;
         }
       }
@@ -557,7 +577,7 @@ XA_ANIM_HDR *anim_hdr;
     }
     mpg_frame_cur = mpg_frame_cur->next; /* move on */
   }
-  fclose(fin);
+  xin->Close_File(xin);
   if (mpg->pic) { free(mpg->pic); mpg->pic = 0; }
 
   anim_hdr->frame_lst = (XA_FRAME *)
@@ -571,7 +591,7 @@ XA_ANIM_HDR *anim_hdr;
   t_timelo = 0;
   while(mpg_frame_cur != 0)
   { if (i > mpg_frame_cnt)
-    { fprintf(stderr,"MPG_Read_Anim: frame inconsistency %ld %ld\n",
+    { fprintf(stderr,"MPG_Read_Anim: frame inconsistency %d %d\n",
                 i,mpg_frame_cnt);
       break;
     }
@@ -620,7 +640,7 @@ XA_ANIM_HDR *anim_hdr;
 xaULONG mpg_get_start_code()
 { xaLONG d; xaULONG state = 0;
   MPG_ALIGN_FBUF(); /* make mpg_f_bnum multiple of 8 */
-  while( !feof(mpg_f_file) )
+  while( !mpg_f_file->At_EOF(mpg_f_file) )
   { 
 
 /*
@@ -628,14 +648,14 @@ xaULONG mpg_get_start_code()
 */
     if (mpg_f_bnum > 0)
     { 
-fprintf(stderr,"FBITS: %ld %lx\n",mpg_f_bnum,mpg_f_bbuf);
+fprintf(stderr,"FBITS: %d %x\n",mpg_f_bnum,mpg_f_bbuf);
 
        mpg_f_bnum -= 8; d = (mpg_f_bbuf >> mpg_f_bnum) & 0xff;
     }
-    else d =  fgetc(mpg_f_file);
+    else d =  mpg_f_file->Read_U8(mpg_f_file);
     if (d >= 0) mpg_count++;
 
-/* DEBUG_LEVEL1 fprintf(stderr,"GET_CODE: st(%ld) d=%lx\n",state,d); */
+/* DEBUG_LEVEL1 fprintf(stderr,"GET_CODE: st(%d) d=%x\n",state,d); */
     if (state == 3) 
     { 
       mpg_start_code = d;
@@ -669,7 +689,7 @@ void mpg_skip_extra_bitsB()
     if (f) 
     { MPG_GET_BBITS(8,d);
       DEBUG_LEVEL1
-      { fprintf(stderr,"%02lx ",d);
+      { fprintf(stderr,"%02x ",d);
 	i++; if (i >=8) {i=0; fprintf(stderr,"\n"); }
       }
     }
@@ -718,7 +738,7 @@ DEBUG_LEVEL1 fprintf(stderr,"MPG_SEQ_START: \n");
   MPG_GET_FBITS(1,shdr->intra_flag);
 
 /*POD TEMP */
-if (xa_verbose) fprintf(stderr,"MPEG Pic rate: %lx\n",shdr->pic_rate);
+if (xa_verbose) fprintf(stderr,"MPEG Pic rate: %x\n",shdr->pic_rate);
 
   UTIL_FPS_2_Time(mpg, ((double)(mpg_pic_rate_idx[shdr->pic_rate])) );
 
@@ -781,21 +801,37 @@ xaULONG mpg_num_pics;
  * 1 broken link flag
  *
  */
-xaULONG mpg_read_GOP_HDR()
+xaULONG mpg_read_GOP_HDR(bflag)
+xaULONG bflag;
 { xaULONG drop_flag,hours,minutes,marker,seconds;
   xaULONG mpg_num_pics,closed_gop,broken_link;
+
 DEBUG_LEVEL1 fprintf(stderr,"MPG_GOP_START: \n");
-  MPG_GET_FBITS(1,drop_flag);
-  MPG_GET_FBITS(5,hours);
-  MPG_GET_FBITS(6,minutes);
-  MPG_GET_FBITS(1,marker);
-  MPG_GET_FBITS(6,seconds);
-  MPG_GET_FBITS(6,mpg_num_pics);
-  MPG_GET_FBITS(1,closed_gop);
-  MPG_GET_FBITS(1,broken_link);
-  DEBUG_LEVEL1 fprintf(stderr,"  dflag %ld time %02ld:%02ld:%02ld mrkr %ld\n",
+  if (bflag == MPG_FROM_BUFF)
+  {
+    MPG_GET_BBITS(1,drop_flag);
+    MPG_GET_BBITS(5,hours);
+    MPG_GET_BBITS(6,minutes);
+    MPG_GET_BBITS(1,marker);
+    MPG_GET_BBITS(6,seconds);
+    MPG_GET_BBITS(6,mpg_num_pics);
+    MPG_GET_BBITS(1,closed_gop);
+    MPG_GET_BBITS(1,broken_link);
+  }
+  else
+  {
+    MPG_GET_FBITS(1,drop_flag);
+    MPG_GET_FBITS(5,hours);
+    MPG_GET_FBITS(6,minutes);
+    MPG_GET_FBITS(1,marker);
+    MPG_GET_FBITS(6,seconds);
+    MPG_GET_FBITS(6,mpg_num_pics);
+    MPG_GET_FBITS(1,closed_gop);
+    MPG_GET_FBITS(1,broken_link);
+  }
+  DEBUG_LEVEL1 fprintf(stderr,"  dflag %d time %02d:%02d:%02d mrkr %d\n",
 	drop_flag,hours,minutes,seconds,marker);
-  DEBUG_LEVEL1 fprintf(stderr,"   numpics %ld %ld %ld\n",
+  DEBUG_LEVEL1 fprintf(stderr,"   numpics %d %d %d\n",
 	mpg_num_pics,closed_gop,broken_link);
  /* USR EXT data?? */
   return(xaTRUE);
@@ -826,30 +862,61 @@ DEBUG_LEVEL1 fprintf(stderr,"MPG_GOP_START: \n");
  */
 
 
-xaULONG mpg_read_PIC_HDR(phdr)
+xaULONG mpg_read_PIC_HDR(phdr,bflag)
 MPG_PIC_HDR *phdr;
+xaULONG bflag;
 { xaULONG d;
-  MPG_GET_FBITS(10,phdr->time);
-  MPG_GET_FBITS(3,phdr->type);
-  MPG_GET_FBITS(16,phdr->vbv_delay);
-DEBUG_LEVEL1 fprintf(stderr,"MPG_PIC_START: TYPE %ld\n",phdr->type);
-  phdr->full_forw_flag = 0;
-  phdr->forw_r_size = phdr->forw_f = 0;
-  phdr->full_back_flag = 0;
-  phdr->back_r_size = phdr->back_f = 0;
+  if (bflag == MPG_FROM_BUFF)
+  {
+    MPG_GET_BBITS(10,phdr->time);
+    MPG_GET_BBITS(3,phdr->type);
+    MPG_GET_BBITS(16,phdr->vbv_delay);
+    phdr->full_forw_flag = 0;
+    phdr->forw_r_size = phdr->forw_f = 0;
+    phdr->full_back_flag = 0;
+    phdr->back_r_size = phdr->back_f = 0;
 
-  if ( (phdr->type == MPG_TYPE_P) || (phdr->type == MPG_TYPE_B))
-  {
-    MPG_GET_FBITS(1,phdr->full_forw_flag);
-    MPG_GET_FBITS(3,d);
-    phdr->forw_r_size = d - 1;	phdr->forw_f = (1 << phdr->forw_r_size);
+    if ( (phdr->type == MPG_TYPE_P) || (phdr->type == MPG_TYPE_B))
+    {
+      MPG_GET_BBITS(1,phdr->full_forw_flag);
+      MPG_GET_BBITS(3,d);
+      phdr->forw_r_size = d - 1;
+      phdr->forw_f = (1 << phdr->forw_r_size);
+    }
+    else if (phdr->type == MPG_TYPE_B)
+    {
+      MPG_GET_BBITS(1,phdr->full_back_flag);
+      MPG_GET_BBITS(3,d);
+      phdr->back_r_size = d - 1;
+      phdr->back_f = (1 << phdr->back_r_size);
+    }
   }
-  else if (phdr->type == MPG_TYPE_B)
+  else /* From File */
   {
-    MPG_GET_FBITS(1,phdr->full_back_flag);
-    MPG_GET_FBITS(3,d);
-    phdr->back_r_size = d - 1;	phdr->back_f = (1 << phdr->back_r_size);
+    MPG_GET_FBITS(10,phdr->time);
+    MPG_GET_FBITS(3,phdr->type);
+    MPG_GET_FBITS(16,phdr->vbv_delay);
+    phdr->full_forw_flag = 0;
+    phdr->forw_r_size = phdr->forw_f = 0;
+    phdr->full_back_flag = 0;
+    phdr->back_r_size = phdr->back_f = 0;
+
+    if ( (phdr->type == MPG_TYPE_P) || (phdr->type == MPG_TYPE_B))
+    {
+      MPG_GET_FBITS(1,phdr->full_forw_flag);
+      MPG_GET_FBITS(3,d);
+      phdr->forw_r_size = d - 1;
+      phdr->forw_f = (1 << phdr->forw_r_size);
+    }
+    else if (phdr->type == MPG_TYPE_B)
+    {
+      MPG_GET_FBITS(1,phdr->full_back_flag);
+      MPG_GET_FBITS(3,d);
+      phdr->back_r_size = d - 1;
+      phdr->back_f = (1 << phdr->back_r_size);
+    }
   }
+  DEBUG_LEVEL1 fprintf(stderr,"MPG_PIC_START: TYPE %d\n",phdr->type);
   return(xaTRUE);
 }
 
@@ -900,17 +967,17 @@ XA_ACTION *act;			/* action to use  */
 	dlta_hdr->delta = MPG_Decode_I;
 	break;
     case MPG_TYPE_B:
-	dlta_hdr->delta = MPG_Decode_B;
+	dlta_hdr->delta = MPG_Decode_I; /* MPG_Decode_B; */
 	act->type = ACT_NOP; /* POD TEMP */
 	return(xaTRUE);
 	break;
     case MPG_TYPE_P:
-	dlta_hdr->delta = MPG_Decode_P;
+	dlta_hdr->delta = MPG_Decode_I; /* MPG_Decode_P; */
 	act->type = ACT_NOP; /* POD TEMP */
 	return(xaTRUE);
 	break;
     default:
-	fprintf(stderr,"MPG frame type %ld unknown\n",the_pic_hdr->type);
+	fprintf(stderr,"MPG frame type %d unknown\n",the_pic_hdr->type);
 	act->type = ACT_NOP;
 	return(xaFALSE);
 	break;
@@ -989,8 +1056,6 @@ motion_vectors_entry *motion_vectors = 0;	/* Motion Vectors huff table */
     }		\
     val--;	\
   }
-
-/* POD NOTE: Do better initializing these??? maybe not */
 
 /*******
  * Init mb_addr_inc huffman table 
@@ -1276,7 +1341,7 @@ xaLONG *level;
 	{ MPG_GET_BBITS(8,*level);
 	/* POD Is Ness?? */
 /*
-	  if ( (*level) < 128 ) fprintf(stderr,"DCT err A-%ld\n",*level);
+	  if ( (*level) < 128 ) fprintf(stderr,"DCT err A-%d\n",*level);
 */
 	} else if (temp != 128) 
 	{ 
@@ -1292,7 +1357,7 @@ xaLONG *level;
 	/* POD Is Ness?? */
 /*
 	  if ( ((*level) > -128) || ((*level) < -255) )
-			fprintf(stderr,"DCT err B-%ld\n",*level);
+			fprintf(stderr,"DCT err B-%d\n",*level);
 */
 	}
       }
@@ -1495,9 +1560,9 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
   xaULONG special = dec_info->special;		void *extra = dec_info->extra;
   XA_CHDR *chdr = dec_info->chdr;
   xaULONG mb_addr,vert_pos,q_scale;
-  xaLONG x,y,mcu_cols,mcu_rows,mcu_row_size;
+  xaLONG mcu_cols,mcu_rows;
   xaUBYTE *qtab;
-  xaUBYTE *Ybuf0,*Ybuf1,*Ubuf,*Vbuf;
+  xaUBYTE *Ybuf,*Ubuf,*Vbuf;
   xaULONG orow_size;
   MPG_PIC_HDR *phdr = (MPG_PIC_HDR *)(delta);
   MPG_SEQ_HDR *shdr =  phdr->seq_hdr;
@@ -1507,38 +1572,47 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
   xaUBYTE *iptr = image;
   void (*color_func)();
   xaULONG mb_size;
-  xaLONG sidx,y_count;
+  xaLONG sidx;
 
+   /* always full image for now */
   dec_info->xs = dec_info->ys = 0;
   dec_info->xe = imagex; dec_info->ye = imagey; 
+
+   /* Indicate we can drop these frames */
+  if (dec_info->skip_flag > 0) return(ACT_DLTA_DROP);
+   
   if (chdr) { if (chdr->new_chdr) chdr = chdr->new_chdr; }
 
   special_flag = special & 0x0001;
   if (cmap_color_func == 4) { MPG_CMAP_CACHE_CHECK(chdr); }
 
   orow_size = imagex;
-  if (special_flag) { orow_size *= 3;	color_func = XA_YUV411_To_RGB; }
-  else { orow_size *= x11_bytes_pixel;
+	/*** Setup Color Decode Functions */
+  if (special_flag) { orow_size *= 3;	color_func = XA_MCU221111_To_RGB; }
+  else
+  { orow_size *= x11_bytes_pixel;
     if (x11_bytes_pixel==1)		
     { 
-      color_func = XA_YUV411_To_CLR8;
+      color_func = XA_MCU221111_To_CLR8;
       if ( (chdr) && (x11_display_type == XA_PSEUDOCOLOR))
       {
-	if (cmap_color_func == 4)        color_func = XA_YUV411_To_CF4;
+	if (cmap_color_func == 4)        color_func = XA_MCU221111_To_CF4;
 	else if ( (cmap_true_to_332 == xaTRUE) && (x11_cmap_size == 256) )
-        if (xa_dither_flag==xaTRUE)    color_func = XA_YUV411_To_332_Dither;
-        else                           color_func = XA_YUV411_To_332;
+        if (xa_dither_flag==xaTRUE)    color_func = XA_MCU221111_To_332_Dither;
+        else                           color_func = XA_MCU221111_To_332;
       }
     }
-    else if (x11_bytes_pixel==2)	color_func = XA_YUV411_To_CLR16;
-    else				color_func = XA_YUV411_To_CLR32;
+    else if (x11_bytes_pixel==2)	color_func = XA_MCU221111_To_CLR16;
+    else				color_func = XA_MCU221111_To_CLR32;
   }
   imagex++; imagex >>= 1;
     
-  mcu_cols  = ((shdr->width  + 15) / 16);
+  mcu_cols = ((shdr->width  + 15) / 16);
   mcu_rows = ((shdr->height + 15) / 16);
-  mcu_row_size = 2 * mcu_cols * DCTSIZE2;
   mb_size = mcu_cols * mcu_rows;
+
+DEBUG_LEVEL1 fprintf(stderr,"mcu xy %d %d  size %d\n",
+					mcu_cols,mcu_rows,mb_size);
 
   qtab = shdr->intra_qtab;
 
@@ -1546,6 +1620,7 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
   sidx = 0;
   slice = &(phdr->slices[sidx]);
 
+	/*** Loop through slices in order to construct each Image */
   while(slice->fsize)
   { 
     if (slice->act) data_buf = (xaUBYTE *)(slice->act->data);
@@ -1569,75 +1644,95 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
     sidx++; 
     slice = &(phdr->slices[sidx]);
 
-DEBUG_LEVEL1 { if (vert_pos != 0) fprintf(stderr,"PODTMP VERT_POS = %ld mcu_rows = %ld\n",vert_pos,mcu_rows); }
+DEBUG_LEVEL1 { if (vert_pos != 0) fprintf(stderr,"VERT_POS = %d mcu rows = %d cols = %d\n",vert_pos,mcu_rows,mcu_cols); }
 
     /* adjust pointers for slice */
-    y = mcu_rows - vert_pos;
+
     mb_addr = (vert_pos * mcu_cols) - 1;
-    y_count = imagey - (vert_pos << 4);
-    iptr   = image;
-    iptr  += (orow_size * (vert_pos << 4));
 
     mpg_dc_y = mpg_dc_cr = mpg_dc_cb = 1024;
-    while(y > 0)
-    {
-      if (y_count <= 0) break;
-      Ybuf0 = jpg_YUVBufs.Ybuf;		Ybuf1 = Ybuf0 + mcu_row_size;
-      Ubuf = jpg_YUVBufs.Ubuf;		Vbuf = jpg_YUVBufs.Vbuf;
-      x = mcu_cols; while(x--)
-      { xaULONG tmp,i;
+
+    do  /* while(mb_addr < mb_size) */
+    { xaULONG tmp,i;
 
 	/* parse MB addr increment and update MB address */
+DEBUG_LEVEL1 fprintf(stderr,"PARSE MB ADDR(%d): ",mb_addr);
+
 	do
 	{ MPG_GET_MBAddrInc(tmp);  /* huff decode MB addr inc */
 
-DEBUG_LEVEL1 fprintf(stderr,"MBAddr tmp %lx mb_addr %lx\n",tmp,mb_addr);
+DEBUG_LEVEL1 fprintf(stderr," %d",tmp);
 
-	  if (tmp == MB_ESCAPE) { mb_addr += 33; tmp = MB_STUFFING; }
+	  if (tmp == MB_ESCAPE) 
+	  { mb_addr += 33; tmp = MB_STUFFING;
+	  }
 	} while(tmp == MB_STUFFING);
 
-	mb_addr += tmp;
-	if (tmp > 1) mpg_dc_y = mpg_dc_cr = mpg_dc_cb = 1024;
+        if (tmp < 0)
+        {
+         /* END OF SLICE?? */
+          break;
+        }
 
-DEBUG_LEVEL1 fprintf(stderr," mb_addr %lx mb_size %lx\n",mb_addr,mb_size);
-	if (mb_addr >= mb_size) { y = 0; break; }
-	MPG_CHECK_BBITS(4,tmp); if (tmp == xaFALSE) { y = 0; break; }
+	if (tmp > 1) mpg_dc_y = mpg_dc_cr = mpg_dc_cb = 1024;
+	mb_addr += tmp;
+DEBUG_LEVEL1 fprintf(stderr,"  :mb_addr %d\n",mb_addr);
+
+	if (mb_addr >= mb_size) break;
+
+	/* check for end of slice */
+	MPG_CHECK_BBITS(4,tmp); 
+        if (tmp == xaFALSE) 
+        { DEBUG_LEVEL1 fprintf(stderr,"end of slice\n");
+          break;
+        }
+
+/* Calculate Y,U,V buffers */
+{ xaULONG offset;
+  Ybuf = jpg_YUVBufs.Ybuf; Ubuf = jpg_YUVBufs.Ubuf; Vbuf = jpg_YUVBufs.Vbuf;
+
+  offset = DCTSIZE2 * mb_addr;
+  Ubuf += offset;
+  Vbuf += offset;
+  Ybuf += offset << 2;
+}
 
 	/* Decode I Type MacroBlock Type  1 or 01 */
 	MPG_NXT_BBITS(2,i);
+
+DEBUG_LEVEL1 fprintf(stderr,"MB type %x\n",i);
+
 	if (i & 0x02) { MPG_FLUSH_BBITS(1); }
 	/* else if (i == 0x00) ERROR */
 	else /* new quant scale */
 	{ MPG_FLUSH_BBITS(2);
 	  MPG_GET_BBITS(5,q_scale);  /* quant scale */
-	  DEBUG_LEVEL1 fprintf(stderr,"New Quant Scale %lx\n",q_scale);
+	  DEBUG_LEVEL1 fprintf(stderr,"New Quant Scale %x\n",q_scale);
 	}
 	mpg_huffparseI(dct_dc_size_luminance, 7, &mpg_dc_y,
-			q_scale, qtab, mpg_dct_buf, Ybuf0 ); Ybuf0 += DCTSIZE2;
+			q_scale, qtab, mpg_dct_buf, Ybuf); Ybuf += DCTSIZE2;
 	mpg_huffparseI(dct_dc_size_luminance, 7, &mpg_dc_y,
-			q_scale, qtab, mpg_dct_buf, Ybuf0 ); Ybuf0 += DCTSIZE2;
+			q_scale, qtab, mpg_dct_buf, Ybuf); Ybuf += DCTSIZE2;
 	mpg_huffparseI(dct_dc_size_luminance, 7, &mpg_dc_y,
-			q_scale, qtab, mpg_dct_buf, Ybuf1);  Ybuf1 += DCTSIZE2;
+			q_scale, qtab, mpg_dct_buf, Ybuf); Ybuf += DCTSIZE2;
 	mpg_huffparseI(dct_dc_size_luminance, 7, &mpg_dc_y,
-			q_scale, qtab, mpg_dct_buf, Ybuf1);  Ybuf1 += DCTSIZE2;
-
+			q_scale, qtab, mpg_dct_buf, Ybuf); Ybuf += DCTSIZE2;
 	mpg_huffparseI(dct_dc_size_chrominance, 8, &mpg_dc_cr,
-			q_scale, qtab, mpg_dct_buf, Ubuf);   Ubuf += DCTSIZE2;
+			q_scale, qtab, mpg_dct_buf, Ubuf); Ubuf += DCTSIZE2;
 	mpg_huffparseI(dct_dc_size_chrominance, 8, &mpg_dc_cb,
-			q_scale, qtab, mpg_dct_buf, Vbuf);   Vbuf += DCTSIZE2;
-      } /* end of mcu_cols */
-      if (y) 
-      { (void)(color_func)(iptr,imagex,y_count,mcu_row_size,orow_size,
-			&jpg_YUVBufs,&def_yuv_tabs,map_flag,map,chdr);
-	y_count -= 16;  iptr += (orow_size << 4);
-	y--;
-      }
-    } /* end of y */
+			q_scale, qtab, mpg_dct_buf, Vbuf); Vbuf += DCTSIZE2;
+    } while(mb_addr < (mb_size - 1) );
   } /* end of while slices */
+
+  (void)(color_func)(iptr,imagex,imagey,(mcu_cols * DCTSIZE2),orow_size,
+			&jpg_YUVBufs,&def_yuv_tabs,map_flag,map,chdr);
+
   if (map_flag) return(ACT_DLTA_MAPD); else return(ACT_DLTA_NORM);
 }
 
 
+xaULONG MPG_Decode_B();
+#ifdef NOTYET_FINISHED
 /*******
  *
  */
@@ -1659,7 +1754,6 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
   if (map_flag) return(ACT_DLTA_MAPD); else return(ACT_DLTA_NORM);
 }
 
-#ifdef NOTYET_FINISHED
   xaULONG mb_addr,vert_pos,q_scale;
   xaLONG x,y,mcu_cols,mcu_rows,mcu_row_size;
   xaUBYTE *qtab;
@@ -1673,7 +1767,7 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
   xaULONG special_flag;
   xaUBYTE *iptr = image;
   void (*color_func)();
-  xaULONG mb_size;
+  xaULONG mb_size,mb_cnt;
   xaLONG sidx,y_count;
 
 xaULONG Pquant,Pmotion_fwd,Ppat,Pintra;
@@ -1692,22 +1786,22 @@ xaLONG recon_right_for_prev,recon_down_for_prev;
   if (cmap_color_func == 4) { MPG_CMAP_CACHE_CHECK(chdr); }
 
   orow_size = imagex;
-  if (special_flag) { orow_size *= 3;	color_func = XA_YUV411_To_RGB; }
+  if (special_flag) { orow_size *= 3;	color_func = XA_MCU221111_To_RGB; }
   else { orow_size *= x11_bytes_pixel;
     if (x11_bytes_pixel==1)		
     { 
       if ((cmap_color_func == 4) && (chdr)
-          && !(x11_display_type & XA_X11_TRUE) ) color_func = XA_YUV411_To_CF4;
-      else color_func = XA_YUV411_To_CLR8;
+          && !(x11_display_type & XA_X11_TRUE) ) color_func = XA_MCU221111_To_CF4;
+      else color_func = XA_MCU221111_To_CLR8;
     }
-    else if (x11_bytes_pixel==2)	color_func = XA_YUV411_To_CLR16;
-    else				color_func = XA_YUV411_To_CLR32;
+    else if (x11_bytes_pixel==2)	color_func = XA_MCU221111_To_CLR16;
+    else				color_func = XA_MCU221111_To_CLR32;
   }
   imagex++; imagex >>= 1;
 
   mcu_cols  = ((shdr->width  + 15) / 16);
   mcu_rows = ((shdr->height + 15) / 16);
-  mcu_row_size = 2 * mcu_cols * DCTSIZE2;
+  mcu_row_size = mcu_cols * DCTSIZE2;
   mb_size = mcu_cols * mcu_rows;
 
   qtab = shdr->intra_qtab;
@@ -1737,7 +1831,7 @@ xaLONG recon_right_for_prev,recon_down_for_prev;
     sidx++; 
     slice = &(phdr->slices[sidx]);
 
-DEBUG_LEVEL1 { if (vert_pos != 0) fprintf(stderr,"PODTMP VERT_POS = %ld\n",vert_pos); }
+DEBUG_LEVEL1 { if (vert_pos != 0) fprintf(stderr,"VERT_POS = %d\n",vert_pos); }
 
     /* adjust pointers for slice */
     y = mcu_rows - vert_pos;
@@ -1747,13 +1841,13 @@ DEBUG_LEVEL1 { if (vert_pos != 0) fprintf(stderr,"PODTMP VERT_POS = %ld\n",vert_
     iptr  += (orow_size * (vert_pos << 4));
 
     mpg_dc_y = mpg_dc_cr = mpg_dc_cb = 1024;
-    while(y > 0)
-    {
-      if (y_count <= 0) break;
-      Ybuf0 = jpg_YUVBufs.Ybuf;		Ybuf1 = Ybuf0 + mcu_row_size;
-      Ubuf  = jpg_YUVBufs.Ubuf;		Vbuf = jpg_YUVBufs.Vbuf;
-      x = mcu_cols; while(x--)
-      { xaULONG tmp,i;
+    mb_cnt = 0;
+
+    x = 0;
+    Ybuf0 = jpg_YUVBufs.Ybuf;		Ybuf1 = Ybuf0 + (mcu_row_size << 1);
+    Ubuf  = jpg_YUVBufs.Ubuf;		Vbuf = jpg_YUVBufs.Vbuf;
+    while(mb_cnt < mb_size)
+    { xaULONG tmp,i;
 
 	/* parse MB addr increment and update MB address */
 	do
@@ -1764,7 +1858,7 @@ DEBUG_LEVEL1 { if (vert_pos != 0) fprintf(stderr,"PODTMP VERT_POS = %ld\n",vert_
 	mb_addr += tmp;
 	if (tmp > 1) mpg_dc_y = mpg_dc_cr = mpg_dc_cb = 1024;
 
-	if (mb_addr >= mb_size) { y = 0; break; }
+	if (mb_addr >= mb_size) {  break; }
 	MPG_CHECK_BBITS(4,tmp); if (tmp == xaFALSE) { y = 0; break; }
 
 	/* Decode P Type MacroBlock Type */
@@ -1779,7 +1873,7 @@ DEBUG_LEVEL1 { if (vert_pos != 0) fprintf(stderr,"PODTMP VERT_POS = %ld\n",vert_
         if (Pquant) 
 	{
 	  MPG_GET_BBITS(5,q_scale);
-	  DEBUG_LEVEL1 fprintf(stderr,"New Quant Scale %lx\n",q_scale);
+	  DEBUG_LEVEL1 fprintf(stderr,"New Quant Scale %x\n",q_scale);
 	}
 		/* forward motion vectors exist */
 	if (mb_motion_forw)
@@ -1984,7 +2078,7 @@ if (size > 10) { fprintf(stderr,"HUFF ERR \n"); return; }
    fprintf(stderr,"BLOCK \n");
    for(ii = 0; ii < 64; ii += 8)
    {
-    fprintf(stderr,"  %08lx %08lx %08lx %08lx %08lx %08lx %08lx %08lx\n",
+    fprintf(stderr,"  %08x %08x %08x %08x %08x %08x %08x %08x\n",
 	dct_buf[ii], dct_buf[ii+1], dct_buf[ii+2], dct_buf[ii+3],
 	dct_buf[ii+4], dct_buf[ii+5], dct_buf[ii+6], dct_buf[ii+7] );
    }
@@ -2024,7 +2118,6 @@ if (size > 10) { fprintf(stderr,"HUFF ERR \n"); return; }
 #define RIGHT_SHIFT(x,shft)	((x) >> (shft))
 #endif
 
-/*POD TEST (could be 2) */
 #define PASS1_BITS  2
 
 #define ONE	((xaLONG) 1)
@@ -3040,6 +3133,287 @@ xaUBYTE *rnglimit;
     dataptr++;			/* advance pointer to next column */
     outptr++;
   }
+}
+
+
+/************************
+ *  Find next MPEG start code. If buf is non-zero, get data from
+ *  buf. Else use the file pointer, xin.
+ *
+ ****/
+static xaLONG mpg_buf_get_start_code()
+{ xaLONG not_beof = xaTRUE;
+  xaULONG state = 0;
+
+  MPG_ALIGN_BBUF();
+  while(not_beof == xaTRUE)
+  { xaLONG d;
+    MPG_CHECK_BBITS(8,not_beof);
+    if (not_beof == xaFALSE) break;
+    MPG_GET_BBITS(8,d); /* Get 8 bits */
+    if (state == 3)
+    { 
+      return(d);
+    }
+    else if (state == 2)
+    { if (d == 0x01) state = 3;
+      else if (d == 0x00) state = 2;
+      else state = 0;
+    }
+    else
+    { if (d == 0x00) state++;
+      else state = 0;
+    }
+  }
+  return((xaLONG)(-1));
+}
+
+
+
+/* my shifted version for AVI XMPG */
+static xaUBYTE xmpg_def_intra_qtab[64] = {
+         8,16,19,22,22,26,26,27,
+        16,16,22,22,26,27,27,29,
+        19,22,26,26,27,29,29,35,
+        22,24,27,27,29,32,34,38,
+        26,27,29,29,32,35,38,46,
+        27,29,34,34,35,40,46,56,
+        29,34,34,37,40,48,56,69,
+        34,37,38,40,48,58,69,83 };
+
+/*******
+ *
+ */
+xaULONG
+MPG_Decode_FULLI(image,delta,dsize,dec_info)
+xaUBYTE *image;         /* Image Buffer. */
+xaUBYTE *delta;         /* delta data. */
+xaULONG dsize;          /* delta size */
+XA_DEC_INFO *dec_info;  /* Decoder Info Header */
+{ xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
+  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
+  xaULONG special = dec_info->special;
+  xaULONG extra = (xaULONG)dec_info->extra;
+  XA_CHDR *chdr = dec_info->chdr;
+  xaULONG mb_addr,vert_pos,q_scale;
+  xaLONG mcu_cols,mcu_rows;
+  xaUBYTE *qtab;
+  xaUBYTE *Ybuf,*Ubuf,*Vbuf;
+  xaULONG orow_size;
+  xaULONG special_flag;
+  xaUBYTE *iptr = image;
+  void (*color_func)();
+  xaULONG mb_size;
+
+/* TODO
+  MPG_PIC_HDR *phdr = (MPG_PIC_HDR *)(delta);
+  MPG_SEQ_HDR *shdr =  phdr->seq_hdr;
+  MPG_SLICE_HDR *slice;
+*/
+  MPG_PIC_HDR phdr;
+
+   /* always full image for now */
+  dec_info->xs = dec_info->ys = 0;
+  dec_info->xe = imagex; dec_info->ye = imagey; 
+
+   /* Indicate we can drop these frames */
+  if ((delta == 0) || (dec_info->skip_flag > 0)) return(ACT_DLTA_DROP);
+   
+  if (chdr) { if (chdr->new_chdr) chdr = chdr->new_chdr; }
+
+  special_flag = special & 0x0001;
+  if (cmap_color_func == 4) { MPG_CMAP_CACHE_CHECK(chdr); }
+
+  orow_size = imagex;
+	/*** Setup Color Decode Functions */
+  if (special_flag) { orow_size *= 3;	color_func = XA_MCU221111_To_RGB; }
+  else
+  { orow_size *= x11_bytes_pixel;
+    if (x11_bytes_pixel==1)		
+    { 
+      color_func = XA_MCU221111_To_CLR8;
+      if ( (chdr) && (x11_display_type == XA_PSEUDOCOLOR))
+      {
+	if (cmap_color_func == 4)        color_func = XA_MCU221111_To_CF4;
+	else if ( (cmap_true_to_332 == xaTRUE) && (x11_cmap_size == 256) )
+        if (xa_dither_flag==xaTRUE)    color_func = XA_MCU221111_To_332_Dither;
+        else                           color_func = XA_MCU221111_To_332;
+      }
+    }
+    else if (x11_bytes_pixel==2)	color_func = XA_MCU221111_To_CLR16;
+    else				color_func = XA_MCU221111_To_CLR32;
+  }
+
+  mcu_cols = ((imagex + 15) / 16);
+  mcu_rows = ((imagey + 15) / 16);
+  mb_size = mcu_cols * mcu_rows;
+  DEBUG_LEVEL1 fprintf(stderr,"mcu xy %d %d  size %d\n",
+					mcu_cols,mcu_rows,mb_size);
+
+	/* This is done because of 221111 */
+  imagex++; imagex >>= 1;
+
+
+  qtab = xmpg_def_intra_qtab;
+
+  MPG_INIT_BBUF(delta,dsize);
+
+  /* Check for Broadway MPEG encoding(BW10)
+   * Skip 12 bytes and then expect GOP
+   */
+  if (extra & 0x01) 
+  { MPG_FLUSH_BBITS(32);
+    MPG_FLUSH_BBITS(32);
+    MPG_FLUSH_BBITS(32);
+    qtab = xmpg_def_intra_qtab;
+  }
+  else if (extra & 0x02)  /* XING Editable MPEG */
+  {
+    qtab = xmpg_def_intra_qtab;
+  }
+
+  vert_pos = -1;
+
+  while(1)
+  { xaLONG ret;
+    xaLONG start_code = mpg_buf_get_start_code();
+
+    if (start_code == MPG_GOP_START)
+    {
+      DEBUG_LEVEL1 fprintf(stderr,"MPG_FULLI: GOP Header found\n");
+      mpg_read_GOP_HDR(MPG_FROM_BUFF);
+      continue;
+    }
+    else if (start_code == MPG_PIC_START)
+    {
+      DEBUG_LEVEL1 fprintf(stderr,"MPG_FULLI: PIC START found\n");
+      ret = mpg_read_PIC_HDR(&phdr,MPG_FROM_BUFF);
+      if (ret == xaFALSE)
+      {
+        DEBUG_LEVEL1 fprintf(stderr,"MPG_FULLI: PIC START error\n");
+        return(ACT_DLTA_DROP);
+      }
+      continue;
+    }
+    else if (start_code == MPG_USR_START)
+    {
+      DEBUG_LEVEL1 fprintf(stderr,"MPG_FULLI: USR Start found\n");
+      continue;
+    }
+    else if (start_code < 0)
+    {
+      DEBUG_LEVEL1 fprintf(stderr,"MPG_FULLI: Reached EOF\n");
+      break;
+    }
+    else if (   (start_code >= MPG_MIN_SLICE) 
+             && (start_code <= MPG_MAX_SLICE) )
+    {
+      DEBUG_LEVEL1 fprintf(stderr,"MPG_FULLI: Found Slice %d\n", (start_code & 0xff) );
+      vert_pos = (start_code & 0xff) - 1;
+
+      MPG_GET_BBITS(5,q_scale);  /* quant scale */
+      mpg_skip_extra_bitsB();
+
+      DEBUG_LEVEL1
+      { if (vert_pos >= 0)
+		fprintf(stderr,"VERT_POS = %d mcu rows = %d cols = %d\n",
+					vert_pos,mcu_rows,mcu_cols);
+      }
+
+      /* adjust pointers for slice */
+      mb_addr = (vert_pos * mcu_cols) - 1;
+      mpg_dc_y = mpg_dc_cr = mpg_dc_cb = 1024;
+
+      do  /* while(mb_addr < mb_size) */
+      { xaULONG tmp,i;
+
+	/* parse MB addr increment and update MB address */
+        DEBUG_LEVEL1 fprintf(stderr,"PARSE MB ADDR(%d): ",mb_addr);
+
+        { xaULONG next;
+	  MPG_NXT_BBITS(23,next);
+          if (next == 0) break; /* out of mb_addr */
+	}
+
+	do
+        { MPG_GET_MBAddrInc(tmp);  /* huff decode MB addr inc */
+
+          DEBUG_LEVEL1 fprintf(stderr," %d",tmp);
+
+          if (tmp == MB_ESCAPE) 
+          { mb_addr += 33; tmp = MB_STUFFING;
+          }
+        } while(tmp == MB_STUFFING);
+
+/* POD EXPERIMENTING TODO CLEAN POSSIBLY NEED TO CHANGE MGAddrInc*/
+        if (tmp < 0) break;
+
+        if (tmp > 1) mpg_dc_y = mpg_dc_cr = mpg_dc_cb = 1024;
+        mb_addr += tmp;
+        DEBUG_LEVEL1 fprintf(stderr,"  :mb_addr %d\n",mb_addr);
+
+        if (mb_addr >= mb_size) break;
+
+#ifdef REMOVE_OR_CHANGE_THIS
+        /* check for end of slice */
+        MPG_CHECK_BBITS(4,tmp); 
+        if (tmp == xaFALSE) 
+        { DEBUG_LEVEL1 fprintf(stderr,"end of slice\n");
+          break;
+        }
+#endif
+
+        /* Calculate Y,U,V buffers */
+        { xaULONG offset;
+          Ybuf = jpg_YUVBufs.Ybuf; 
+	  Ubuf = jpg_YUVBufs.Ubuf;
+	  Vbuf = jpg_YUVBufs.Vbuf;
+    
+          offset = DCTSIZE2 * mb_addr;
+          Ubuf += offset;
+          Vbuf += offset;
+          Ybuf += offset << 2;
+        }
+
+        /* Decode I Type MacroBlock Type  1 or 01 */
+        MPG_NXT_BBITS(2,i);
+
+        DEBUG_LEVEL1 fprintf(stderr,"MB type %x\n",i);
+
+        if (i & 0x02) { MPG_FLUSH_BBITS(1); }
+        /* else if (i == 0x00) ERROR */
+        else /* new quant scale */
+        { MPG_FLUSH_BBITS(2);
+          MPG_GET_BBITS(5,q_scale);  /* quant scale */
+          DEBUG_LEVEL1 fprintf(stderr,"New Quant Scale %x\n",q_scale);
+        }
+	mpg_huffparseI(dct_dc_size_luminance, 7, &mpg_dc_y,
+			q_scale, qtab, mpg_dct_buf, Ybuf); Ybuf += DCTSIZE2;
+	mpg_huffparseI(dct_dc_size_luminance, 7, &mpg_dc_y,
+			q_scale, qtab, mpg_dct_buf, Ybuf); Ybuf += DCTSIZE2;
+	mpg_huffparseI(dct_dc_size_luminance, 7, &mpg_dc_y,
+			q_scale, qtab, mpg_dct_buf, Ybuf); Ybuf += DCTSIZE2;
+	mpg_huffparseI(dct_dc_size_luminance, 7, &mpg_dc_y,
+			q_scale, qtab, mpg_dct_buf, Ybuf); Ybuf += DCTSIZE2;
+	mpg_huffparseI(dct_dc_size_chrominance, 8, &mpg_dc_cr,
+			q_scale, qtab, mpg_dct_buf, Ubuf); Ubuf += DCTSIZE2;
+	mpg_huffparseI(dct_dc_size_chrominance, 8, &mpg_dc_cb,
+			q_scale, qtab, mpg_dct_buf, Vbuf); Vbuf += DCTSIZE2;
+      } while(mb_addr < (mb_size - 1) );
+    } /* end of SLICE if */
+    else
+    {
+      fprintf(stderr,"MPG_FULLI: UNK Code %08x\n",start_code);
+    }
+  } /* end of 1 */
+
+  if (vert_pos >= 0) /* Found at least one slice */
+  {
+    (void)(color_func)(iptr,imagex,imagey,(mcu_cols * DCTSIZE2),orow_size,
+			&jpg_YUVBufs,&def_yuv_tabs,map_flag,map,chdr);
+  }
+
+  if (map_flag) return(ACT_DLTA_MAPD); else return(ACT_DLTA_NORM);
 }
 
 

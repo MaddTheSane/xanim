@@ -2,22 +2,21 @@
 /*
  * xa_rle.c
  *
- * Copyright (C) 1993,1994,1995 by Mark Podlipec. 
+ * Copyright (C) 1993-1998,1999 by Mark Podlipec. 
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  * 
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
  */
 #include "xa_rle.h"
 
-xaLONG Is_RLE_File();
 xaULONG RLE_Read_File();
 xaULONG RLE_Read_Header();
 xaULONG RLE_Get_Image();
@@ -30,7 +29,6 @@ XA_CHDR *CMAP_Create_Gray();
 XA_CHDR *CMAP_Create_CHDR_From_True();
 xaUBYTE *UTIL_RGB_To_Map();
 xaUBYTE *UTIL_RGB_To_FS_Map();
-xaULONG UTIL_Get_LSB_Short();
 void ACT_Setup_Mapped();
 void ACT_Add_CHDR_To_Action();
 
@@ -51,22 +49,6 @@ static xaLONG priv_vert_skip;
 static xaLONG priv_scan_y;
 static xaLONG priv_is_eof;
 static xaUBYTE *rle_row_buf,*rle_rows[3];
-
-/*
- *
- */
-xaLONG Is_RLE_File(filename)
-char *filename;
-{
-  FILE *fin;
-  xaULONG data;
-
-  if ( (fin=fopen(filename,XA_OPEN_MODE)) == 0) return(xaNOFILE);
-  data = UTIL_Get_LSB_Short(fin);  /* read past size */
-  fclose(fin);
-  if (data == RLE_MAGIC) return(xaTRUE);
-  return(xaFALSE);
-}
 
 
 RLE_FRAME *RLE_Add_Frame(time,act)
@@ -136,7 +118,7 @@ XA_ANIM_HDR *anim_hdr;
   {
     if (i >= rle_frame_cnt)
     {
-      fprintf(stderr,"RLE_Read_Anim: frame inconsistency %ld %ld\n",
+      fprintf(stderr,"RLE_Read_Anim: frame inconsistency %d %d\n",
                 i,rle_frame_cnt);
       break;
     }
@@ -163,33 +145,33 @@ XA_ANIM_HDR *anim_hdr;
 } 
 
 xaULONG 
-RLE_Read_Header(fp,rle_hdr)
-FILE *fp;
+RLE_Read_Header(xin,rle_hdr)
+XA_INPUT *xin;
 RLE_HDR *rle_hdr;
 {
-  rle_hdr->magic  = UTIL_Get_LSB_Short(fp);
+  rle_hdr->magic  = xin->Read_LSB_U16(xin);
   if (rle_hdr->magic != RLE_MAGIC) return(xaFALSE);
 
-  rle_hdr->xpos  = UTIL_Get_LSB_Short(fp);
-  rle_hdr->ypos  = UTIL_Get_LSB_Short(fp);
-  rle_hdr->xsize = UTIL_Get_LSB_Short(fp);
-  rle_hdr->ysize = UTIL_Get_LSB_Short(fp);
+  rle_hdr->xpos  = xin->Read_LSB_U16(xin);
+  rle_hdr->ypos  = xin->Read_LSB_U16(xin);
+  rle_hdr->xsize = xin->Read_LSB_U16(xin);
+  rle_hdr->ysize = xin->Read_LSB_U16(xin);
 
-  rle_hdr->flags     = (xaULONG)getc(fp) & 0xff;
-  rle_hdr->chan_num  = (xaULONG)getc(fp) & 0xff;
-  rle_hdr->pbits     = (xaULONG)getc(fp) & 0xff;
-  rle_hdr->cmap_num  = (xaULONG)getc(fp) & 0xff;
-  rle_hdr->cbits     = getc(fp) & 0xff;
+  rle_hdr->flags     = (xaULONG)xin->Read_U8(xin) & 0xff;
+  rle_hdr->chan_num  = (xaULONG)xin->Read_U8(xin) & 0xff;
+  rle_hdr->pbits     = (xaULONG)xin->Read_U8(xin) & 0xff;
+  rle_hdr->cmap_num  = (xaULONG)xin->Read_U8(xin) & 0xff;
+  rle_hdr->cbits     = xin->Read_U8(xin) & 0xff;
   if (rle_hdr->cbits > 8) TheEnd1("RLE_Read_Header: csize > 256\n");
   if (rle_hdr->cbits == 0) rle_hdr->cbits = rle_hdr->pbits; /*PODGUESS*/
   rle_hdr->csize     =  0x01 << rle_hdr->cbits;
 
   DEBUG_LEVEL1
   {
-    fprintf(stderr,"RLE_Read_Header: pos %ld %ld size %ld %ld csize %ld\n",
+    fprintf(stderr,"RLE_Read_Header: pos %d %d size %d %d csize %d\n",
 		rle_hdr->xpos,rle_hdr->ypos,rle_hdr->xsize,rle_hdr->ysize,
 		rle_hdr->csize);
-    fprintf(stderr,"                 flags %lx chans %ld pbits %ld maps %ld\n",
+    fprintf(stderr,"                 flags %x chans %d pbits %d maps %d\n",
 	rle_hdr->flags,rle_hdr->chan_num,rle_hdr->pbits,rle_hdr->cmap_num);
   }
 
@@ -200,14 +182,14 @@ RLE_HDR *rle_hdr;
     j = 1 + (rle_hdr->chan_num / 2) * 2;
     for(i=0; i < j; i++)
     { 
-      if (i < 3) bg_color[i] = getc(fp) & 0xff;
-      else (void)getc(fp);
+      if (i < 3) bg_color[i] = xin->Read_U8(xin) & 0xff;
+      else (void)xin->Read_U8(xin);
     }
   }
   else 
   {
     bg_color[0] = bg_color[1] = bg_color[2] = 0; 
-    (void)getc(fp);
+    (void)xin->Read_U8(xin);
   }
 
   /* read all of the color maps - only store 1st three */
@@ -218,7 +200,7 @@ RLE_HDR *rle_hdr;
     {
       for(j=0; j < rle_hdr->csize; j++)
       {
-        d = UTIL_Get_LSB_Short(fp);
+        d = xin->Read_LSB_U16(xin);
         if (i < 3) rle_chan_map[i][j] = d >> 8;
       }
     }
@@ -247,17 +229,17 @@ RLE_HDR *rle_hdr;
   if (rle_hdr->flags & RLEH_COMMENT)  /* see rle_retrow.c for more details */
   {
     register xaULONG d,i,len;
-    len = UTIL_Get_LSB_Short(fp);
+    len = xin->Read_LSB_U16(xin);
     for(i=0; i<len; i++)
     {
-      d = getc(fp) & 0xff;
+      d = xin->Read_U8(xin) & 0xff;
 	/* if (xa_verbose) fprintf(stderr,"%c",d); */
     }
-    if (len & 0x01) getc(fp); /* pad */
+    if (len & 0x01) xin->Read_U8(xin); /* pad */
   }
 
   /*  if not end of file return ok */
-  if ( !feof(fp) )
+  if ( !xin->At_EOF(xin,-1) )
   {
     rle_imagec = rle_hdr->csize;
     rle_imagex = rle_hdr->xsize;
@@ -276,30 +258,23 @@ RLE_HDR *rle_hdr;
     priv_is_eof = xaFALSE;
 
     return(xaTRUE);
-  } else return(False);
+  } else return(xaFALSE);
 }
 
 
 xaULONG RLE_Get_Image(filename,anim_hdr)
 char *filename;
 XA_ANIM_HDR *anim_hdr;
-{
+{ XA_INPUT *xin = anim_hdr->xin;
   XA_ACTION *act;
-  FILE *fin;
   int x,y;
   int rle_cnt;
   xaUBYTE *im_ptr;
 
-  if ( (fin=fopen(filename,XA_OPEN_MODE)) == 0)
-  {
-    fprintf(stderr,"can't open RLE File %s for reading\n",filename);
-    return(xaFALSE);
-  }
 
   rle_cnt = 0;
-  while ( RLE_Read_Header(fin,&rle_hdr) == xaTRUE )
-  {
-    rle_cnt++;
+  while ( RLE_Read_Header(xin,&rle_hdr) == xaTRUE )
+  { rle_cnt++;
 
     if ( (rle_hdr.chan_num != 1) && (rle_hdr.chan_num != 3) )
     		TheEnd1("RLE_Get_Image: only 1 and 3 channels supported");
@@ -312,7 +287,7 @@ XA_ANIM_HDR *anim_hdr;
 	else	rle_chdr = CMAP_Create_Gray(rle_cmap,&rle_imagec);
     }
 
-    if (xa_verbose) fprintf(stderr,"%ld) pos %ld %ld  size %ld %ld chans %ld\n",
+    if (xa_verbose) fprintf(stderr,"%d) pos %d %d  size %d %d chans %d\n",
 	  rle_cnt,rle_xpos,rle_ypos,rle_imagex,rle_imagey,rle_hdr.chan_num);
 
     /* Allocate memory for the input image. */
@@ -335,7 +310,7 @@ XA_ANIM_HDR *anim_hdr;
     im_ptr = rle_pic;
     y = rle_imagey; while(y--)
     {
-      RLE_Read_Row(fin,&rle_hdr);
+      RLE_Read_Row(xin,&rle_hdr);
 
       /* if three channel image then remap data with rle_chan_map */
       if (rle_hdr.chan_num == 3)
@@ -344,9 +319,9 @@ XA_ANIM_HDR *anim_hdr;
 	i = rle_imagex; p0 = rle_rows[0]; p1 = rle_rows[1]; p2 = rle_rows[2];
 	while(i--) 
 	{ 
-	  *p0++ = rle_chan_map[RLE_RED][(xaULONG)(*p0)];
-	  *p1++ = rle_chan_map[RLE_GREEN][(xaULONG)(*p1)]; 
-	  *p2++ = rle_chan_map[RLE_BLUE][(xaULONG)(*p2)]; 
+	  *p0 = rle_chan_map[RLE_RED][(xaULONG)(*p0)];		p0++;
+	  *p1 = rle_chan_map[RLE_GREEN][(xaULONG)(*p1)]; 	p1++;
+	  *p2 = rle_chan_map[RLE_BLUE][(xaULONG)(*p2)]; 	p2++;
 	}
       }
 
@@ -480,13 +455,13 @@ XA_ANIM_HDR *anim_hdr;
 
   }
   if (rle_row_buf) { FREE(rle_row_buf,0x8002); rle_row_buf=0; }
-  fclose(fin);
+  xin->Close_File(xin);
   return(xaTRUE);
 }
 
 
-void RLE_Read_Row(fp,rle_hdr)
-FILE *fp;
+void RLE_Read_Row(xin,rle_hdr)
+XA_INPUT *xin;
 RLE_HDR *rle_hdr;
 {
   xaULONG posx,opcode,opdata,data;
@@ -506,19 +481,19 @@ RLE_HDR *rle_hdr;
   if (priv_vert_skip) 
   {
     priv_vert_skip--; 
-    DEBUG_LEVEL3 fprintf(stderr,"  Prev Skip %ld\n",priv_vert_skip);
+    DEBUG_LEVEL3 fprintf(stderr,"  Prev Skip %d\n",priv_vert_skip);
     return;
   }
   if ( priv_is_eof ) return;  /* EOF already encountered */
 
   while(!exit_flag)
   {
-    opcode = getc(fp) & 0xff;
-    opdata = getc(fp) & 0xff;
+    opcode = xin->Read_U8(xin) & 0xff;
+    opdata = xin->Read_U8(xin) & 0xff;
     switch( RLE_OPCODE(opcode) )
     {
       case RLE_SkipLinesOp:
-	if (RLE_LONGP(opcode))  priv_vert_skip = UTIL_Get_LSB_Short(fp); 
+	if (RLE_LONGP(opcode))  priv_vert_skip = xin->Read_LSB_U16(xin); 
         else priv_vert_skip = opdata;
 	priv_vert_skip--;  /* count this line */
 	posx = 0;
@@ -528,23 +503,23 @@ RLE_HDR *rle_hdr;
 	channel = opdata; posx = 0;
 	break;
       case RLE_SkipPixelsOp:
-	if (RLE_LONGP(opcode))  posx += UTIL_Get_LSB_Short(fp); 
+	if (RLE_LONGP(opcode))  posx += xin->Read_LSB_U16(xin); 
         else posx += opdata;
 	break;
       case RLE_ByteDataOp:
 	{ register xaULONG i;
-	if (RLE_LONGP(opcode))  opdata = UTIL_Get_LSB_Short(fp); 
+	if (RLE_LONGP(opcode))  opdata = xin->Read_LSB_U16(xin); 
 	opdata++; i = opdata;
         if (channel < 3)
-		  while(i--) {rle_rows[channel][posx] = getc(fp); posx++;}
-	else	{ posx += opdata; while(i--) (void)getc(fp); }
-	if (opdata & 0x01) (void)getc(fp);  /* pad to xaSHORT */
+		  while(i--) {rle_rows[channel][posx] = xin->Read_U8(xin); posx++;}
+	else	{ posx += opdata; while(i--) (void)xin->Read_U8(xin); }
+	if (opdata & 0x01) (void)xin->Read_U8(xin);  /* pad to xaSHORT */
 	}
 	break;
       case RLE_RunDataOp:
-	if (RLE_LONGP(opcode))  opdata = UTIL_Get_LSB_Short(fp); 
+	if (RLE_LONGP(opcode))  opdata = xin->Read_LSB_U16(xin); 
 	opdata++;
-	data = getc(fp) & 0xff;  (void)getc(fp);
+	data = xin->Read_U8(xin) & 0xff;  (void)xin->Read_U8(xin);
         if (channel < 3)
 		while(opdata--) {rle_rows[channel][posx] = data; posx++;}
 	else	posx += opdata;
@@ -554,7 +529,7 @@ RLE_HDR *rle_hdr;
 	exit_flag = 1;
 	break;
       default:
-	fprintf(stderr,"RLE unknown opcode %lx\n",RLE_OPCODE(opcode));
+	fprintf(stderr,"RLE unknown opcode %x\n",RLE_OPCODE(opcode));
 	exit_flag = 1;
     } /* end of opcode switch */
   } /* end of while */

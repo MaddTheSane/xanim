@@ -2,22 +2,24 @@
 /*
  * xanim.h
  *
- * Copyright (C) 1990,1991,1992,1993,1994,1995 by Mark Podlipec. 
+ * Copyright (C) 1990-1998,1999 by Mark Podlipec. 
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  * 
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
  */
 #include <Xos.h>
+#include <stdio.h>
 #include <sys/types.h>
 #include <stdio.h>
+
 #ifndef VMS
 
 #ifndef __QNX__
@@ -28,8 +30,13 @@
 #ifdef __bsdi__
 #include <sys/malloc.h>
 #else
+#ifndef __CYGWIN32__
+#ifndef __FreeBSD__
 #include <malloc.h>
 #endif
+#endif
+#endif
+
 
 #include <unistd.h>
 #else
@@ -43,6 +50,10 @@
 typedef void* XtPointer;
 #endif
 
+#ifdef XA_PETUNIA
+#define XA_REMOTE_CONTROL 1
+#endif
+
 #ifdef XA_ATHENA
 #define XA_REMOTE_CONTROL 1
 #endif
@@ -52,8 +63,15 @@ typedef void* XtPointer;
 #endif
 
 /*
- * MSDOS needs to be specifically told to open file for binary reading.
- * For VMS systems, specify "Stream_LF" mode for VAX C.
+ * Win32 utilizatizes same defines as MSDOS does
+ */
+#ifdef _WIN32
+#define MSDOS 1
+#endif
+
+/*
+ * MSDOS and Win32 needs to be specifically told to open file for binary 
+ * reading.  For VMS systems, specify "Stream_LF" mode for VAX C.
  */
 #ifdef MSDOS
 #define XA_OPEN_MODE "rb"
@@ -76,10 +94,12 @@ typedef unsigned char	xaUBYTE;
 #define xaTRUE   1
 #define xaNOFILE 2
 #define xaERROR  3
+#define xaPAUSE  4
 
 
 #define xaMIN(x,y)   ( ((x)>(y))?(y):(x) )
 #define xaMAX(x,y)   ( ((x)>(y))?(x):(y) )
+#define xaABS(x)     (((x)<0)?(-(x)):(x))
 
 /* X11 variables */
 
@@ -105,6 +125,8 @@ extern xaLONG x11_bitmap_pad;
 extern xaLONG x11_bitmap_unit;
 extern xaLONG x11_bit_order;
 extern xaLONG x11_byte_order;
+extern xaLONG xam_byte_order;
+extern xaLONG x11_byte_mismatch;
 extern xaLONG x11_pack_flag;
 extern xaLONG x11_cmap_flag;
 extern xaLONG x11_cmap_size;
@@ -125,9 +147,13 @@ extern xaLONG x11_black;
 extern xaLONG x11_white;
 extern xaLONG x11_verbose_flag;
 extern xaULONG x11_kludge_1;
+extern xaLONG xa_root;
 
-#define X11_MSB  1
-#define X11_LSB  0
+#define XA_MSBIT_1ST  1
+#define XA_LSBIT_1ST  0
+
+#define XA_MSBYTE_1ST  1
+#define XA_LSBYTE_1ST  0
 
 extern xaLONG xa_anim_holdoff;
 extern xaLONG xa_anim_status;
@@ -166,41 +192,34 @@ extern xaLONG xa_anim_status;
 #define NOFILE_ANIM   0xffff
 #define UNKNOWN_ANIM  0
 /*************************** VIDEO FILES *************/
-#define IFF_ANIM      1
-#define FLI_ANIM      2
-#define GIF_ANIM      3
-#define TXT_ANIM      4
-#define FADE_ANIM     5
-#define DL_ANIM       6
-#define JFIF_ANIM     7
-#define PFX_ANIM      8
-#define SET_ANIM      9
-#define RLE_ANIM     10
-#define AVI_ANIM     11
-#define QT_ANIM      12
-#define MPG_ANIM     13
-#define JMOV_ANIM    14
-#define ARM_ANIM     15
+#define XA_IFF_ANIM      1
+#define XA_FLI_ANIM      2
+#define XA_GIF_ANIM      3
+#define XA_TXT_ANIM      4
+#define XA_FADE_ANIM     5
+#define XA_DL_ANIM       6
+#define XA_JFIF_ANIM     7
+#define XA_PFX_ANIM      8
+#define XA_SET_ANIM      9
+#define XA_RLE_ANIM     10
+#define XA_AVI_ANIM     11
+#define XA_OLDQT_ANIM	12
+#define XA_MPG_ANIM     13
+#define XA_JMOV_ANIM    14
+#define XA_ARM_ANIM     15
+#define XA_SGI_ANIM     16
+#define XA_RAW_ANIM     17
+#define XA_J6I_ANIM     18
+#define XA_QT_ANIM	19
 /*************************** AUDIO FILES *************/
-#define WAV_ANIM     128
-#define AU_ANIM      129
+#define XA_WAV_ANIM     128
+#define XA_AU_ANIM      129
+#define XA_8SVX_ANIM    130
 
 typedef struct
 {
   xaUSHORT red,green,blue,gray;
 } ColorReg;
-
-typedef struct
-{
-  xaUBYTE r0,g0,b0;
-  xaUBYTE r1,g1,b1;
-  xaUBYTE r2,g2,b2;
-  xaUBYTE r3,g3,b3;
-  xaULONG clr0_0,clr0_1,clr0_2,clr0_3;
-  xaULONG clr1_0,clr1_1,clr1_2,clr1_3;
-  xaULONG clr2_0,clr2_1,clr2_2,clr2_3;
-  xaULONG clr3_0,clr3_1,clr3_2,clr3_3;
-} XA_2x2_Color;
 
 typedef struct XA_ACTION_STRUCT
 {
@@ -275,59 +294,51 @@ typedef struct
 
 
 /* POD temporary til complete overhaul */
-#ifdef XA_FORK
 #define XAAUD audiof
-#else
-#define XAAUD vaudiof
-#endif
 
 #ifdef XA_SPARC_AUDIO
 #define XA_AUDIO 1
-#define XA_AUD_OUT_MERGED 1
 #endif
 #ifdef XA_MMS_AUDIO
 #define XA_AUDIO 1
-#define XA_AUD_OUT_MERGED 1
 #endif
 #ifdef XA_AIX_AUDIO
 #define XA_AUDIO 1
-#define XA_AUD_OUT_MERGED 1
 #endif
 #ifdef XA_NetBSD_AUDIO
 #define XA_AUDIO 1
-#define XA_AUD_OUT_MERGED 1
 #endif
 #ifdef XA_LINUX_AUDIO
 #define XA_AUDIO 1
-#define XA_AUD_OUT_MERGED 1
 #endif
 #ifdef XA_SGI_AUDIO
 #define XA_AUDIO 1
-#define XA_AUD_OUT_MERGED 1
 #endif
 #ifdef XA_HPDEV_AUDIO
 #define XA_AUDIO 1
-#define XA_AUD_OUT_MERGED 1
 #endif
 #ifdef XA_HP_AUDIO
 #define XA_AUDIO 1
 #endif
 #ifdef XA_EWS_AUDIO
 #define XA_AUDIO 1
-#define XA_AUD_OUT_MERGED 1
 #endif
 #ifdef XA_SONY_AUDIO
 #define XA_AUDIO 1
-#define XA_AUD_OUT_MERGED 1
 #endif
 #ifdef XA_AF_AUDIO
 #define XA_AUDIO 1
-#define XA_AUD_OUT_MERGED 1
 #endif
 #ifdef XA_NAS_AUDIO
 #define XA_AUDIO 1
-#define XA_AUD_OUT_MERGED 1
 #endif
+#ifdef XA_TOWNS_AUDIO
+#define XA_AUDIO 1
+#endif
+#ifdef XA_TOWNS8_AUDIO
+#define XA_AUDIO 1
+#endif
+
 
 /* AUDIO PORT MASKS */
 #define XA_AUDIO_PORT_INT	1
@@ -345,6 +356,11 @@ typedef struct
 #define XA_AUDIO_ADPCM		0x000040
 #define XA_AUDIO_NOP  		0x000050
 #define XA_AUDIO_ARMLAW		0x000060
+#define XA_AUDIO_IMA4 		0x000070
+#define XA_AUDIO_DVI  		0x000080
+#define XA_AUDIO_GSM  		0x000090
+#define XA_AUDIO_MSGSM 		0x0000A0
+#define XA_AUDIO_ALAW  		0x0000B0
 #define XA_AUDIO_TYPE_MASK  	0xfffff0
 
 /*NOTES: 
@@ -375,6 +391,18 @@ typedef struct
 #define XA_AUDIO_ADPCM_M	0x000040
 #define XA_AUDIO_ADPCM_S	0x000041
 
+#define XA_AUDIO_IMA4_M 	0x000070
+#define XA_AUDIO_IMA4_S 	0x000071
+
+#define XA_AUDIO_DVI_M		0x000080
+#define XA_AUDIO_DVI_S		0x000081
+
+#define XA_AUDIO_GSM_M		0x000090
+#define XA_AUDIO_MSGSM_M	0x0000A0
+
+#define XA_AUDIO_ALAWM 		0x0000B0
+#define XA_AUDIO_ALAWS 		0x0000B1
+
 #define XA_AUDIO_FILE_FLAG   0x0001
 
 typedef struct XA_SND_STRUCT
@@ -392,17 +420,69 @@ typedef struct XA_SND_STRUCT
   xaULONG bit_cnt;	/* dynamic var for partial bytes - not used yet */
   xaULONG byte_cnt;	/* dynamic var for counting bytes */
   xaULONG samp_cnt;	/* samples used so far */
+  xaULONG blk_size;	/* size of blocks - used by some codecs */
+  xaULONG blk_cnt;	/* dynamic var for cnting inside a block */
   xaULONG (*delta)();	/* conversion routine */
   xaULONG snd_time;	/* time at start of snd struct ms */ 
   xaULONG ch_time;	/* chunk time ms */
   xaULONG ch_timelo;	/* chunk time fractional ms */
   xaULONG ch_size;	/* size of chunk */
   xaULONG spec;		/* used by decoder */
+  xaLONG dataL;		/* data Left channel */
+  xaLONG dataR;		/* data Right channel */
   xaUBYTE *snd;		/* sound if present */
   struct XA_SND_STRUCT *prev;
   struct XA_SND_STRUCT *next;
 } XA_SND;
 
+#define XA_SND_CHUNK_SIZE 65536
+
+typedef struct
+{
+  char		*file;		/* is this a duplication of xanim_hdr->file?*/
+  FILE		*fin;           /* buffer file */
+  int		csock;          /* control socket */
+  int		dsock;          /* data socket */
+  xaULONG	fpos;		/* bytes read so far */
+  xaLONG	eof;		/* size of file - set by client */
+  xaULONG	err_flag;	/* set on errors and/or EOF */
+  xaULONG	type_flag;	/* random/sequential access? */
+  xaULONG	load_flag;	/* from file, from memory, buffered? */
+  xaULONG	(*Open_File)();
+  xaULONG	(*Close_File)();
+  xaULONG	(*Read_U8)();
+  xaULONG	(*Read_LSB_U16)();
+  xaULONG	(*Read_MSB_U16)();
+  xaULONG	(*Read_LSB_U32)();
+  xaULONG	(*Read_MSB_U32)();
+  xaLONG	(*Read_Block)();
+  xaLONG	(*At_EOF)();
+  void		(*Set_EOF)();
+  xaLONG	(*Seek_FPos)();
+  xaLONG	(*Get_FPos)();
+	/* This Buffer is used initially to Determine File type and later *
+	 * to contruct u8, u16 and u32 entities for certain input methods */
+  xaUBYTE	*buf;
+  xaULONG	buf_size;
+  xaUBYTE	*buf_ptr;
+  xaULONG	buf_cnt;
+  void		*net;		/* generic structure for addition info */
+} XA_INPUT;
+
+	/* load into memory and play from there */
+#define XA_IN_LOAD_MEM		0x00
+	/* don't load into mem, play from file */
+#define XA_IN_LOAD_FILE		0x01
+	/* decompress into X11 images and play those */
+#define XA_IN_LOAD_BUF		0x02
+
+	/* Input Method supports Random access (otherwise Sequential only) */
+#define XA_IN_TYPE_RANDOM	0x01
+#define XA_IN_TYPE_SEQUENTIAL	0x00
+
+#define XA_IN_ERR_NONE		0x00
+#define XA_IN_ERR_EOF		0x01
+#define XA_IN_ERR_ERR		0x02
 
 typedef struct XA_PAUSE_STRUCT
 {
@@ -419,33 +499,36 @@ typedef struct XA_FUNC_STRUCT
 
 typedef struct XA_ANIM_HDR_STRUCT
 {
-  xaLONG file_num;
-  xaLONG anim_type;	/* animation type */
-  xaLONG imagex;		/* width */
-  xaLONG imagey;		/* height */
-  xaLONG imagec;		/* number of colors */
-  xaLONG imaged;		/* depth in planes */
-  xaLONG dispx;		/* display width */
-  xaLONG dispy;		/* display height */
-  xaLONG buffx;		/* buffered width */
-  xaLONG buffy;		/* buffered height */
-  xaLONG anim_flags;
-  xaLONG loop_num;	/* number of times to loop animation */
-  xaLONG loop_frame;	/* index of loop frame */
-  xaLONG last_frame;	/* index of last frame */
-  xaLONG total_time;	/* Length of Anim in ms */
-  char *name;		/* name of anim */
-  char *fname;		/* name of anim data file(video and audio) */
-/* char *fsndname;	eventually have separate sound file name */
-  xaLONG max_fvid_size;	/* Largest video codec size */
-  xaLONG max_faud_size;	/* Largest audio codec size */
-  XA_FRAME *frame_lst;	/* array of Frames making up the animation */
-  XA_ACTION *acts;	/* actions associated with this animation */
-  XA_SND *first_snd;	/* ptr to first sound chunk */
-  XA_SND *last_snd;	/* ptr to last sound chunk */
-  XA_PAUSE *pause_lst;	/* pause list */
-  void (*init_vid)();	/* routine to init video */
-  void (*init_aud)();	/* routine to init audio */
+  xaLONG	file_num;
+  xaLONG	anim_type;	/* animation type */
+  xaLONG	imagex;		/* width */
+  xaLONG	imagey;		/* height */
+  xaLONG	imagec;		/* number of colors */
+  xaLONG	imaged;		/* depth in planes */
+  xaLONG	dispx;		/* display width */
+  xaLONG	dispy;		/* display height */
+  xaLONG	buffx;		/* buffered width */
+  xaLONG	buffy;		/* buffered height */
+  xaLONG	anim_flags;
+  xaLONG	loop_num;	/* number of times to loop animation */
+  xaLONG	loop_frame;	/* index of loop frame */
+  xaLONG	last_frame;	/* index of last frame */
+  xaLONG	total_time;	/* Length of Anim in ms */
+  char		*name;		/* name of anim */
+  char		*fname;		/* name of anim data file(video and audio) */
+  char		*desc;		/* descriptive string */
+/* char		 *fsndname;	   eventually have separate sound file name */
+  XA_INPUT	*xin;		/* XAnim Input structure */
+  xaULONG	(*Read_File)();	/* Routine to Parse Animation */
+  xaLONG	max_fvid_size;	/* Largest video codec size */
+  xaLONG	max_faud_size;	/* Largest audio codec size */
+  XA_FRAME	*frame_lst;	/* array of Frames making up the animation */
+  XA_ACTION	*acts;		/* actions associated with this animation */
+  XA_SND	*first_snd;	/* ptr to first sound chunk */
+  XA_SND	*last_snd;	/* ptr to last sound chunk */
+  XA_PAUSE	*pause_lst;	/* pause list */
+  void		(*init_vid)();	/* routine to init video */
+  void		(*init_aud)();	/* routine to init audio */
  
   XA_FUNC_CHAIN *free_chain;	/* list of routines to call on exit */
   struct XA_ANIM_HDR_STRUCT *next_file;
@@ -543,6 +626,21 @@ typedef struct
 
 typedef struct
 {
+  xaULONG cfunc_type;
+  void (*color_RGB)();
+  void (*color_Gray)();
+  void (*color_CLR8)();
+  void (*color_CLR16)();
+  void (*color_CLR32)();
+  void (*color_332)();
+  void (*color_CF4)();
+  void (*color_332_Dither)();
+  void (*color_CF4_Dither)();
+} XA_COLOR_FUNC;
+
+
+typedef struct
+{
   xaULONG imagex,max_imagex;
   xaULONG imagey,max_imagey;
   xaULONG imagec;
@@ -556,6 +654,7 @@ typedef struct
   xaULONG cmap_flag;
   xaULONG cmap_cnt;
   xaULONG color_cnt;
+  xaULONG color_retries;
   xaULONG cmap_frame_num;
   ColorReg cmap[256];
   XA_CHDR  *chdr;
@@ -740,8 +839,7 @@ typedef struct
 
 extern void TheEnd();
 extern void TheEnd1();
-extern void ShowAnimation();
-extern void ShowAction();
+extern void XAnim_Looped();
 extern void Cycle_It();
 extern xaULONG X11_Get_True_Color();
 extern xaULONG X11_Get_Line_Size();
@@ -750,8 +848,9 @@ extern xaULONG X11_Get_Line_Size();
 /* AUDIO STUFF */
 
 #define XA_AUDIO_STOPPED 0
-#define XA_AUDIO_STARTED 1
-#define XA_AUDIO_NICHTDA 2
+#define XA_AUDIO_PREPPED 1
+#define XA_AUDIO_STARTED 2
+#define XA_AUDIO_NICHTDA 3
 
 #define XA_AUDIO_OK   0
 #define XA_AUDIO_UNK  1
@@ -811,6 +910,7 @@ fprintf(stderr,"FREE %lx %lx ret=%ld err=%ld\n",_p,_q,ret,errno); }
 */
 
 
+/* REV 1 */
 typedef struct
 {
   xaULONG cmd;			/* decode or query */
@@ -825,4 +925,8 @@ typedef struct
   xaULONG special;		/* Special Info */
   void *extra;			/* Decompression specific info */
 } XA_DEC_INFO;
+
+#include "xa_dec2.h"
+
+
 

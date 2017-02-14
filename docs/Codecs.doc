@@ -1,0 +1,123 @@
+
+This is a list of the various AVI and Quicktime Codecs that
+I'm familiar with.
+
+
+       Vendor and Name           ID         Depth/Color Variations
+     --------------------------------------------------------
+        Apple None              (RAW )           depth  1
+       -Apple None              (RAW )           depth  2
+        Apple None              (RAW )           depth  4
+        Apple None              (RAW )           depth  8
+        Apple None              (RAW )           depth 16
+        Apple None              (RAW )           depth 24
+        Apple None              (RAW )           depth 32
+       -Apple None Gray         (RAW )           depth  2(Gray)
+        Apple None Gray         (RAW )           depth  4(Gray)
+        Apple None Gray         (RAW )           depth  8(Gray)
+        Apple Animation         (RLE )           depth  1
+       -Apple Animation         (RLE )           depth  2
+        Apple Animation         (RLE )           depth  4
+        Apple Animation         (RLE )           depth  8
+        Apple Animation         (RLE )           depth 16
+        Apple Animation         (RLE )           depth 24
+        Apple Animation         (RLE )           depth 32
+       -Apple Animation Gray    (RLE )           depth  2(Gray)
+        Apple Animation Gray    (RLE )           depth  4(Gray)
+        Apple Animation Gray    (RLE )           depth  8(Gray)
+        Apple Graphics          (SMC )           depth  8
+        Apple Graphics          (SMC )           depth  8(Gray)
+        Apple Video             (RPZA)           depth 16
+        Component Video         (YUV2)           depth 24
+       #Creative Technology     (CYUV)		 depth 16
+       -Duck Truemotions S      (TMOT)		 depth ??
+	Editable MPEG           (XMPG)           depth 24
+        IBM Ultimotion          (ULTI) 	         depth 16
+       #Intel Raw               (YUV9)/(YVU9)    depth 24
+       #Intel Raw               (YUV9)/(YVU9)    depth 32
+       -Intel Indeo R2.1        (RT21)           depth 24
+       #Intel Indeo R3.1        (IV31)           depth 24
+       #Intel Indeo R3.2        (IV32)           depth 24
+       -Intel Indeo R4.1        (IV41)           depth 24
+        Intergraph JPEG         (IJPG)           depth 24
+        JPEG                    (JPEG)           depth  8
+        JPEG                    (JPEG)           depth 24  YUV 11_11_11
+        JPEG                    (JPEG)           depth 24  YUV 21_11_11
+        JPEG                    (JPEG)           depth 24  YUV 22_11_11
+        JPEG                    (JPEG)           depth 24  YUV 41_11_11
+	Kodak Photo CD          (KPCD)           depth 24  (limited support)
+        Microsoft None          (RGB )           depth  4
+        Microsoft None          (RGB )           depth  8
+        Microsoft None          (RGB )           depth 16
+        Microsoft None          (RGB )           depth 24
+       -Microsoft RLE           (RLE )           depth  4
+        Microsoft RLE           (RLE )           depth  8
+        Microsoft Video 1 (WHAM)(CRAM)/(MSVC)    depth  8
+        Microsoft Video 1 (WHAM)(CRAM)/(MSVC)    depth 16
+       -Miro Video XL           (VIXL)		 depth 24
+        MJPEG                   (MJPG)           depth 24  YUV 11_11_11
+        MJPEG                   (MJPG)           depth 24  YUV 21_11_11
+        MJPEG                   (MJPG)           depth 24  YUV 22_11_11
+        MJPEG                   (MJPG)           depth 24  YUV 41_11_11
+       -Motion Pixels		(MVI1)           depth 16
+       -Radius Spigot           (SPIG)           depth 24
+       -Radius Video Vision	(PGVV)           depth 24
+       #Radius Cinepak          (CVID)           depth  8 (Gray)
+       #Radius Cinepak          (CVID)           depth 24
+       -VDONet                  (VDOW)		 depth 24
+       -????                    (KMVC)		 depth 24
+       -????                    (AASC)
+       -????                    (VDEC)
+       - Sorenson Vision Video	(SVQ1)
+     --------------------------------------------------------
+    - Currently not supported by XAnim(2.70.7.0). All of the RLE 2 and 4
+      bit variations can be supported any time there's a need.
+    # Intel Indeo 3.1 and 3.2 can be supported by linking in the proper
+      xa2.0_iv32_*.o for your machine. see indeo.readme
+
+    # Radius Cinepak can be supported by linking in the proper
+      xa2.0_cvid_*.o for your machine. see cinepak.readme
+
+    # Creative Technology CYUV can be supported by linking in the proper
+      xa1.0_cyuv_*.o for your machine. see creative.readme
+      
+
+
+                     AVI/WAV Audio Codecs
+       Vendor and Name           ID
+     --------------------------------------------------------
+        PCM             0x0001           m/s  8 bits
+        PCM             0x0001           m/s 16 bits
+        uLaw            0x0007           m/s 16(8) bits
+        MSADPCM         0x0002           m/s 16(4) bits
+        DVI/IMA ADPCM   0x0011           m/s 16(4) bits
+      - DSP TrueSpeech	0x0022
+	GSM 6.10	0x0031
+      - MPEG Layer I/II	0x0050
+      - MPEG Layer III	0x0055
+      - Voxware		0x0062
+      - Voxware		0x0075
+      - Vivo Siren	0x0112
+      - Vivo G723.1	0x0111	
+     --------------------------------------------------------
+
+
+                     Quicktime Audio Codecs
+
+       Vendor and Name           ID
+     --------------------------------------------------------
+        Unsigned PCM		(PCM )/(PCM0)    m/s  8 bits
+        Unsigned PCM		(PCM )/(PCM0)    m/s 16 bits
+        Signed PCM		(TWOS)           m/s  8 bits
+        Signed PCM		(TWOS)           m/s 16 bits
+        uLAW 			(ULAW)           8 -> 12 bits
+      - MAC3			(MAC3)           ?           (can't get specs)
+      - MAC6			(MAC6)           ?           (can't get specs)
+        IMA ADPCM 		(IMA4)           m/s 16(4) bits
+      - QualComm PureVoice	(Qclp)
+      - QDesign Music Codec	(QDMC)
+     --------------------------------------------------------
+    - Currently not supported by XAnim 2.70.7.0
+
+
+

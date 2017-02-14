@@ -2,18 +2,21 @@
 /*
  * xa_act.c
  *
- * Copyright (C) 1990,1991,1992,1993,1994,1995 by Mark Podlipec. 
+ * Copyright (C) 1990-1998,1999 by Mark Podlipec. 
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright 
+ * notice is preserved intact on all copies.
  * 
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
+ * 17Mar98:  Fixed bug in Make_Images with some types of Clips and TrueColor
+ *	     clip_mask would get mapped to common color. Need to generate
+ *	     clip masks prior to mapping.
  */
 #include "xanim.h"
 #include <Intrinsic.h>
@@ -62,6 +65,8 @@ void UTIL_Create_Clip();
 void UTIL_Sub_Image();
 xaUBYTE *UTIL_RGB_To_FS_Map();
 xaUBYTE *UTIL_RGB_To_Map();
+
+extern xaULONG XA_Get_Image_Type();
 
 XA_CHDR *CMAP_Create_CHDR_From_True();
 XA_CHDR *CMAP_Create_332();
@@ -133,7 +138,7 @@ xaULONG already_disp_flag;	/* ipic already in display form */
   else  resize_flag = xaFALSE;
 
   DEBUG_LEVEL2 fprintf(stderr,"Setup_Mapped:\n");
-  DEBUG_LEVEL2 fprintf(stderr,"  <%ld,%ld> <%ld,%ld>\n",
+  DEBUG_LEVEL2 fprintf(stderr,"  <%d,%d> <%d,%d>\n",
                 xpos,  ypos, xsize, ysize  );
 
   t_pic = clip_ptr = 0;
@@ -178,7 +183,7 @@ xaULONG already_disp_flag;	/* ipic already in display form */
 			malloc(ysize * (X11_Get_Bitmap_Width(xsize)/8) );
 	      if (clip_ptr==0) TheEnd1("Setup_Mapped: clip malloc err\n");
 	      UTIL_Create_Clip(clip_ptr,p_pic,clip_mask,xsize,ysize,
-			inpix_size,X11_Get_Bitmap_Width(xsize),X11_LSB);
+			inpix_size,X11_Get_Bitmap_Width(xsize),XA_LSBIT_1ST);
 	    }
 	    if (p_pic) { FREE(p_pic,0x106); p_pic = 0; }
           }
@@ -200,7 +205,7 @@ xaULONG already_disp_flag;	/* ipic already in display form */
 			malloc(ysize * (X11_Get_Bitmap_Width(xsize)/8) );
 	    if (clip_ptr==0) TheEnd1("Setup_Mapped: clip malloc err\n");
 	    UTIL_Create_Clip(clip_ptr,ipic,clip_mask,xsize,ysize,
-			inpix_size,X11_Get_Bitmap_Width(xsize),X11_LSB);
+			inpix_size,X11_Get_Bitmap_Width(xsize),XA_LSBIT_1ST);
           }
 	  act->type = ACT_DISP; act_map_hdr->psize = 0;
 	}
@@ -208,28 +213,54 @@ xaULONG already_disp_flag;	/* ipic already in display form */
     case XA_DIRECTCOLOR:
     case XA_TRUECOLOR:
         inpix_size = x11_bytes_pixel;
-	if (clip_flag == xaTRUE) 
-	  clip_mask = (chdr)?( chdr->map[clip_mask - chdr->coff] ): 0 ;
+
+
+	/* Create Bitmap based on Original GIF Image */
+  if ( (clip_ptr==0) && (clip_flag==xaTRUE) )
+  {
+    clip_ptr = (xaUBYTE *) malloc(ysize * (X11_Get_Bitmap_Width(xsize)/8) );
+    if (clip_ptr==0) TheEnd1("Setup_Mapped: clip malloc err\n");
+    UTIL_Create_Clip(clip_ptr,ipic,clip_mask,xsize,ysize,
+			1,X11_Get_Bitmap_Width(xsize),XA_LSBIT_1ST);
+  }
+
 	if (need_to_scale == xaTRUE)
         {
 	  xaULONG xpos_o,ypos_o,xsize_o,ysize_o;
+
 	  xpos_o = xpos; ypos_o = ypos;
 	  if (full_ipic_flag == xaFALSE) xpos = ypos = 0;
 	  t_pic = UTIL_Alloc_Scaled(xsize,ysize,width,height,
 			buff_x,buff_y,x11_bytes_pixel,xpos_o,ypos_o,xaFALSE);
 	  if (t_pic)
-	  {
+	  { 
+
+	    if ((clip_ptr) && (clip_flag==xaTRUE))
+	    { xaULONG cxpos, cypos, cxsize, cysize;
+	      xaUBYTE *new_clip = UTIL_Scale_Bitmap(0,clip_ptr,
+			xsize,ysize,(X11_Get_Bitmap_Width(xsize/8)),
+			width, height,
+			buff_x, buff_y,
+			&cxpos, &cypos, &cxsize, &cysize,
+			XA_LSBIT_1ST, XA_LSBIT_1ST);
+	      if (new_clip) { free(clip_ptr); clip_ptr = new_clip; }
+	      else { free(clip_ptr); clip_ptr = 0; clip_flag = xaFALSE; }
+	    }
+
 	    if (already_disp_flag==xaTRUE) chdr=0;
 	    UTIL_Scale_Mapped(t_pic,ipic,xpos,ypos,xsize,ysize,
 		inline_size,width,height,buff_x,buff_y,x11_bytes_pixel,
 		&xpos_o,&ypos_o,&xsize_o,&ysize_o,chdr);
             xpos = xpos_o; ypos = ypos_o; xsize = xsize_o; ysize = ysize_o;
 	    act->type = ACT_DISP;	act_map_hdr->psize = 8;
+
 	  }
 	  else /* scale to zero size */
 	  {
-	    act->type = ACT_NOP;	clip_flag = xaFALSE;
+	    act->type = ACT_NOP;	
 	    FREE(act_map_hdr,0x101);	act_map_hdr = 0;
+	    clip_flag = xaFALSE;
+	    if (clip_ptr) { free(clip_ptr); clip_ptr = 0; }
 	  }
 	}
 	else
@@ -260,6 +291,16 @@ xaULONG already_disp_flag;	/* ipic already in display form */
     case XA_STATICCOLOR:
     case XA_GRAYSCALE:
     case XA_PSEUDOCOLOR:
+
+	/* Create Bitmap based on Original GIF Image */
+  if ( (clip_ptr==0) && (clip_flag==xaTRUE) )
+  {
+    clip_ptr = (xaUBYTE *) malloc(ysize * (X11_Get_Bitmap_Width(xsize)/8) );
+    if (clip_ptr==0) TheEnd1("Setup_Mapped: clip malloc err\n");
+    UTIL_Create_Clip(clip_ptr,ipic,clip_mask,xsize,ysize,
+			1,X11_Get_Bitmap_Width(xsize),XA_LSBIT_1ST);
+  }
+
 	if (need_to_scale == xaTRUE)
         {
 	  xaULONG xpos_o,ypos_o,xsize_o,ysize_o;
@@ -270,6 +311,18 @@ xaULONG already_disp_flag;	/* ipic already in display form */
 		buff_x,buff_y,x11_bytes_pixel,xpos_o,ypos_o,xaFALSE);
 	  if (t_pic)
 	  {
+	    if ((clip_ptr) && (clip_flag==xaTRUE))
+	    { xaULONG cxpos, cypos, cxsize, cysize;
+	      xaUBYTE *new_clip = UTIL_Scale_Bitmap(0,clip_ptr,
+			xsize,ysize,(X11_Get_Bitmap_Width(xsize/8)),
+			width, height,
+			buff_x, buff_y,
+			&cxpos, &cypos, &cxsize, &cysize,
+			XA_LSBIT_1ST, XA_LSBIT_1ST);
+	      if (new_clip) { free(clip_ptr); clip_ptr = new_clip; }
+	      else { free(clip_ptr); clip_ptr = 0; clip_flag = xaFALSE; }
+	    }
+
 	    UTIL_Scale_Mapped(t_pic,ipic,xpos,ypos,xsize,ysize,
 			inline_size,width,height,buff_x,buff_y,
 			inpix_size,&xpos_o,&ypos_o,&xsize_o,&ysize_o,0);
@@ -301,7 +354,7 @@ xaULONG already_disp_flag;	/* ipic already in display form */
 	break;
      default:
 	act->type = ACT_NOP;
-	fprintf(stderr,"invalid X11 display ?? %lx\n",x11_display_type);
+	fprintf(stderr,"invalid X11 display ?? %x\n",x11_display_type);
 	TheEnd();
   }
 
@@ -310,7 +363,7 @@ xaULONG already_disp_flag;	/* ipic already in display form */
     clip_ptr = (xaUBYTE *) malloc(ysize * (X11_Get_Bitmap_Width(xsize)/8) );
     if (clip_ptr==0) TheEnd1("Setup_Mapped: clip malloc err\n");
     UTIL_Create_Clip(clip_ptr,t_pic,clip_mask,xsize,ysize,
-			inpix_size,X11_Get_Bitmap_Width(xsize),X11_LSB);
+			inpix_size,X11_Get_Bitmap_Width(xsize),XA_LSBIT_1ST);
   }
 
   act->data = (xaUBYTE *) act_map_hdr;
@@ -336,7 +389,7 @@ xaULONG cmap_flag,map_flag;
   chdr = (XA_CHDR *)malloc(sizeof(XA_CHDR));
   if (chdr == 0) TheEnd1("ACT_Get_CHDR: malloc err\n");
 
-  DEBUG_LEVEL2 fprintf(stderr,"ACT_Get_CHDR %lx\n",(xaULONG)chdr);
+  DEBUG_LEVEL2 fprintf(stderr,"ACT_Get_CHDR %x\n",(xaULONG)chdr);
 
   chdr->rev    = rev;
   chdr->csize  = csize;
@@ -398,14 +451,14 @@ xaULONG rbits,gbits,bbits;
   gscale = cmap_scale[gbits];
   bscale = cmap_scale[bbits];
 
-  DEBUG_LEVEL2 fprintf(stderr,"c scales %lx %lx %lx\n",rscale,gscale,bscale);
+  DEBUG_LEVEL2 fprintf(stderr,"c scales %x %x %x\n",rscale,gscale,bscale);
   for(i = 0; i < csize; i++)
   {
     chdr->cmap[i].red   = xa_gamma_adj[ ((rscale * new_map[i].red  ) >> 8) ];
     chdr->cmap[i].green = xa_gamma_adj[ ((gscale * new_map[i].green) >> 8) ];
     chdr->cmap[i].blue  = xa_gamma_adj[ ((bscale * new_map[i].blue ) >> 8) ];
 
-    DEBUG_LEVEL3 fprintf(stderr,"%ld) %lx %lx %lx\n",i,
+    DEBUG_LEVEL3 fprintf(stderr,"%d) %x %x %x\n",i,
 	chdr->cmap[i].red,chdr->cmap[i].green,chdr->cmap[i].blue);
   }
   rscale *= 11;
@@ -461,13 +514,13 @@ xaULONG rbits,gbits,bbits;
   gscale = cmap_scale[gbits];
   bscale = cmap_scale[bbits];
 
-  DEBUG_LEVEL2 fprintf(stderr,"c scales %lx %lx %lx\n",rscale,gscale,bscale);
+  DEBUG_LEVEL2 fprintf(stderr,"c scales %x %x %x\n",rscale,gscale,bscale);
   for(i = 0; i < csize; i++)
   {
     act_cmap[i].red   = xa_gamma_adj[ ((rscale * new_map[i].red  ) >> 8) ];
     act_cmap[i].green = xa_gamma_adj[ ((gscale * new_map[i].green) >> 8) ];
     act_cmap[i].blue  = xa_gamma_adj[ ((bscale * new_map[i].blue ) >> 8) ];
-    DEBUG_LEVEL3 fprintf(stderr,"%ld) %lx %lx %lx\n",i,
+    DEBUG_LEVEL3 fprintf(stderr,"%d) %x %x %x\n",i,
 	act_cmap[i].red,act_cmap[i].green, act_cmap[i].blue);
   }
 
@@ -496,7 +549,8 @@ XA_CHDR *chdr;
     /* add action to chdr's action list */
     act->next_same_chdr = chdr->acts;
     chdr->acts = act;
-  } else fprintf(stderr,"ACT_Add_CHDR_To_Action: Err %lx %lx\n",act,chdr);
+  } else fprintf(stderr,"ACT_Add_CHDR_To_Action: Err %x %x\n",
+						(xaULONG)act,(xaULONG)chdr);
 }
 
 void ACT_Del_CHDR_From_Action(act,chdr)
@@ -534,7 +588,7 @@ XA_ACTION *act;
   DEBUG_LEVEL1 fprintf(stderr,"ACT_Make_Images: ");
   while(act)
   {
-    DEBUG_LEVEL2 fprintf(stderr,"act %lx \n",act->type);
+    DEBUG_LEVEL2 fprintf(stderr,"act %x \n",act->type);
     switch(act->type)
     {
       case ACT_SETTER:
@@ -583,7 +637,7 @@ XA_ACTION *act;
 	    xaULONG i,new_csize,old_csize,old_coff;
 
             DEBUG_LEVEL2
-		fprintf(stderr,"ACT_Make_Images remapping CMAP %lx %lx\n",
+		fprintf(stderr,"ACT_Make_Images remapping CMAP %x %x\n",
 			(xaULONG)act->chdr, (xaULONG)new_chdr);
 
 	    old_cmap_hdr = (ACT_CMAP_HDR *) act->data;
@@ -624,7 +678,7 @@ XA_ACTION *act;
 	  if (act->chdr->new_chdr)
 	  {
             DEBUG_LEVEL2
-		fprintf(stderr,"ACT_Make_Images remapping MAPPED %lx %lx\n",
+		fprintf(stderr,"ACT_Make_Images remapping MAPPED %x %x\n",
 			(xaULONG)act->chdr, (xaULONG)act->chdr->new_chdr);
 
 	    act_map_hdr = (ACT_MAPPED_HDR *) act->data;
@@ -773,7 +827,6 @@ XA_ACTION *act;
         { ACT_SETTER_HDR *act_pms_hdr;
           act_pms_hdr = (ACT_SETTER_HDR *)(act->data);
           FREE(act_pms_hdr,0x10a);
-/*POD NOTE: shouldn't this be FREE(act->data,0x10a) and act->data = 0 ??? */
         }
         break;
       default:
@@ -788,25 +841,26 @@ XA_ACTION *act;
 /****************************
  *
  *
- *  fin is an open FILE handle to the animation file. It MUST be
+ *  xin is an open XA_INPUT handle to the animation file. It MUST be
  *  returned in the same file position it was passed in as.
  ********/
-void ACT_Setup_Delta(anim,act,dlta_hdr,fin)
+void ACT_Setup_Delta(anim,act,dlta_hdr,xin)
 XA_ANIM_SETUP *anim;
 XA_ACTION *act;
 ACT_DLTA_HDR *dlta_hdr;
-FILE *fin;
+XA_INPUT *xin;
 { XA_DEC_INFO dec_info;
-  dec_info.imagex    = anim->imagex;
-  dec_info.imagey    = anim->imagey;
-  dec_info.imaged    = anim->depth;
-  dec_info.chdr      = 0;
-  dec_info.map_flag  = xaFALSE;
-  dec_info.map       = 0;
-  dec_info.special   = 0;
-  dec_info.extra     = dlta_hdr->extra;
-  dec_info.skip_flag = 0;
-
+  XA_DEC2_INFO dec2_info;
+  dec2_info.imagex    = dec_info.imagex    = anim->imagex;
+  dec2_info.imagey    = dec_info.imagey    = anim->imagey;
+  dec2_info.imaged    = dec_info.imaged    = anim->depth;
+  dec2_info.chdr      = dec_info.chdr      = 0;
+  dec2_info.map_flag  = dec_info.map_flag  = xaFALSE;
+  dec2_info.map       = dec_info.map       = 0;
+  dec2_info.special   = dec_info.special   = 0;
+  dec2_info.extra     = dec_info.extra     = dlta_hdr->extra;
+  dec2_info.skip_flag = dec_info.skip_flag = 0;
+  dec2_info.bytes_pixel = x11_bytes_pixel;
 
   if (act->type == ACT_NOP)
   {
@@ -823,16 +877,37 @@ FILE *fin;
 		the_pic = (xaUBYTE *) malloc( 3 * psize );
       else	the_pic = (xaUBYTE *) malloc(XA_PIC_SIZE(psize));
       if (the_pic == 0) TheEnd1("ACT_Setup_Delta: malloc err.");
-      free_pic_flag = xaTRUE; /* POD new */
+      free_pic_flag = xaTRUE;
     }
     if ( (cmap_true_map_flag==xaFALSE) || (anim->depth <= 8) )
-    { dec_info.map_flag	= (x11_display_type & XA_X11_TRUE)?(xaTRUE):(xaFALSE); 
-      dec_info.map	= anim->chdr->map;
-      dlta_flag = dlta_hdr->delta(the_pic,dlta_hdr->data,
+    { 
+
+      dec2_info.map_flag = dec_info.map_flag
+			= (x11_display_type & XA_X11_TRUE)?(xaTRUE):(xaFALSE); 
+      dec2_info.map = dec_info.map	= anim->chdr->map;
+
+      if (dlta_hdr->xapi_rev == 0x0002)
+      {
+
+        dec2_info.image_type = XA_Get_Image_Type( dlta_hdr->special,
+				0,dec2_info.map_flag);
+
+        dlta_flag = dlta_hdr->delta(the_pic,dlta_hdr->data,
+			dlta_hdr->fsize,&dec2_info);
+        if (!(dlta_flag & ACT_DLTA_MAPD)) dec2_info.map_flag = xaFALSE;
+        xpos  = dec2_info.xs;	ypos  = dec2_info.ys;
+        xsize = dec2_info.xe;	ysize = dec2_info.ye;
+      }
+      else /* if (dlta_hdr->xapi_rev == 0x0001) */
+      {
+        dlta_flag = dlta_hdr->delta(the_pic,dlta_hdr->data,
 			dlta_hdr->fsize,&dec_info);
-      if (!(dlta_flag & ACT_DLTA_MAPD)) dec_info.map_flag = xaFALSE;
-      xpos  = dec_info.xs;	ypos  = dec_info.ys;
-      xsize = dec_info.xe;	ysize = dec_info.ye;
+        if (!(dlta_flag & ACT_DLTA_MAPD)) dec_info.map_flag = xaFALSE;
+        xpos  = dec_info.xs;	ypos  = dec_info.ys;
+        xsize = dec_info.xe;	ysize = dec_info.ye;
+      }
+
+
       xsize -= xpos; ysize -= ypos;
       FREE(dlta_hdr,0xA001); act->data = 0; dlta_hdr = 0;
       if (dlta_flag & ACT_DLTA_NOP) 
@@ -846,9 +921,17 @@ FILE *fin;
     } 
     else /* decode as RGB triplets and then convert to mapped image */
     { xaUBYTE *tpic = 0;
-      dec_info.special = 1;
-      dlta_flag = dlta_hdr->delta(the_pic,dlta_hdr->data,
+      dec2_info.special = dec_info.special = 1;
+      if (dlta_hdr->xapi_rev == 0x0002)
+      { dec2_info.image_type = XA_Get_Image_Type( dlta_hdr->special,
+                                           0,dec2_info.map_flag);
+        dlta_flag = dlta_hdr->delta(the_pic,dlta_hdr->data,
+			dlta_hdr->fsize,&dec2_info);
+      }
+      else /* if (dlta_hdr->xapi_rev == 0x0001) */
+      { dlta_flag = dlta_hdr->delta(the_pic,dlta_hdr->data,
 			dlta_hdr->fsize,&dec_info);
+      }
       /*POD NOTE: need to add subimage support to RGB conversion utils */
       /* until then ignore optimization and force full image */
       /* xsize -= xpos; ysize -= ypos; */
@@ -889,7 +972,7 @@ FILE *fin;
 	)
     {
       if (anim->cmap_flag==0)
-      { xaULONG xpos,ypos,xsize,ysize,dlta_flag,psize;
+      { xaULONG dlta_flag,psize;
 	xaUBYTE *cbuf,*data;
 
 	psize = anim->imagex * anim->imagey;
@@ -901,13 +984,19 @@ FILE *fin;
 	{ xaULONG pos;
 	  data = (xaUBYTE *)malloc(dlta_hdr->fsize);
 	  if (data==0) TheEnd1("colorfunc1 malloc err1\n");
-	  pos = ftell(fin);
-	  fseek(fin,dlta_hdr->fpos,0); /* save file pos */
-	  fread(data,dlta_hdr->fsize,1,fin); /* read data*/
-	  fseek(fin,pos,0); /* restore file pos */
+	  pos = xin->Get_FPos(xin);
+	  xin->Seek_FPos(xin,dlta_hdr->fpos,0); /* save file pos */
+	  xin->Read_Block(xin,data,dlta_hdr->fsize); /* read data*/
+	  xin->Seek_FPos(xin,pos,0); /* restore file pos */
 	} else data = dlta_hdr->data;
-	dec_info.special   = 1;
-	dlta_flag = dlta_hdr->delta(cbuf,data,dlta_hdr->fsize,&dec_info);
+	dec2_info.special = dec_info.special   = 1;
+	if (dlta_hdr->xapi_rev == 0x0002)
+        { dec2_info.image_type = XA_Get_Image_Type(dlta_hdr->special,
+                                           0,dec2_info.map_flag);
+	  dlta_flag = dlta_hdr->delta(cbuf,data,dlta_hdr->fsize,&dec2_info);
+        }
+        else /* if (dlta_hdr->xapi_rev == 0x0001) */
+	  dlta_flag = dlta_hdr->delta(cbuf,data,dlta_hdr->fsize,&dec_info);
 	if ((xa_file_flag == xaTRUE) && (dlta_hdr->fsize != 0)) 
 					{ FREE(data,0xA004); data = 0; }
 	switch(cmap_color_func)
@@ -916,10 +1005,21 @@ FILE *fin;
 	  {
 	    anim->chdr = CMAP_Create_CHDR_From_True(cbuf,8,8,8,
 			 anim->imagex,anim->imagey,anim->cmap,&(anim->imagec));
-	    DEBUG_LEVEL1 fprintf(stderr,"CF4: csize = %ld\n",anim->chdr->csize);
+	    DEBUG_LEVEL1 fprintf(stderr,"CF4: csize = %d\n",anim->chdr->csize);
 	    anim->color_cnt += anim->chdr->csize;
-	    if (anim->color_cnt > 64)  /* POD TEST */
-			{ anim->cmap_flag = 1; anim->color_cnt = 0; }
+
+DEBUG_LEVEL1 fprintf(stderr,"Attempt: color_cnt %d retries %d \n",
+					anim->color_cnt, anim->color_retries);
+
+	    if (anim->color_cnt > 64)
+			{ anim->cmap_flag = 1; anim->color_cnt = 0; 
+			  anim->color_retries = 0; }
+            else
+	    {  anim->color_retries++;
+	       if (anim->color_retries > 3)
+			{ anim->cmap_flag = 1; anim->color_cnt = 0; 
+			  anim->color_retries = 0; }
+	    }
 	    if (cbuf) FREE(cbuf,0xA005); cbuf = 0;
 	  }
 	  break;
@@ -927,6 +1027,8 @@ FILE *fin;
       } /* first time through */
       else  /* else cnt til next time */
       { 
+DEBUG_LEVEL1 fprintf(stderr,"Attempt: cmap_cnt %d fm_num %d sam_cnt %d\n",
+			anim->cmap_cnt, anim->cmap_frame_num, cmap_sample_cnt);
 	anim->cmap_cnt++;
 	if (cmap_sample_cnt && (anim->cmap_cnt >= anim->cmap_frame_num))
 		{ anim->cmap_flag = 0; anim->cmap_cnt = anim->color_cnt = 0; }

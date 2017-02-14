@@ -2,15 +2,15 @@
 /*
  * xa_ipc.h
  *
- * Copyright (C) 1995 by Mark Podlipec. 
+ * Copyright (C) 1995-1998,1999 by Mark Podlipec. 
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  * 
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
@@ -22,11 +22,17 @@
  *
  *******************************/
 
-#ifdef XA_FORK
 
 #include <errno.h>
 
+/* POD: Make this as big as possible without breaking pipes */
+/* #define XA_IPC_CHUNK 16384 */
+
+#ifdef XA_SOCKET
+#define XA_IPC_CHUNK 4096    /* or higher?? */
+#else  /* PIPE */
 #define XA_IPC_CHUNK 256
+#endif
 
 /*                               */
 #define XA_IPC_ERR		0x00000
@@ -52,20 +58,21 @@
 #define XA_IPC_AUD_SETUP	0x00200
 #define XA_IPC_AUD_INIT		0x00201
 #define XA_IPC_AUD_KILL		0x00202
-#define XA_IPC_AUD_ON		0x00203
-#define XA_IPC_AUD_OFF		0x00204
-#define XA_IPC_AUD_PORT		0x00205
-#define XA_IPC_AUD_STOG		0x00206
-#define XA_IPC_AUD_HTOG		0x00207
-#define XA_IPC_AUD_LTOG		0x00208
+#define XA_IPC_AUD_PREP		0x00203
+#define XA_IPC_AUD_ON		0x00204
+#define XA_IPC_AUD_OFF		0x00205
+#define XA_IPC_AUD_PORT		0x00206
+#define XA_IPC_AUD_STOG		0x00207
+#define XA_IPC_AUD_HTOG		0x00208
+#define XA_IPC_AUD_LTOG		0x00209
 
-#define XA_IPC_AUD_ENABLE	0x00209
-#define XA_IPC_AUD_MUTE		0x0020a
-#define XA_IPC_AUD_VOL 		0x0020b
-#define XA_IPC_AUD_RATE		0x0020c
-#define XA_IPC_AUD_DEV 		0x0020d
-#define XA_IPC_AUD_FFLAG	0x0020e
-#define XA_IPC_AUD_BFLAG	0x0020f
+#define XA_IPC_AUD_ENABLE	0x0020a
+#define XA_IPC_AUD_MUTE		0x0020b
+#define XA_IPC_AUD_VOL 		0x0020c
+#define XA_IPC_AUD_RATE		0x0020d
+#define XA_IPC_AUD_DEV 		0x0020e
+#define XA_IPC_AUD_FFLAG	0x0020f
+#define XA_IPC_AUD_BFLAG	0x00210
 /*                               */
 #define XA_IPC_GET_CFREQ	0x00300
 #define XA_IPC_GET_BSIZE	0x00301
@@ -73,6 +80,8 @@
 #define XA_IPC_GET_PRESENT	0x00303
 /*                               */
 #define XA_IPC_SET_AUDBUFF	0x00400
+#define XA_IPC_SET_KLUDGE2	0x00401
+#define XA_IPC_SET_KLUDGE900	0x00402
 /*                               */
 #define XA_IPC_EXIT		0x0FFFF
 /*                               */
@@ -105,7 +114,4 @@ typedef struct STRUCT_XA_AUD_HDR
   struct STRUCT_XA_AUD_HDR *next;
   struct STRUCT_XA_AUD_HDR *prev;
 } XA_AUD_HDR;
-
-
-#endif
 

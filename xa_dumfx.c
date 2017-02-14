@@ -2,15 +2,15 @@
 /*
  * xa_dumfx.c
  *
- * Copyright (C) 1995 by Mark Podlipec. 
+ * Copyright (C) 1995-1998,1999 by Mark Podlipec. 
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  * 
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
@@ -26,11 +26,13 @@ extern void XA_Free_Anim_Setup();
 extern XA_ACTION *ACT_Get_Action();
 extern XA_CHDR *ACT_Get_CMAP();
 extern void ACT_Setup_Delta();
+extern XA_CHDR *CMAP_Create_332();
+extern XA_CHDR *CMAP_Create_Gray();
 
 xaULONG DUM_Read_File(fname,anim_hdr)
 char *fname;
 XA_ANIM_HDR *anim_hdr;
-{ xaULONG i;
+{ xaULONG i,num_frames;
   XA_ACTION *act;
   ACT_DLTA_HDR *dlta_hdr;
   XA_ANIM_SETUP *dum;
@@ -44,10 +46,10 @@ XA_ANIM_HDR *anim_hdr;
   dum->vid_time = 100;
   dum->vid_timelo = 0;
 
-  dum->imagec = 2;
-  dum->cmap[0].red   =   0; dum->cmap[0].green =   0; dum->cmap[0].blue  =   0;
-  dum->cmap[1].red   = 255; dum->cmap[1].green = 255; dum->cmap[1].blue  = 255;
-  dum->chdr = ACT_Get_CMAP(dum->cmap,2,0,2,0,8,8,8);
+/*
+  dum->chdr = CMAP_Create_Gray(dum->cmap,&dum->imagec);
+*/
+  dum->chdr = CMAP_Create_332(dum->cmap,&dum->imagec);
     
   act = ACT_Get_Action(anim_hdr,ACT_DELTA);
   dlta_hdr = (ACT_DLTA_HDR *)malloc(sizeof(ACT_DLTA_HDR));
@@ -64,10 +66,14 @@ XA_ANIM_HDR *anim_hdr;
   dlta_hdr->delta = FLI_Decode_BLACK;
   ACT_Setup_Delta(dum,act,dlta_hdr,0);
 
-  anim_hdr->frame_lst = (XA_FRAME *) malloc(4 * sizeof(XA_FRAME));
+  if (anim_hdr->total_time)
+       num_frames = (anim_hdr->total_time + dum->vid_time - 1) / dum->vid_time;
+  else num_frames = 4;
+
+  anim_hdr->frame_lst = (XA_FRAME *) malloc( (num_frames+1) * sizeof(XA_FRAME));
   if (anim_hdr->frame_lst == NULL) TheEnd1("DUM_Read_Anim: malloc err");
 
-  for(i=0; i<3; i++)
+  for(i=0; i < num_frames; i++)
   {
     anim_hdr->frame_lst[i].time_dur	= dum->vid_time;
     anim_hdr->frame_lst[i].zztime	= i * dum->vid_time;

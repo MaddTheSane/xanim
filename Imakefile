@@ -1,350 +1,546 @@
 
-#ifndef XCOMM
-#define XCOMM #
-#endif
-XCOMM **********************************************************************
-XCOMM
-XCOMM             Imakefile for XAnim Rev 2.70.1 Beta
-XCOMM
-XCOMM **********************************************************************
+XCOMM ifndef XCOMM
+XCOMM define XCOMM #
+XCOMM endif
+
+XCOMM #########################################################################
+XCOMM 
+XCOMM               Makefile for XAnim Rev 2.80.0
+XCOMM 
+XCOMM 
+XCOMM #########################################################################
 XCOMM  Readme Readme Readme Readme Readme Readme Readme Readme Readme Readme
-XCOMM **********************************************************************
+XCOMM #########################################################################
 XCOMM 
-XCOMM  As you may have noticed by now, X11R6 wants XCOMM's used instead of #
-XCOMM  as the comment delimiter. The defines at the top of this file should
-XCOMM  cover you if your Imake stuff doesn't have it defined.
-XCOMM 
-XCOMM  I've tried to organized and partition this Makefile so it's easier
+XCOMM  I've tried to organized and partition this Imakefile so it's easier
 XCOMM  to configure. Feedback is appreciated.
 XCOMM 
-XCOMM  Goto each Section and configure, comment, uncomment the Defines
-XCOMM  as necessary.  Some parts might have you search for a NOTE_* later
-XCOMM  on in the Makefile and do something special there.
+XCOMM  First and foremost, please read the following files:
+XCOMM    
+XCOMM         "README.dll"
+XCOMM         "README.zlib"
 XCOMM
+XCOMM  If your machine/OS isn't yet supported by the DLL modules, then
+XCOMM  you should also read these additional files:
+XCOMM
+XCOMM        "cinepak.readme"
+XCOMM        "indeo.readme"
+XCOMM        "creative.readme"  
+XCOMM
+XCOMM    
+XCOMM  Then goto each Section and configure, comment, uncomment the defines
+XCOMM  as necessary.  Some parts might have you search for a NOTE_* later
+XCOMM  on in the Imakefile and do something special there.
+XCOMM
+XCOMM  When you are done, you just type "xmkmf" and then "make xanim".
+XCOMM
+XCOMM  NOTE: some systems(like SGI) use the command "mmkmf" instead of
+XCOMM  "xmkmf" if they have Motif installed.
 XCOMM 
 XCOMM  Index of Sections
 XCOMM  ---------------    -----------------------------------------------
-XCOMM  -- Section II    - Compiler and Optimization Flags.
-XCOMM  -- Section III   - Video Defines/Libs (Leave Blank for Now).
+XCOMM  -- Section I     - Name of Output File.
+XCOMM  -- Section IIa   - Compiler and Compiler Flags
+XCOMM  -- Section IIb   - Linker and Linker Flags
+XCOMM  -- Section IIIa  - DLL Defines/Libs
+XCOMM  -- Section IIIb  - ZLIB Defines/Libs
+XCOMM  -- Section IIIc  - Video Defines/Libs
 XCOMM  -- Section IV.a  - X11/OpenWindow Libs and Includes Directories.
-XCOMM  -- Section IV.b  - X11R6 specific libraries.
-XCOMM  -- Section V     - RemoteControl X11 Widget Selection.
+XCOMM  -- Section IV.b  - Are you running X11R6?
+XCOMM  -- Section V     - no longer used
 XCOMM  -- Section VI    - Audio Defines and Libraries.
 XCOMM  -- Section VII   - Machine Specific Defines and Libs(and Misc stuff)
 XCOMM  ----------------   -----------------------------------------------
 XCOMM 
-XCOMM  Mark Podlipec - podlipec@baynetworks.com
-XCOMM                - podlipec@wellfleet.com
-XCOMM                - podlipec@shell.portal.com
+XCOMM  Good luck,
 XCOMM 
-XCOMM ********************
- 
-XCOMM **********************************************************************
-XCOMM -- Section I    - NOT USED IN IMAKEFILE
-XCOMM **********************************************************************
+XCOMM  Mark Podlipec - podlipec@baynetworks.com
+XCOMM                - podlipec@ici.net
+XCOMM 
+XCOMM ###########
 
-XCOMM **********************************************************************
-XCOMM -- Section II
-XCOMM -- Choose your favorite compiler and optimization flags.
-XCOMM -- NOT NEEDED WITH Imake.  It should be set up correctly for you.
-XCOMM **********************************************************************
-XCOMM
-XCOMM ********************
- 
-XCOMM **********************************************************************
-XCOMM -- Section III
-XCOMM -- Video Support Defines  (LEAVE BLANK FOR NOW)
-XCOMM **********************************************************************
-XCOMM =========
-XA_VIDEO_DEFS =
-XA_VIDEO_LIBS =
-XA_VIDEO_INCS =
-XCOMM
-XCOMM ********************
+XCOMM #########################################################################
+XCOMM  -- Section I
+XCOMM  -- Output File (The name of the final executable)
+XCOMM #########################################################################
+XCOMM 
+XANIM = xanim
 
-XCOMM **********************************************************************
-XCOMM -- Section IV.a
-XCOMM -- X11/Openwindow Specific Defines
+
+
+XCOMM #########################################################################
+XCOMM  -- Section IIa
+XCOMM  -- Choose your favorite C Compiler and Compiler flags
+XCOMM 
+XCOMM NOTE: THIS SECTION IS NOT NEEDED WITH Imakefile
+XCOMM #########################################################################
+
+
+
+XCOMM #########################################################################
+XCOMM  -- Section IIb
+XCOMM  -- Setup the Linker and Linker Flags.
+XCOMM 
+XCOMM  NOTE: working on adding suggestions for specific machines.
+XCOMM #########################################################################
+XCOMM 
+XCOMM ######## LINKER
+XCOMM   Specify the Linker that you have on your machine. Usually you can just
+XCOMM     set this to be the same as your C Compiler. This will hopefully only
+XCOMM     need to be different for a limited number of machines.
+XCOMM   
+LD = $(CC)
+XCOMM 
+XCOMM ######## LINKER FLAGS
+XCOMM   Specify any Linker flags needed to allow dynamically loadable modules
+XCOMM   to link against symbols inside xanim.
+XCOMM 
+XCOMM ## Linux
+LD_FLAGS = -rdynamic
+XCOMM ## SunOS/Solaris use:
+XCOMM  LD_FLAGS =
+
+
+XCOMM #########################################################################
+XCOMM  -- Section IIIa
+XCOMM  -- Setup DLL Flags if supported on your platform. 
+XCOMM  -- NOTE: Please read "README.dll"
+XCOMM 
+XCOMM  So far I've only tested this on Linux_x86, SunOS_Sparc and Solaris_Sparc
+XCOMM
+XCOMM NOTE: not all machines need the XA_DLL_LIB define.
+XCOMM #########################################################################
+XCOMM 
+XA_DLL_DEF = -DXA_DLL -DXA_PRINT
+XCOMM ### Use this only if the above doesn't work
+XCOMM XA_DLL_DEF = -DXA_DLL
+XCOMM
+XCOMM ### You may need this library.
+XA_DLL_LIB = -ldl
+XCOMM
+XCOMM If you'd like to change the default directory that XAnim searches while
+XCOMM looking for dlls, then change the directory below.
+XCOMM
+XA_DLL_PATH = /usr/local/xanim/mods
+
+
+
+XCOMM #########################################################################
+XCOMM  -- Section IIIb
+XCOMM  -- If you have ZLIB, compile in support for Quicktime 3.0 
+XCOMM  -- compressed headers. NOTE: Please read "README.zlib"
+XCOMM 
+XCOMM #########################################################################
+XCOMM 
+XCOMM  -- Uncomment these if you have the library libz.* on your machine.
+XA_ZLIB_DEF = -DXA_ZLIB
+XA_ZLIB_LIB = -lz
+XCOMM
+XCOMM -- If the file libz.* is not in a directory that is normally
+XCOMM    searched by your linker, then you need to uncomment the
+XCOMM    following define and change "/home/zlib/incs" to be the
+XCOMM    full path of the directory on your machine that actually
+XCOMM    contains zlib include files:
+XCOMM
+XCOMM XA_ZLIB_INCS = -I/home/zlib/incs
+XCOMM
+XCOMM    And you have to uncomment the following define and 
+XCOMM    change "/home/zlib/libs" to be the full path of the
+XCOMM    directory on your machine that actually contains zlib
+XCOMM    library file:
+XCOMM
+XCOMM XA_ZLIB_LDIR = -L/home/zlib/libs
+XCOMM
+
+
+XCOMM #########################################################################
+XCOMM  -- Section IIIc
+XCOMM  -- Video Support Defines.  These are okay to leave blank if you 
+XCOMM  -- don't know what to do, BUT in that case you should really 
+XCOMM  -- read the following files:
+XCOMM  --
+XCOMM  --     "cinepak.readme"
+XCOMM  --     "indeo.readme"
+XCOMM  --     "creative.readme" 
+XCOMM  --
+XCOMM  -- Latest files are available from the following sites:
+XCOMM  --
+XCOMM  --    http://xanim.va.pubnix.com/home.html
+XCOMM  --    http://smurfland.cit.buffalo.edu/xanim/home.html
+XCOMM  --	http://xanim.resnet.gatech.edu
+XCOMM  --    http://www.tm.informatik.uni-frankfurt.de/xanim/
+XCOMM  --
+XCOMM #########################################################################
+XCOMM 
+XCOMM  -- NOTE: If XAnim supports dynamically loadable modules for your machine 
+XCOMM     and you have the XA_DLL_* uncommented above then you do NOT want to
+XCOMM     uncomment any of these.
+XCOMM 
+XCOMM  -- Modify the following ONLY after you have read the appropriate readmes
+XCOMM  -- AND have downloaded the proper decompression modules AND have verified
+XCOMM  -- that they are the correct size in bytes as listed in the readmes.
+XCOMM  --
+XCOMM  --    Cinepak		CVID	cinepak.readme
+XCOMM  --    Indeo 3.x	IV32	indeo.readme
+XCOMM  --    Creative   	CYUV	creative.readme
+XCOMM  
+XCOMM  Again don't use these if you are using the dynamically loadable modules.
+XCOMM 
+XCOMM XA_IV32_DEF = -DXA_IV32 
+XCOMM XA_CVID_DEF = -DXA_CVID
+XCOMM XA_CYUV_DEF = -DXA_CYUV
+XCOMM 
+XCOMM XA_IV32_LIB = mods/xa2.1_iv32_linuxELF.o
+XCOMM XA_CVID_LIB = mods/xa2.0_cvid_linuxELF.o
+XCOMM XA_CYUV_LIB = mods/xa1.0_cyuv_linuxELF.o
+XCOMM 
+XCOMM ##########################
+XCOMM  NOTE: SGI Machines Only: 
+XCOMM     if your linker core dumps then you'll need to uncomment the following
+XCOMM     define as a workaround.
+XCOMM 
+XCOMM  XA_SGI1 = -old_ld -32
+XCOMM 
+
+
+XCOMM #########################################################################
+XCOMM  -- Section IIId
+XCOMM  -- NO NEED TO MODIFY ANYTHING IN THIS SECTION
+XCOMM 
+XA_DLL_DEFS  = $(XA_DLL_DEF) -DXA_DLL_PATH=\"$(XA_DLL_PATH)\"
+XA_ZLIB_DEFS = $(XA_ZLIB_DEF) $(XA_ZLIB_INCS)
+XA_ZLIB_LIBS = $(XA_ZLIB_LDIR) $(XA_ZLIB_LIB)
+
+XA_VID_DEFS = $(XA_IV32_DEF) $(XA_CVID_DEF) $(XA_CYUV_DEF) \
+		$(XA_DLL_DEFS) $(XA_ZLIB_DEFS)
+XA_VID_LIBS = $(XA_IV32_LIB) $(XA_CVID_LIB) $(XA_CYUV_LIB) \
+		$(XA_DLL_LIB) $(XA_ZLIB_LIBS)	\
+		$(XA_SGI1)
+XA_VID_DEPS = $(XA_IV32_LIB) $(XA_CVID_LIB) $(XA_CYUV_LIB)
+XCOMM 
+XCOMM ##
+XA_AUD_DEFS = -DXA_GSM
+XA_AUD_LIBS =
+XA_AUD_DEPS =
+XA_AUD_CFILES = xa_gsm.c
+XA_AUD_OFILES = xa_gsm.o
+XCOMM ##
+XA_MOD_DEFS = $(XA_VID_DEFS) $(XA_AUD_DEFS)
+XA_MOD_LIBS = $(XA_VID_LIBS) $(XA_AUD_LIBS)
+XA_MOD_DEPS = $(XA_VID_DEPS) $(XA_AUD_DEPS)
+XA_MOD_CFILES = $(XA_AUD_CFILES)
+XA_MOD_OFILES = $(XA_AUD_OFILES)
+XCOMM 
+
+XCOMM #########################################################################
+XCOMM  -- Section IV.a
+XCOMM  -- X11/Openwindow Specific Defines
+XCOMM  
+XCOMM -- NOT NEEDED WITH Imake. That's the whole purpose of xmkmf.
+XCOMM #########################################################################
+
+
+XCOMM #########################################################################
+XCOMM  -- Section IV.b
+XCOMM  -- If you are running X11R6, then you also need to uncomment 
+XCOMM  -- this define.
 XCOMM
 XCOMM -- NOT NEEDED WITH Imake. That's the whole purpose of xmkmf.
-XCOMM **********************************************************************
-XCOMM
-XCOMM ********************
+XCOMM #########################################################################
 
-XCOMM **********************************************************************
-XCOMM -- Section IV.b
-XCOMM -- X11R6 Specific libraries.
-XCOMM
-XCOMM -- NOT NEEDED WITH Imake. That's the whole purpose of xmkmf.
-XCOMM **********************************************************************
-XCOMM
-XCOMM ********************
 
-XCOMM **********************************************************************
-XCOMM -- Section V
-XCOMM -- Remote Control Widget Defines. There are really on three options
-XCOMM -- with XAnim:
-XCOMM --     Athena       Default with X11
-XCOMM --     Athena 3D    Modified Athena widgets for 3D appearance.
-XCOMM --     Motif        Commericial alternative to the Athena Widgets.
-XCOMM
-XCOMM NOTE: If you DON'T want the Remote Control Window, you can either
-XCOMM comment out ALL XA_REMOTE_* defines or set them to nothing.
-XCOMM **********************************************************************
-XCOMM
-XCOMM -- This is if you DON'T want the Remote Control Window.
-XCOMM XA_REMOTE_DEFS =
-XCOMM XA_REMOTE_LIBS =
-XCOMM XA_REMOTE_DEP_LIBS =
-XCOMM
-XCOMM -- Athena Widgets (These should be present by default if you have X11)
-XA_REMOTE_DEFS = -DXA_ATHENA
-XA_REMOTE_LIBS = $(XAWLIB) $(XMULIB)
-XA_REMOTE_DEP_LIBS = $(DEPXAWLIB) $(DEPXMULIB)
-XCOMM
-XCOMM -- 3D Athena Widgets( Only use these if you know that someone
-XCOMM --                    went out, downloaded, compiled and installed
-XCOMM --                    these on your machine :^).
-XCOMM XA_REMOTE_DEFS = -DXA_ATHENA
-XCOMM XA_REMOTE_LIBS = $(XAW3DLIB) $(XMULIB)
-XCOMM XA_REMOTE_DEP_LIBS = $(DEPXAW3DLIB) $(DEPXMULIB)
-XCOMM
-XCOMM -- Motif Widgets (Again only use these if you know for a fact, that the
-XCOMM                   Motif libraries and includes are present on your system,
-XCOMM                   either because they came bundled with the machine or
-XCOMM                   because someone specifically purchased and installed
-XCOMM                   them on your machine).
-XCOMM
-XCOMM XA_REMOTE_DEFS = -DXA_MOTIF -D_NO_PROTO
-XCOMM XA_REMOTE_LIBS = $(XMLIB)
-XCOMM XA_REMOTE_DEP_LIBS = $(DEPXMLIB)
-XCOMM
-XCOMM ********************
+XCOMM #########################################################################
+XCOMM  -- Section VI
+XCOMM  -- Audio Defines
+XCOMM 
+XCOMM  NOTE: If your machine doesn't have audio OR isn't supported yet then
+XCOMM        comment out ALL of the XA_AUDIO_* defines and you can still compile
+XCOMM        XAnim for just video.  Setting the XA_AUDIO_* to nothing has the
+XCOMM        same affect.
+XCOMM 
+XCOMM  NOTE: Some machines will have to add -DXA_SELECT to the XA_AUDIO_DEFS.
+XCOMM        let me know if you find this to be the case.
+XCOMM #########################################################################
+XCOMM 
+XCOMM  -- You don't have OR don't want Audio support --------------------------
+XCOMM  -- NOTE_9 Since xanim doesn't yet support Win32 audio, this is necessary.
+XCOMM  XA_AUDIO_DEFS =
+XCOMM 
+XCOMM ## -- Linux PCs ---------------------------------------------------------
+XA_AUDIO_DEFS = -DXA_LINUX_AUDIO
+XA_AUDIO_LIBS = -lc
+XCOMM 
+XCOMM  -- Linux PC's with OLD Rev sound drivers -------------------------------
+XCOMM  XA_AUDIO_DEFS = -DXA_LINUX_AUDIO -DXA_LINUX_OLDER_SND
+XCOMM  XA_AUDIO_LIBS = -lc
+XCOMM 
+XCOMM  -- Sparc SunOS 4.1.x ---------------------------------------------------
+XCOMM  XA_AUDIO_DEFS = -DXA_SPARC_AUDIO
+XCOMM  
+XCOMM  -- Sparc Solaris/SunOS 5.x ---------------------------------------------
+XCOMM  XA_AUDIO_DEFS = -DXA_SPARC_AUDIO -DSVR4 -DXA_SELECT
+XCOMM 
+XCOMM  -- S/6000 - AIX 4.1 (3.2.5??) ------------------------------------------
+XCOMM  XA_AUDIO_DEFS = -DXA_AIX_AUDIO -DXA_SELECT
+XCOMM 
+XCOMM  -- SGI Irix-------------------------------------------------------------
+XCOMM  XA_AUDIO_DEFS = -DXA_SGI_AUDIO -DSYSV -DSVR4
+XCOMM  XA_AUDIO_LIBS = -laudio
+XCOMM 
+XCOMM  -- DEC Multimedia Services Support -------------------------------------
+XCOMM  XA_AUDIO_DEFS = -DXA_MMS_AUDIO
+XCOMM  XA_AUDIO_LIBS = -lmme
+XCOMM 
+XCOMM  -- DEC Multimedia Services Support With Volume Control -----------------
+XCOMM  XA_AUDIO_DEFS = -DXA_MMS_AUDIO -DMMS_VOL
+XCOMM  XA_AUDIO_LIBS = -lmme
+XCOMM 
+XCOMM  -- DEC Multimedia Services Support -------------------------------------
+XCOMM  --   This might be necessary for Digital Unix 3.2C and MME 1.60 DK
+XCOMM  XA_AUDIO_DEFS = -DXA_MMS_AUDIO -DXA_MMS_160 -DDEC
+XCOMM  XA_AUDIO_LIBS = -lmme
+XCOMM 
+XCOMM  -- NEC EWS Workstations ------------------------------------------------
+XCOMM  XA_AUDIO_DEFS = -DXA_EWS_AUDIO
+XCOMM 
+XCOMM  -- SONY Workstations NEWS-5000 NEWS-OS 4.2 -----------------------------
+XCOMM  XA_AUDIO_DEFS = -DXA_SONY_AUDIO
+XCOMM 
+XCOMM  -- NetBSD-current (as of 30/April 1995)---------------------------------
+XCOMM  XA_AUDIO_DEFS = -DXA_NetBSD_AUDIO
+XCOMM 
+XCOMM  -- QNX 4.2 PC's --------------------------------------------------------
+XCOMM  XA_AUDIO_DEFS = -DXA_LINUX_AUDIO -DXA_SELECT
+XCOMM  XA_AUDIO_LIBS = -lc
+XCOMM  
+XCOMM  -- Also FreeBSD, and BSDI with SBlast-BSD-1.5 (development stages)------
+XCOMM  XA_AUDIO_DEFS = -DXA_LINUX_AUDIO
+XCOMM  XA_AUDIO_LIBS = -lc
+XCOMM 
+XCOMM  -- TOWNS Linux 16 bit PCM ----------------------------------------------
+XCOMM  XA_AUDIO_DEFS = -DXA_TOWNS_AUDIO
+XCOMM  XA_MACH_LIBS = -lc
+XCOMM 
+XCOMM  -- TOWNS Linux 8 bit PCM -----------------------------------------------
+XCOMM  XA_AUDIO_DEFS = -DXA_TOWNS8_AUDIO
+XCOMM  XA_MACH_LIBS = -lc
+XCOMM 
+XCOMM  -- HP 9000/700 Direct access to Audio Device---------------------------
+XCOMM  -- This is a direct access to the HP's audio device and works much 
+XCOMM  -- smoother than going through the Aserver(which has some serious 
+XCOMM  -- problems).
+XCOMM  -- NOTE: You need to kill AServer before using this audio device since
+XCOMM  --       AServer will otherwise prevent xanim from opening it.
+XCOMM  XA_AUDIO_DEFS = -DXA_HPDEV_AUDIO 
+XCOMM  XA_AUDIO_LIBS = 
+XCOMM 
+XCOMM  -- HP 9000/700 AServer audio layers ------------------------------------
+XCOMM  -- This isn't well developed yet(haven't had enough time on an HP yet).
+XCOMM  -- Plus AServer is currently *NOT* adequate for syncing audio and video.
+XCOMM  -- It adds too much of a delay in the processing of audio and so
+XCOMM  -- I don't recommend using it. But if you insist, consider yourself 
+XCOMM  -- forewarned.
+XCOMM  --
+XCOMM  -- HP/UX 9.x AServer
+XCOMM  XA_AUDIO_DEFS = -DXA_HP_AUDIO
+XCOMM  XA_AUDIO_LIBS = -lAlib
+XCOMM  --
+XCOMM  -- HP/UX 10.x AServer
+XCOMM  XA_AUDIO_DEFS = -DXA_HP_AUDIO -DXA_HP10
+XCOMM  XA_AUDIO_LIBS = -L/opt/audio/lib -lAlib
+XCOMM  XA_AUDIO_INCS = -I/opt/audio/include
+XCOMM 
+XCOMM  ------ AF (AudioFile) Support ------------------------------------------
+XCOMM  -- You need to indicate where the AF libraries libAFUtil.a and libAF.a
+XCOMM  -- are located. Typically this is /usr/local/lib, but not always. Talk
+XCOMM  -- to the person who installed them on your machine to find out where
+XCOMM  -- they were put.  Same with the AF/include directory.
+XCOMM 
+XCOMM  -- NOTE: SOME VENDORS have an a library called AudioFile, AFile or AF
+XCOMM  -- that has to do with audio file formats and is NOT the same thing as
+XCOMM  -- AudioFile above. Again, talk to the person who installed AudioFile
+XCOMM  -- on your system. Otherwise, assume you don't have it.
+XCOMM 
+XCOMM  XA_AUDIO_DEFS = -DXA_AF_AUDIO
+XCOMM  XA_AUDIO_LIBS = -L/usr/local/lib -lAFUtil -lAF
+XCOMM  XA_AUDIO_INCS = -I/usr/local/include
+XCOMM 
+XCOMM  ------ NAS (Network Audio System) Support ------------------------------
+XCOMM  -- You need to indicate where the NAS library libaudio.a is located.
+XCOMM  -- Typically this is /usr/local/lib, but not always.  Talk to the
+XCOMM  -- person who installed them on your machine to find out where they
+XCOMM  -- were put. Otherwise, assume you don't have NAS installed.
+XCOMM  -- Same with the /usr/local/include/audio directory.
+XCOMM 
+XCOMM  XA_AUDIO_DEFS = -DXA_NAS_AUDIO
+XCOMM  XA_AUDIO_LIBS = -L/usr/local/lib/audio -laudio
+XCOMM  XA_AUDIO_INCS = -I/usr/local/include/audio
+XCOMM 
+XCOMM  NOTE: /pain/audio is just where I keep all my audio stuff and is
+XCOMM  just here for my convenience. 
+XCOMM  (pain because the disk died once already :)
+XCOMM  XA_AUDIO_DEFS = -DXA_NAS_AUDIO
+XCOMM  XA_AUDIO_LIBS = -L/pain/audio/nas/lib/audio -laudio
+XCOMM  XA_AUDIO_INCS = -I/pain/audio/nas/usr/include
+XCOMM 
+XCOMM ###########
 
-XCOMM **********************************************************************
-XCOMM -- Section VI
-XCOMM -- Audio Defines
-XCOMM
-XCOMM NOTE: If your machine doesn't have audio OR isn't supported yet then
-XCOMM       comment out ALL of the XA_AUDIO_* defines and you can still compile
-XCOMM       XAnim for just video.  Setting the XA_AUDIO_* to nothing has the
-XCOMM       same affect.
-XCOMM
-XCOMM NOTE: Some machine will have to add -DXA_SELECT to the XA_AUDIO_DEFS.
-XCOMM       let me know if you find this to be the case.
-XCOMM **********************************************************************
-XCOMM
-XCOMM -- You don't have OR don't want Audio support ---------------------------
-XCOMM XA_AUDIO_DEFS =
-XCOMM
-XCOMM -- Sun Sparcs -----------------------------------------------------------
-XA_AUDIO_DEFS = -DXA_SPARC_AUDIO -DXA_FORK
-XCOMM
-XCOMM NOTE: Imakefile should add the -DSVR4 to Sun Solaris machines, if not
-XCOMM       use the following:
-XCOMM -- Sun Sparcs running Solaris/SunOS 5.x ---------------------------------
-XCOMM XA_AUDIO_DEFS = -DXA_SPARC_AUDIO -DSVR4 -DXA_FORK
-XCOMM
-XCOMM -- S/6000 - AIX 4.1 (3.2.5??) -------------------------------------------
-XCOMM XA_AUDIO_DEFS = -DXA_AIX_AUDIO -DXA_FORK
-XCOMM
-XCOMM -- DEC Multimedia Services Support --------------------------------------
-XCOMM XA_AUDIO_DEFS = -DXA_MMS_AUDIO
-XCOMM XA_AUDIO_LIBS = -lmme
-XCOMM
-XCOMM -- NEC EWS Workstations -------------------------------------------------
-XCOMM XA_AUDIO_DEFS = -DXA_EWS_AUDIO -DXA_FORK
-XCOMM
-XCOMM -- SONY Workstations NEWS-5000 NEWS-OS 4.2 ------------------------------
-XCOMM XA_AUDIO_DEFS = -DXA_SONY_AUDIO -DXA_FORK
-XCOMM
-XCOMM -- NetBSD-current (as of 30/April 1995)----------------------------------
-XCOMM XA_AUDIO_DEFS = -DXA_NetBSD_AUDIO -DXA_FORK
-XCOMM
-XCOMM -- QNX 4.2 PC's ---------------------------------------------------------
-XCOMM XA_AUDIO_DEFS = -DXA_LINUX_AUDIO -DXA_LINUX_NEWER_SND -DXA_FORK -DXA_SELECT
-XCOMM XA_MACH_LIBS = -lc
-XCOMM
-XCOMM -- Linux PC's with OLD Rev sound drivers --------------------------------
-XCOMM XA_AUDIO_DEFS = -DXA_LINUX_AUDIO -DXA_FORK
-XCOMM XA_MACH_LIBS = -lc
-XCOMM
-XCOMM -- Linux PC's with NEWER Rev sound drivers(Rev 2.5 and up) --------------
-XCOMM XA_AUDIO_DEFS = -DXA_LINUX_AUDIO -DXA_LINUX_NEWER_SND -DXA_FORK
-XCOMM XA_MACH_LIBS = -lc
-XCOMM -
-XCOMM -- SGI Indigo -----------------------------------------------------------
-XCOMM XA_AUDIO_DEFS = -DXA_SGI_AUDIO -DXA_FORK
-XCOMM XA_AUDIO_LIBS = -laudio
-XCOMM
-XCOMM -- HP 9000/700 Direct access to Audio Device-----------------------------
-XCOMM -- This is a direct access to the HP's audio device and works a little
-XCOMM -- better than going through the Aserver(less levels of indirection). 
-XCOMM -- Also don't need to become superuser to configure your machine for 
-XCOMM -- Aserver.
-XCOMM XA_AUDIO_DEFS = -DXA_HPDEV_AUDIO -DXA_FORK
-XCOMM XA_AUDIO_LIBS =
-XCOMM
-XCOMM -- HP 9000/700 Use Upper Level Audio Layers--Requires Aserver------------
-XCOMM -- This isn't well developed yet(haven't had enough time on an HP yet).
-XCOMM -- Plus there's a delay between when XAnim sends the audio and when it
-XCOMM -- get's played that prevents audio/video syncing. There is a patch to
-XCOMM -- the HP's audio libraries that helps alleviate this. I haven't tried
-XCOMM -- it yet. Hopefully get a chance to before summer 95 is over.
-XCOMM XA_AUDIO_DEFS = -DXA_HP_AUDIO
-XCOMM XA_AUDIO_LIBS = -lAlib
-XCOMM
-XCOMM -- AF (AudioFile) Support -----------------------------------------------
-XCOMM -- You need to indicate where the AF libraries libAFUtil.a and libAF.a
-XCOMM -- are located. Typically this is /usr/local/lib, but not always. Talk
-XCOMM -- to the person who installed them on your machine to find out where
-XCOMM -- they were put.  Same with the AF/include directory.
-XCOMM
-XCOMM -- NOTE: SOME VENDORS have an a library called AudioFile, AFile or AF
-XCOMM -- that has to do with audio file formats and is NOT the same thing as
-XCOMM -- AudioFile above. Again, talk to the person who installed AudioFile
-XCOMM -- on your system. Otherwise, assume you don't have it.
-XCOMM
-XCOMM XA_AUDIO_DEFS = -DXA_AF_AUDIO -DXA_FORK
-XCOMM XA_AUDIO_LIBS = -L/usr/local/lib -lAFUtil -lAF
-XCOMM XA_AUDIO_INCS = -I/usr/local/include
-XCOMM
-XCOMM -- NAS (Network Audio System) Support -----------------------------------
-XCOMM -- You need to indicate where the NAS library libaudio.a is located.
-XCOMM -- Typically this is /usr/local/lib, but not always.  Talk to the
-XCOMM -- person who installed them on your machine to find out where they
-XCOMM -- were put. Otherwise, assume you don't have NAS installed.
-XCOMM -- Same with the /usr/local/include/audio directory.
-XCOMM
-XCOMM XA_AUDIO_DEFS = -DXA_NAS_AUDIO -DXA_FORK
-XCOMM XA_AUDIO_LIBS = -L/usr/local/lib/audio -laudio
-XCOMM XA_AUDIO_INCS = -I/usr/local/include/audio
-XCOMM
-XCOMM NOTE: /pain/audio is just where I keep all my audio stuff and is
-XCOMM just here for my convenience. (pain because it died once on me already :)
-XCOMM XA_AUDIO_DEFS = -DXA_NAS_AUDIO
-XCOMM XA_AUDIO_LIBS = -L/pain/audio/nas/lib/audio -laudio
-XCOMM XA_AUDIO_INCS = -I/pain/audio/nas/usr.include
-XCOMM
-XCOMM ********************
-
-XCOMM **********************************************************************
-XCOMM -- Section VII
-XCOMM Machine Specific Defines and Libs
-XCOMM **********************************************************************
-XCOMM
-XCOMM -- Sun Sparc running SunOS 4.x and OpenWindows --------------------------
-XCOMM -- Probably should be using Makefile.unx due to missing symbols
-XCOMM -- in the shared Xmu library and a need to list some libraries
-XCOMM -- twice on the linker command line.
-XCOMM
-XCOMM -- Some Revs of Sun Solaris Machines need the following -----------------
-XCOMM XA_MACH_LIBS = -lsocket -lnsl -lgen
-XCOMM
-XCOMM -- HP machines ----------------------------------------------------------
-XCOMM -- NEED this to increase the macro symbol table(default is 128000).
-XCOMM XA_MACH_DEFS = -Wp,-H150000
-XCOMM
-XCOMM -- PC DOS Machines running Quarterdeck's DESQview X----------------------
-XCOMM XA_MACH_DEFS  = -DMSDOS
-XCOMM
-XCOMM -- i486 box Interactive UNIX V2.2.1 -------------------------------------
-XCOMM -- might need to uncomment out the define below:
-XCOMM XA_MACH_LIB = -linet
-XCOMM
-XCOMM -- IBM AIX --------------------------------------------------------------
-XCOMM These machines don't have the X11 Shared memory extension.
-XCOMM See  NOTE_6 below(comment out the XA_SHARED define).
-XCOMM
-XCOMM
-XCOMM ---- Misc Defines for various machines -----------------------------------
-XCOMM
-XCOMM   -- NO_INSTALL_CMAP prevents XAnim from specifically installing a cmap.
-XCOMM   --  this causes problems on some PC versions of X11
-XCOMM XA_CMAP = -DNO_INSTALL_CMAP
-XCOMM
-XCOMM   -- XA_XTPOINTER typedefs XtPointer as void*  if your system doesn't
-XCOMM   -- typedef it already. (X11R4 or below might need this)
-XCOMM XA_XTPTR = -DXA_XTPOINTER
-XCOMM
-XCOMM   -- X11 Shared Memory
-XCOMM   -- Allow use of shared memory if specified on cmd line. Comment this
-XCOMM   -- out if you get compiler errors about not finding XShm.h or the 
-XCOMM   -- following symbols(XShmCreateImage, XShmAttach, XShmDetach,
-XCOMM   -- XShmPutImage,etc).
-XCOMM   -- NOTE_6: IBM AIX machines need to comment this out.
+XCOMM #########################################################################
+XCOMM  -- Section VII
+XCOMM  Machine Specific Defines and Libs
+XCOMM #########################################################################
+XCOMM 
+XCOMM  -- Sun Sparc running SunOS 4.x and OpenWindows -------------------------
+XCOMM  See  NOTE_5  below(alternative XLIBS define).
+XCOMM 
+XCOMM  -- Some Revs of Sun Solaris Machines need the following ----------------
+XCOMM  XA_MACH_LIBS = -lsocket -lnsl -lgen
+XCOMM 
+XCOMM  -- Unisys SVR4 machines based on Intel arch.
+XCOMM  See NOTE_7 below(alternative XLIBS define)
+XCOMM 
+XCOMM  -- HP machines ---------------------------------------------------------
+XCOMM  -- NEED this to increase the macro symbol table(default is 128000).
+XCOMM  XA_MACH_DEFS = -Wp,-H150000
+XCOMM 
+XCOMM  -- PC DOS Machines running Quarterdeck's DESQview X---------------------
+XCOMM  XA_MACH_DEFS  = -DMSDOS
+XCOMM 
+XCOMM  -- i486 box Interactive UNIX V2.2.1 ------------------------------------
+XCOMM  -- might need to uncomment out the define below:
+XCOMM  XA_MACH_LIBS = -linet
+XCOMM 
+XCOMM  -- IBM AIX -------------------------------------------------------------
+XCOMM  These machines don't have the X11 Shared memory extension.
+XCOMM  See  NOTE_6 below(comment out the XA_SHARED define).
+XCOMM 
+XCOMM 
+XCOMM  ---- Misc Defines for various machines ------------------------------
+XCOMM 
+XCOMM    -- NO_INSTALL_CMAP prevents XAnim from specifically installing a cmap.
+XCOMM    --  this causes problems on some PC versions of X11
+XCOMM  XA_CMAP = -DNO_INSTALL_CMAP
+XCOMM  
+XCOMM    -- XA_XTPOINTER typedefs XtPointer as void*  if your system doesn't
+XCOMM    -- typedef it already. (X11R4 or below might need this)
+XCOMM  XA_XTPTR = -DXA_XTPOINTER
+XCOMM   
+XCOMM    -- X11 Shared Memory
+XCOMM    -- Allow use of shared memory if specified on cmd line. Comment 
+XCOMM    -- this out if you get compiler errors about not finding XShm.h or 
+XCOMM    -- the following symbols(XShmCreateImage,XShmAttach,XShmDetach,
+XCOMM    -- XShmPutImage,etc).
+XCOMM    -- NOTE_6: IBM AIX machines need to comment this out UNLESS YOU HAVE
+XCOMM    --         SPECIFICALLY installed the Xshm extension on your AIX machine.
+XCOMM    -- NOTE_9: WIN32 machines need to comment this out.
 XA_SHARED = -DXSHM
-XCOMM
-XCOMM   -- X11 Multiple Buffers
-XCOMM   -- Allow use of hardware/software double buffering in the server, if
-XCOMM   -- specified on cmd line. Comment this out if you get compiler errors
-XCOMM   -- about not finding multibuf.h or the
-XCOMM   -- following symbols(XmbufDisplayBuffers, XmbufQueryExtension,
-XCOMM   --  XmbufCreateBuffers).
-XCOMM   -- NOTE_7: HP-UX machines need to comment this out.
-XCOMM XA_MULTIBUF = -DXMBUF
-XCOMM
-XCOMM ********************
- 
-XCOMM **********************************************************************
-XCOMM END OF SECTIONS - No need to look below unless a NOTE told you to.
-XCOMM **********************************************************************
-XCOMM
+XCOMM 
+XCOMM    -- X11 Multiple Buffers  (may or may not help with large images)
+XCOMM    -- Allow use of hardware/software double buffering in the server, if
+XCOMM    -- specified on cmd line. Comment this out if you get compiler errors
+XCOMM    -- about not finding multibuf.h or the
+XCOMM    -- following symbols(XmbufDisplayBuffers, XmbufQueryExtension,
+XCOMM    --  XmbufCreateBuffers).
+XCOMM    -- NOTE_8: HP-UX machines need to comment this out.
+XCOMM  XA_MULTIBUF = -DXMBUF
+XCOMM 
+XCOMM ###########
+XCOMM 
+XCOMM #########################################################################
+XCOMM  END OF SECTIONS - No need to look below unless a NOTE told you to.
+XCOMM #########################################################################
+XCOMM 
 XA_MISC_DEFS = $(XA_CMAP) $(XA_XTPTR) $(XA_SHARED) $(XA_MULTIBUF) $(XA_MACH_DEFS)
-XCOMM
+XCOMM 
+XCOMM ####################################
+XCOMM   FINAL CFLAGS and OTHER_LIBS
+XCOMM 
 
-XCOMM **********************************************************************
+XA_DEFS = $(XA_MISC_DEFS) $(XA_MOD_DEFS) $(XA_AUDIO_DEFS) -DXA_PETUNIA -DXA_KPCD
+XA_LIBS = $(XA_X11R6_LIBS) $(XA_MACH_LIBS) $(XA_MOD_LIBS) $(XA_AUDIO_LIBS) 
+XA_INCS = $(INCLUDE) -I. $(XA_VIDEO_INCS) $(XA_AUDIO_INCS)
 
 
-DEFINES = $(XA_MISC_DEFS) $(XA_VIDEO_DEFS) $(XA_AUDIO_DEFS) $(XA_REMOTE_DEFS)
-XA_LIBS = $(XA_X11R6_LIBS) $(XA_MACH_LIBS) $(XA_VIDEO_LIBS) $(XA_AUDIO_LIBS)
-XA_INCS = $(INCLUDE) $(XA_VIDEO_INCS) $(XA_AUDIO_INCS)
+DEFINES  = $(XA_DEFS)
 
-PROGRAMS = xanim
+PROGRAMS = $(XANIM)
 
 INCLUDES = -I$(INCDIR) $(XA_INCS)
 
-   LIBS1 = $(XA_LIBS) $(EXTENSIONLIB) $(XA_REMOTE_LIBS) $(XTOOLLIB) \
-		$(XLIB) -lm
-DEPLIBS1 = $(DEPEXTENSIONLIB) $(XA_REMOTE_DEP_LIBS) $(DEPXTOOLLIB) \
-		$(DEPXLIB)
+   LIBS1 = $(XA_LIBS) $(EXTENSIONLIB) $(XTOOLLIB) $(XLIB) -lm
+DEPLIBS1 = $(DEPEXTENSIONLIB) $(DEPXTOOLLIB) $(DEPXLIB)
 XCOMM xa_pfx.c temporarily removed
-   SRCS1 = xanim.c xa_show.c xa_x11.c xa_fli.c xa_iff.c \
-	   xa_gif.c xa_txt.c unpacker.c xa_utils.c xa_act.c \
-	   xa_set.c xa_cmap.c xa_rle.c xa_wav.c xa_au.c \
-	   xa_avi.c xa_qt.c xa_jpg.c xa_mpg.c xa_audio.c \
-	   xa_dl.c xa_jmov.c xa_replay.c xa_ipc.c xa_color.c xa_dumfx.c
-   OBJS1 = xanim.o xa_show.o xa_x11.o xa_fli.o xa_iff.o \
-	   xa_gif.o xa_txt.o unpacker.o xa_utils.o xa_act.o \
-	   xa_set.o xa_cmap.o xa_rle.o xa_wav.o xa_au.o \
-	   xa_avi.o xa_qt.o xa_jpg.o xa_mpg.o xa_audio.o \
-	   xa_dl.o xa_jmov.o xa_replay.o xa_ipc.o xa_color.o xa_dumfx.o
+
+LOCAL_LDFLAGS = $(LD_FLAGS)
+
+
+
+XCOMM  xa_pfx.c TEMP REMOVED
+SRCS1 = xanim.c xa_show.c xa_x11.c xa_fli.c xa_iff.c  \
+	xa_gif.c xa_txt.c unpacker.c xa_utils.c xa_act.c \
+	xa_set.c xa_cmap.c xa_rle.c xa_wav.c xa_au.c xa_8svx.c \
+	xa_avi.c xa_qt.c xa_qt_decs.c xa_audio.c xa_ipc.c xa_color.c \
+	xa_jpg.c xa_mpg.c xa_dl.c xa_jmov.c xa_movi.c xa_raw.c \
+	xa_replay.c xa_j6i.c xa_g72x.c xa_g721.c	\
+	xa_dumfx.c xa_acodec.c xa_input.c xa_formats.c \
+	xa_vid_codec.c \
+	xa1.0_kpcd.c	\
+	$(XA_MOD_CFILES)
+
+
+OBJS1 = xanim.o xa_show.o xa_x11.o xa_fli.o xa_iff.o  \
+	xa_gif.o xa_txt.o unpacker.o xa_utils.o xa_act.o \
+	xa_set.o xa_cmap.o xa_rle.o xa_wav.o xa_au.o xa_8svx.o \
+	xa_avi.o xa_qt.o xa_qt_decs.o xa_audio.o xa_ipc.o xa_color.o \
+	xa_jpg.o xa_mpg.o xa_dl.o xa_jmov.o xa_movi.o xa_raw.o \
+	xa_replay.o xa_j6i.o xa_g72x.o xa_g721.o	\
+	xa_dumfx.o xa_acodec.o xa_input.o xa_formats.o \
+	xa_vid_codec.o \
+	xa1.0_kpcd.o		\
+	$(XA_MOD_OFILES)
 
 ComplexProgramTarget_1(xanim, $(LIBS1), $(OTHER_LIBS) )
 
+xaclean::
+	$(RM) $(OBJS1)
 
-xanim.o: xanim.h xa_config.h xa_x11.h Imakefile
-xa_show.o: xanim.h xa_config.h Imakefile
-xa_x11.o: xanim.h xa_config.h xa_x11.h Imakefile
-xa_act.o: xanim.h xa_config.h
-xa_cmap.o: xanim.h xa_config.h
-xa_utils.o: xanim.h xa_config.h
-xa_dl.o: xanim.h xa_config.h xa_dl.h
-xa_fli.o: xanim.h xa_config.h xa_fli.h
-xa_iff.o: xanim.h xa_config.h xa_iff.h
-xa_gif.o: xanim.h xa_config.h xa_gif.h
-xa_txt.o: xanim.h xa_config.h xa_gif.h
-xa_rle.o: xanim.h xa_config.h xa_rle.h
-xa_avi.o: xanim.h xa_config.h xa_avi.h
-xa_wav.o: xanim.h xa_config.h xa_avi.h
-xa_au.o: xanim.h xa_config.h
-xa_color.o: xanim.h xa_config.h xa_color.h
-xa_dumfx.o: xanim.h xa_config.h
-xa_qt.o: xanim.h xa_config.h xa_qt.h
-xa_set.o: xanim.h xa_config.h xa_set.h xa_iff.h
-xa_jpg.o: xanim.h xa_config.h xa_jpg.h
-xa_mpg.o: xanim.h xa_config.h xa_mpg.h xa_jpg.c
-xa_jmov.o: xanim.h xa_config.h xa_jmov.h
-xa_replay.o: xanim.h xa_config.h xa_replay.h
-xa_audio.o: xanim.h xa_config.h xa_audio.h Imakefile
-xa_ipc.o: xanim.h xa_config.h xa_ipc.h Imakefile
+
+XCOMM  DO NOT DELETE THIS LINE
+xanim.o: Imakefile xanim.h xa_config.h xa_x11.h xanim.c
+xa1.0_kpcd.o: xa1.0_kpcd.c
+unpacker.o: unpacker.c
+xa_acodec.o: Imakefile xanim.h xa_acodec.c
+xa_act.o: xanim.h xa_config.h xa_act.c
+xa_au.o: xanim.h xa_config.h xa_au.c
+xa_audio.o: Imakefile xanim.h xa_config.h xa_audio.h xa_audio.c
+xa_avi.o: Imakefile xanim.h xa_config.h xa_avi.h xa_codecs.h xa_xmpg.h xa_avi.c
+xa_cmap.o: xanim.h xa_config.h xa_cmap.c
+xa_color.o: xanim.h xa_color.c
+xa_dl.o: xanim.h xa_config.h xa_dl.h xa_dl.c
+xa_dumfx.o: xanim.h xa_dumfx.c
+xa_fli.o: xanim.h xa_config.h xa_fli.h xa_fli.c
+xa_formats.o: xanim.h xa_formats.c
+xa_gif.o: xanim.h xa_config.h xa_gif.h xa_gif.c
+xa_iff.o: xanim.h xa_config.h xa_iff.h xa_iff.c
+xa_input.o: xanim.h xa_input.c
+xa_ipc.o: Imakefile xanim.h xa_config.h xa_ipc.h xa_ipc.c
+xa_jmov.o: xanim.h xa_config.h xa_jmov.h xa_jmov.c
+xa_jpg.o: xanim.h xa_config.h xa_jpg.h xa_jpg.c
+xa_j6i.o: xanim.h xa_j6i.h xa_j6i.c
+xa_movi.o: xanim.h xa_config.h xa_movi.h xa_movi.c
+xa_mpg.o: xanim.h xa_config.h xa_mpg.h xa_xmpg.h xa_mpg.c xa_jpg.c
+xa_qt.o: Imakefile xanim.h xa_config.h xa_qt.h xa_codecs.h xa_qt.c
+xa_qt_decs.o: Imakefile xanim.h xa_config.h xa_qt.h xa_qt_decs.c
+xa_vid_codec.o: Imakefile xa_avi.h xa_qt.h xa_codecs.h xavid.h xavid_mod.h
+xa_vid_codec.o: xa_vid_codec.c
+xa_replay.o: xanim.h xa_config.h xa_replay.h xa_replay.c
+xa_rle.o: xanim.h xa_config.h xa_rle.h xa_rle.c
+xa_set.o: xanim.h xa_config.h xa_iff.h xa_iff.c xa_set.h xa_set.c
+xa_raw.o: xanim.h xa_raw.h xa_raw.c
+xa_show.o: Imakefile xanim.h xa_show.c
+xa_txt.o: xanim.h xa_config.h xa_txt.c
+xa_utils.o: xanim.h xa_config.h xa_utils.c
+xa_wav.o: xanim.h xa_config.h xa_avi.h xa_wav.c
+xa_8svx.o: xanim.h xa_8svx.h xa_8svx.c
+xa_x11.o: Imakefile xanim.h xa_config.h xa_x11.h xa_x11.c
+xa_gsm.o: xanim.h xa_gsm_state.h xa_gsm.h xa_gsm.c

@@ -1,0 +1,4 @@
+#define bar_6x4_lo_width 6
+#define bar_6x4_lo_height 4
+static unsigned char bar_6x4_lo_bits[] = {
+   0xc0, 0xe0, 0xfc, 0xfe};

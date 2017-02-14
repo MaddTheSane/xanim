@@ -1,0 +1,31 @@
+
+
+Since I don't have any type of access to VMS machines, I can't
+provide much assistance in helping you compile XAnim on VMS machines.
+
+I am grateful to the several individuals who provided and modified
+the following files for use in compiling XAnim on VMS systems.
+
+	make.com	make comand file for XAnim.
+	descript.mms	MMS Description file for XAnim.
+	xanim.hlp	VMS help file based on older rev 
+			of unix xanim.readme.
+
+If you are using the "descript.mms" file, then you want to edit
+that file in the "Linker Options Sections", you will want
+to uncomment just one of the OPT defines accordingly to which
+version of DECWindows that you have.
+
+If you are using "make.com" then you do not need to modify the
+file. It should automatically detect which DECWindows you
+are using.
+
+With 2.70.4, neither of these files have been tested after I
+modified them. 
+
+Mark
+---
+podlipec@ici.net
+
+
+    

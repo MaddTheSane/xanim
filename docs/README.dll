@@ -1,0 +1,179 @@
+
+21Mar99 12:36
+
+As of revision 2.80, XAnim will scan the directory "/usr/local/xanim/mods"
+(or directories listed in the XANIM_MOD_DIR env variable if set) for
+xanim specific dynamically loadable libraries(dll's).  It will 
+automatically load these at start up. This way new video codecs for
+AVI and Quicktime can be added without having to recompile XAnim.  
+I meant to do this earlier but was waiting to redo the video API first.
+Didn't have time, no big surprise there.
+
+It is still possible to compile in the current modules(Radius Cinepak,
+Intel Indeo 3.2 and Creative CYUV) for those platforms that I'm not
+yet able to create dll's for or for platforms that don't support 
+dll's at all.
+
+However, newer video modules(such as Indeo 4 and Indeo 5) will probably
+only be supported in dll form.  As the video codecs are becoming more 
+and more complex, it's usually no longer feasible(or at least desirable) 
+to implement them in a single source file(where you can hide all the
+symbols by declaring them static).  With multiple files, the symbols
+can't all be static and those that aren't run the risk of colliding
+with symbols of a different codec or even XAnim itself. Pretty much
+all of the new dll codecs have symbols that collide with each other.
+I thought of renaming them, but that is very time consuming and not 
+much fun.  Some C compilers/linkers allow you to do a partial link 
+and in the process suppress the symbols in various manners.  However, a 
+lot don't. In any case, I feel the right choice is to go to dll's and 
+will concentrate my effort on those.
+
+Below are notes for the various platforms I (or others) have tested
+them on. It will hopefully be expanded as I learn more.
+
+Of all the cross-compilers I have, only the linux-Alpha one is
+complete enough for me to be able to produce shared libraries.
+So I'll be working on IBM AIX and linux-Alpha next.  Since my
+SunOS box is going away, any cross-compiler will have to be
+for linux x86 (Either glibc 2.0 or 2.1 but NOT libc 5.0)
+
+
+Linux x86.
+  You need to link XAnim with "-rdynamic" or else unresolved symbols in
+  the DLLs won't be linked to the symbols inside XAnim.
+
+  There are currently three separate sets of modules for linux x86.
+  Which one to use depends on which version/flavor of libc is used
+  on your system as well as used to compiled XAnim.
+
+    _linuxELFx86c5		libc 5.x  systems
+    _linuxELFx86                libc 2.0x systems
+    _linuxELFx86g21             libc 2.1  systems
+
+  
+  Using dlls with an XAnim executable that was compiled with a different
+  version of glibc will probably result in core dumps and/or unresolved
+  symbols. Whadda pain.
+
+  Thanks to RedHat for providing me with the new glibc 2.1.
+
+
+SunOS 4.1.x
+
+  I was not able to use GNU's compiler/linker for XAnim and get the dll
+  modules to work.  Seems to be an incompatibilies between Sun's libdl
+  and GNU's linker(or probably just how it's setup on my system).  
+  It may also have to do with which crt0 gets used.  In any case, if you
+  compile and link XAnim with "cc", then things will work. NOTE: the dll
+  modules can still be compiled/linked with GNU C.
+
+
+Solaris
+
+  Things just worked using GNU C. No special switches, etc.
+
+  If you compile XAnim with something other than "gcc" on Solaris
+  you may run into problems of unresolved math symbols when trying to
+  use the dll modules.  I'm in the process of determining if there
+  is a work around or not.
+
+SGI
+
+  Things worked ok on an SGI Indy. I was only able to generate
+  the dlls with the O32 ABI. Probably won't work with the N32 or
+  N64 ABIs.  I have no means of compiling for those platforms.
+
+
+Obtaining the modules:
+
+  You can download them via the DLL html pages on the XAnim web sites
+  or via anonymous ftp from  xanim.va.pubnix.com in the "dlls" directory.
+
+  The DLLs are distributed as gzipped tar archives containing the
+  action DLL and a readme file. The archive filenames end with ".tgz"
+
+
+  1) Download the gzipped archive either via http or via ftp. 
+     If by ftp, make sure you use "type binary" for the download.
+
+  2) Extract the two files by typing:
+
+        gzip -d < archive.tgz | tar xvf -
+
+     This will produce a readme file and a file ending in ".xa"
+
+  4) Installing
+
+     You should now have two files. This readme file and another
+     file that ends in a ".xa" (from now on I'm referring to this
+     file as the .XA file).
+
+
+        1) Create the directory "/usr/local/xanim/mods" if it doesn't
+           already exist
+
+        2) Move or copy the .XA file into that directory.
+     
+
+     NOTE: You can use a different directory that the one used
+     in steps 1 and 2 above provided that you set the 
+     XANIM_MOD_DIR environment variable to list the directory 
+     or directories you chose instead.
+         
+     For example. If you place them in "/global/xanim/mods" the you 
+     need to: 
+
+           setenv XANIM_MOD_DIR /global/xanim/mods
+
+     Another example. If you also have some experimental ones in the 
+     directory: "/home/test/mods"   in addition to the stable ones
+     in the directory: "/usr/local/xanim/mods"  then you would need to: 
+
+           setenv XANIM_MOD_DIR /usr/local/xanim/mods:/home/test/mods
+
+     NOTE: In XAnim rev 2801 and up you can change the default xanim dll
+     directory with a define in the Makefile. See section IIIa of the 
+     Makefile for specific instructions.
+         
+
+     CAUTION:  XAnim does NOT currently choose the latest revision
+     of a DLL.  If you upgrade a DLL to a new revision you should
+     remove the old revision from the XANIM_MOD_DIR directory.
+
+     WARNING: While it shouldn't cause an error if the same .XA file
+     is loaded several times, it isn't necessary and eats up additional
+     memory.
+   
+
+  5) Using
+
+     NOTE: Make sure you compiled xanim with the XA_DLL define uncommented.
+
+     XAnim will check to see if XANIM_MOD_DIR is defined, if so it
+     will search the ":" separated list of directories for files
+     starting with "vid_" and ending with ".xa".  It will attempt
+     to load any it finds.  If XANIM_MOD_DIR is not set, XAnim will
+     only look in "/usr/local/xanim/mods" for the same type of files.
+
+
+
+Which Modules to Download(This:
+
+
+  - Linux x86 using libc 5.*:           vid_*_linuxELFx86c5.tgz
+
+  - Linux x86 using glibc 2.1:          vid_*_linuxELFx86g21.tgz
+
+  - Linux x86 using glibc 2.0*:         vid_*_linuxELFx86.tgz
+
+  - SunOS 4.x Sparc                     vid_*_sunAOUTsparc.tgz
+
+  - Solaris Sparc                       vid_*_sunELFsparc.tgz
+
+  - SGI Irix O32 ABI                    vid_*_sgiO32mips.tgz
+
+
+Since this file may be part of the XAnim distribution, it may not always
+be up-to-date.  See the XAnim web sites for the latest dll information.
+
+

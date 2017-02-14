@@ -2,15 +2,15 @@
 /*
  * xa_cmap.c
  *
- * Copyright (C) 1992,1993,1994,1995 by Mark Podlipec. 
+ * Copyright (C) 1992-1998,1999 by Mark Podlipec. 
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  * 
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
@@ -63,7 +63,7 @@ typedef struct CMAP_Box_Struct
 
 int ColorComp();
 int CMAP_CList_Compare();
-xaLONG CMAP_Find_Closest();
+xaULONG CMAP_Find_Closest();
 xaLONG CMAP_Find_Exact();
 xaLONG CMAP_CHDR_Match();
 void CMAP_Remap_CHDRs();
@@ -115,16 +115,14 @@ ColorReg *c1,*c2;
 /*
  *
  */
-xaLONG CMAP_Find_Closest(t_cmap,csize,r,g,b,rbits,gbits,bbits,color_flag)
+xaULONG CMAP_Find_Closest(t_cmap,csize,r,g,b,rbits,gbits,bbits,color_flag)
 ColorReg *t_cmap;
 xaULONG csize;
 xaLONG r,g,b;
 xaULONG rbits,gbits,bbits;
 xaULONG color_flag;
-{
-  register xaULONG i,min_diff;
-  register xaLONG cmap_entry;
-
+{ register xaULONG i,min_diff;
+  register xaULONG cmap_entry;
 
   if (color_flag == xaFALSE)
   {
@@ -244,9 +242,10 @@ XA_CHDR *chdr1,*chdr2;
 /*
  *
  */
-int CMAP_CList_Compare(c1,c2)
-register int *c1,*c2;
-{
+int CMAP_CList_Compare(pc1,pc2)
+void *pc1,*pc2;
+{ int *c1 = (int *)pc1;
+  int *c2 = (int *)pc2;
   return( (*c1) - (*c2) );
 }
 
@@ -267,24 +266,22 @@ xaULONG *clist,cnum;
 {
   register xaULONG i,j,data;
 
-  DEBUG_LEVEL2 fprintf(stderr,"CMAP_Compress_CList: start %ld c %ld\n",
+  DEBUG_LEVEL2 fprintf(stderr,"CMAP_Compress_CList: start %d c %d\n",
 		cnum,cmap_use_combsort);
   if (cnum == 1) return(cnum);
   /* sort color list */
   if (cmap_use_combsort == xaTRUE) CMAP_CList_CombSort(clist,cnum);
   else		qsort(clist,cnum,sizeof(xaULONG),CMAP_CList_Compare);
   /* eliminate identical entries */
-  DEBUG_LEVEL2 fprintf(stderr,"CMAP_Compress_CList: sort done %ld\n",cnum);
+  DEBUG_LEVEL2 fprintf(stderr,"CMAP_Compress_CList: sort done %d\n",cnum);
   data = clist[0];   j = 1; 
   for(i=1; i<cnum; i++)
-  {
-    if (data != clist[i])
-    {
-      data = clist[i];
+  { if (data != clist[i])
+    { data = clist[i];
       clist[j] = data;  j++; 
     }
   }
-  DEBUG_LEVEL2 fprintf(stderr,"CMAP_Compress_CList: done %ld\n",j);
+  DEBUG_LEVEL2 fprintf(stderr,"CMAP_Compress_CList: done %d\n",j);
   return(j); 
 }
 
@@ -352,7 +349,7 @@ xaULONG **clist;
     if (cmap_hist_flag == xaTRUE)
     {
       DEBUG_LEVEL2 
-        fprintf(stderr,"   csize %lx afta hist %ld\n",
+        fprintf(stderr,"   csize %x afta hist %d\n",
 		chdr->csize,(c_i - stat_size) );
     }
     chdr = chdr->next;
@@ -371,7 +368,7 @@ CMAP_Map_To_One()
    /* NOTE: clist is malloc'd in CMAP_Make_Clist */
   clist_len = CMAP_Make_Clist(xa_chdr_start,&clist);
   DEBUG_LEVEL2 
-	fprintf(stderr,"CMAP_Map_To_One: start csize = %ld\n",clist_len);
+	fprintf(stderr,"CMAP_Map_To_One: start csize = %d\n",clist_len);
 
   wanted_csize = x11_cmap_size;
 
@@ -384,7 +381,7 @@ CMAP_Map_To_One()
       CMAP_BitMask_CList(clist,clist_len,bits);
       clist_len = CMAP_Compress_CList(clist,clist_len);
 DEBUG_LEVEL2 
-  fprintf(stderr,"CMAP_Map_To_One: bit %ld  csize = %ld\n",bits,clist_len);
+  fprintf(stderr,"CMAP_Map_To_One: bit %d  csize = %d\n",bits,clist_len);
       bits--;
     }
     if (clist_len < wanted_csize) wanted_csize = clist_len;
@@ -395,13 +392,13 @@ DEBUG_LEVEL2
   {
     actual_csize = CMAP_Median_Cut(new_chdr->cmap,
 				clist,clist_len,wanted_csize);
-    DEBUG_LEVEL2 fprintf(stderr,"CMAP_Median_Cut: csize %ld\n",actual_csize);
+    DEBUG_LEVEL2 fprintf(stderr,"CMAP_Median_Cut: csize %d\n",actual_csize);
   }
   else
   {
     CMAP_CMAP_From_Clist(new_chdr->cmap,clist,clist_len);
     actual_csize = clist_len;
-    DEBUG_LEVEL2 fprintf(stderr,"CMAP_CList: csize %ld\n",actual_csize);
+    DEBUG_LEVEL2 fprintf(stderr,"CMAP_CList: csize %d\n",actual_csize);
   }
   FREE(clist,0x202); clist=0;
   new_chdr->csize = actual_csize;
@@ -426,7 +423,7 @@ xaULONG new_csize;
    /* NOTE: clist is malloc'd in CMAP_Make_Clist */
   clist_len = CMAP_Make_Clist(xa_chdr_start,&clist);
   DEBUG_LEVEL2 
-	fprintf(stderr,"CMAP_Shrink_CHDR: start csize = %ld\n",clist_len);
+	fprintf(stderr,"CMAP_Shrink_CHDR: start csize = %d\n",clist_len);
   wanted_csize = new_csize;
 
   {
@@ -438,7 +435,7 @@ xaULONG new_csize;
       CMAP_BitMask_CList(clist,clist_len,bits);
       clist_len = CMAP_Compress_CList(clist,clist_len);
 DEBUG_LEVEL2 
-  fprintf(stderr,"CMAP_Map_To_One: bit %ld  csize = %ld\n",bits,clist_len);
+  fprintf(stderr,"CMAP_Map_To_One: bit %d  csize = %d\n",bits,clist_len);
       bits--;
     }
     if (clist_len < wanted_csize) wanted_csize = clist_len;
@@ -449,13 +446,13 @@ DEBUG_LEVEL2
   {
     actual_csize = CMAP_Median_Cut(new_chdr->cmap,
 				clist,clist_len,wanted_csize);
-    DEBUG_LEVEL2 fprintf(stderr,"CMAP_Median_Cut: csize %ld\n",actual_csize);
+    DEBUG_LEVEL2 fprintf(stderr,"CMAP_Median_Cut: csize %d\n",actual_csize);
   }
   else
   {
     CMAP_CMAP_From_Clist(new_chdr->cmap,clist,clist_len);
     actual_csize = clist_len;
-    DEBUG_LEVEL2 fprintf(stderr,"CMAP_CList: csize %ld\n",actual_csize);
+    DEBUG_LEVEL2 fprintf(stderr,"CMAP_CList: csize %d\n",actual_csize);
   }
   FREE(clist,0x202); clist=0;
   new_chdr->csize = actual_csize;
@@ -567,7 +564,7 @@ XA_CHDR *the_chdr;
 {
   XA_CHDR *tmp_chdr;
 
-  DEBUG_LEVEL2 fprintf(stderr,"CMAP_Remap_CHDRs to %lx\n",(xaULONG)the_chdr);
+  DEBUG_LEVEL2 fprintf(stderr,"CMAP_Remap_CHDRs to %x\n",(xaULONG)the_chdr);
 
   tmp_chdr = xa_chdr_start;
   while(tmp_chdr)
@@ -590,9 +587,9 @@ xaULONG *clist,clist_len;
     r = (clist[i] >> 16) & 0xff;
     g = (clist[i] >> 8) & 0xff;
     b = clist[i] & 0xff;
-    cmap_out[i].red   = (xaUSHORT)(r * 257);
-    cmap_out[i].green = (xaUSHORT)(g * 257);
-    cmap_out[i].blue  = (xaUSHORT)(b * 257);
+    cmap_out[i].red   = (xaUSHORT)( r | (r << 8) );
+    cmap_out[i].green = (xaUSHORT)( g | (g << 8) );
+    cmap_out[i].blue  = (xaUSHORT)( b | (b << 8) );
     cmap_out[i].gray  = 
 	(xaUSHORT)( (((r * 11) + (g * 16) + (b * 5) ) >> 5) * 257 );
   }
@@ -666,7 +663,7 @@ CMAP_Box *box;
 {
   xaLONG i;
 
-  DEBUG_LEVEL3 fprintf(stderr,"Compacting Box %lx\n",(xaULONG)box); 
+  DEBUG_LEVEL3 fprintf(stderr,"Compacting Box %x\n",(xaULONG)box); 
   /* 256 is max+1 in 8 bit r,g,b */
   box->rmin = box->gmin = box->bmin = 256;
   box->rmax = box->gmax = box->bmax = -1;
@@ -688,21 +685,24 @@ CMAP_Box *box;
   }
 }
 
-int CMAP_Median_Compare_Red(c1,c2)
-register int *c1,*c2;
-{
+int CMAP_Median_Compare_Red(pc1,pc2)
+void *pc1,*pc2;
+{ int *c1 = (int *)pc1;
+  int *c2 = (int *)pc2;
   return( ((*c1) & 0xff0000) - ((*c2) & 0xff0000) );
 }
 
-int CMAP_Median_Compare_Green(c1,c2)
-register int *c1,*c2;
-{
+int CMAP_Median_Compare_Green(pc1,pc2)
+void *pc1,*pc2;
+{ int *c1 = (int *)pc1;
+  int *c2 = (int *)pc2;
   return( ((*c1) & 0xff00) - ((*c2) & 0xff00) );
 }
 
-int CMAP_Median_Compare_Blue(c1,c2)
-register int *c1,*c2;
-{
+int CMAP_Median_Compare_Blue(pc1,pc2)
+void *pc1,*pc2;
+{ int *c1 = (int *)pc1;
+  int *c2 = (int *)pc2;
   return( ((*c1) & 0xff) - ((*c2) & 0xff) );
 }
 
@@ -771,7 +771,7 @@ CMAP_Box *box;
   register xaLONG i;
   register xaULONG r,g,b,sum;
 
-  DEBUG_LEVEL3 fprintf(stderr,"    box has %ld\n",box->clist_len);
+  DEBUG_LEVEL3 fprintf(stderr,"    box has %d\n",box->clist_len);
   if (cmap_median_type == CMAP_MEDIAN_SUM)
   {
     r=0; g=0; b=0; sum=0;
@@ -806,7 +806,7 @@ xaULONG *hist,csize,moff;
 {
   XA_ACTION *act;
 
-  DEBUG_LEVEL2 fprintf(stderr,"Histogram for %lx\n",(xaULONG)chdr);
+  DEBUG_LEVEL2 fprintf(stderr,"Histogram for %x\n",(xaULONG)chdr);
   act = chdr->acts;
   while(act)
   {
@@ -819,7 +819,7 @@ xaULONG *hist,csize,moff;
 	  register xaULONG psize;
 	  ACT_MAPPED_HDR *map_hdr;
 
-          DEBUG_LEVEL2 fprintf(stderr,"  hist'ing act %lx\n",(xaULONG)act);
+          DEBUG_LEVEL2 fprintf(stderr,"  hist'ing act %x\n",(xaULONG)act);
 	  map_hdr = (ACT_MAPPED_HDR *)act->data;
 	  psize = map_hdr->xsize * map_hdr->ysize;
 	  p = map_hdr->data;
@@ -839,7 +839,7 @@ xaULONG *hist,csize,moff;
 	  ACT_SETTER_HDR *setter_hdr;
 	  XA_ACTION *back_act;
 
-          DEBUG_LEVEL2 fprintf(stderr,"  hist'ing setter act %lx\n",act);
+          DEBUG_LEVEL2 fprintf(stderr,"  hist'ing setter act %x\n",act);
 
 	  setter_hdr = (ACT_SETTER_HDR *)act->data;
 	  back_act = setter_hdr->back;
@@ -847,7 +847,7 @@ xaULONG *hist,csize,moff;
 	  {
 	    map_hdr = (ACT_MAPPED_HDR *)back_act->data;
 	    psize = map_hdr->xsize * map_hdr->ysize;
-	    DEBUG_LEVEL2 fprintf(stderr,"psize = %ld\n",psize);
+	    DEBUG_LEVEL2 fprintf(stderr,"psize = %d\n",psize);
 	    p = map_hdr->data;
 	    if (p)
 	    {
@@ -906,7 +906,7 @@ xaULONG flag;
     cmap_cache2 = (xaUSHORT *)malloc(cmap_cache_size * sizeof(xaUSHORT));
     if (cmap_cache2 == 0) TheEnd1("CMAP_CACHE: malloc err2");
   }
-  DEBUG_LEVEL3 fprintf(stderr,"cache mask's %lx %lx %lx\n",
+  DEBUG_LEVEL3 fprintf(stderr,"cache mask's %x %x %x\n",
 			cmap_cache_rmask,cmap_cache_gmask,cmap_cache_bmask);
 }
 /*
@@ -980,9 +980,9 @@ xaULONG *csize;
 
     if (x11_display_type == XA_MONOCHROME) { size = 256; disp_bits = 8; }
     else
-    {
+    { int xsize = (x11_cmap_size > 256)?(256):(x11_cmap_size);
       size = 0x01; disp_bits = 0;
-      while(size <= x11_cmap_size) { size <<= 1; disp_bits++; }
+      while(size <= xsize) { size <<= 1; disp_bits++; }
       size >>=1; disp_bits--;
     }
     r_bits = 3; g_bits = 3; b_bits = 3; last = 2;
@@ -1006,11 +1006,11 @@ xaULONG *csize;
 
     DEBUG_LEVEL3
     {
-      fprintf(stderr,"CMAP_Create_332: %ld: %ld %ld %ld\n",
+      fprintf(stderr,"CMAP_Create_332: %d: %d %d %d\n",
 	disp_bits,r_bits,g_bits,b_bits);
-      fprintf(stderr,"CMAP_Create_332: masks: %lx %lx %lx\n",
+      fprintf(stderr,"CMAP_Create_332: masks: %x %x %x\n",
 	xa_r_mask,xa_g_mask,xa_b_mask);
-      fprintf(stderr,"CMAP_Create_332: shifts: %lx %lx %lx\n",
+      fprintf(stderr,"CMAP_Create_332: shifts: %x %x %x\n",
 	xa_r_shift,xa_g_shift,xa_b_shift);
     }
     i = r_bits + g_bits + b_bits;
@@ -1062,6 +1062,7 @@ xaULONG *csize;
 {
   xaULONG i,size;
 
+
   if ( (cmap_gray_chdr == 0) || (cmap_cur_gamma != cmap_gray_gamma) )
   {
     xaULONG disp_bits;
@@ -1069,15 +1070,15 @@ xaULONG *csize;
     /* find number of bits in display or use 256 if monochrome */
     if (x11_display_type == XA_MONOCHROME) { disp_bits = 8; size = 256; }
     else
-    {
+    { int xsize = (x11_cmap_size > 256)?(256):(x11_cmap_size);
       size = 0x01; disp_bits = 0;
-      while(size <= x11_cmap_size) { size <<= 1; disp_bits++; }
+      while(size <= xsize) { size <<= 1; disp_bits++; }
       size >>=1; disp_bits--;
     }
     xa_gray_bits = disp_bits;
     xa_gray_shift = 16 - disp_bits;
 
-    DEBUG_LEVEL3 fprintf(stderr,"Gray: bits %ld shift %ld\n",
+    DEBUG_LEVEL3 fprintf(stderr,"Gray: bits %d shift %d\n",
 					disp_bits,xa_gray_shift);
     g_scale = cmap_scale[disp_bits];
 
@@ -1138,11 +1139,11 @@ xaULONG *csize;
 
   wanted_csize = x11_cmap_size;
 
-  DEBUG_LEVEL2 fprintf(stderr,"xaTRUE_CHDR: cnum = %ld wanted =%ld\n",
+  DEBUG_LEVEL2 fprintf(stderr,"xaTRUE_CHDR: cnum = %d wanted =%d\n",
 				clist_len,wanted_csize);
   CMAP_BitMask_CList(clist,clist_len,cmap_median_bits);
   clist_len = CMAP_Compress_CList(clist,clist_len);
-  DEBUG_LEVEL2 fprintf(stderr,"xaTRUE_CHDR: compress cnum = %ld\n",clist_len);
+  DEBUG_LEVEL2 fprintf(stderr,"xaTRUE_CHDR: compress cnum = %d\n",clist_len);
 
   if (clist_len < wanted_csize) wanted_csize = clist_len;
 
@@ -1151,7 +1152,7 @@ xaULONG *csize;
   {
     wanted_csize = 
 	CMAP_Median_Cut(new_chdr->cmap,clist,clist_len,wanted_csize);
-  DEBUG_LEVEL2 fprintf(stderr,"xaTRUE_CHDR: median cnum = %ld\n",wanted_csize);
+  DEBUG_LEVEL2 fprintf(stderr,"xaTRUE_CHDR: median cnum = %d\n",wanted_csize);
   }
   else
   {
@@ -1171,19 +1172,15 @@ xaULONG *csize;
 
 void CMAP_CList_CombSort(clist,cnum)
 xaULONG *clist,cnum;
-{
-  register xaULONG ShrinkFactor,gap,i,temp,finished;
+{ register xaULONG ShrinkFactor,gap,i,temp,finished;
   ShrinkFactor = 13; gap = cnum;
   do
-  {
-    finished = 1; gap = (gap * 10) / ShrinkFactor;
+  { finished = 1; gap = (gap * 10) / ShrinkFactor;
     if (gap < 1) gap = 1;
     if ( (gap==9) | (gap == 10) ) gap = 11;
     for(i=0; i < (cnum - gap); i++)
-    {
-      if (clist[i] < clist[i+gap])
-      {
-        temp = clist[i]; clist[i] = clist[i+gap];
+    { if (clist[i] < clist[i+gap])
+      { temp = clist[i]; clist[i] = clist[i+gap];
         clist[i+gap] = temp;
         finished = 0;
       }
@@ -1197,15 +1194,12 @@ xaULONG *clist,cnum;
   register xaULONG ShrinkFactor,gap,i,temp,finished;
   ShrinkFactor = 13; gap = cnum;
   do
-  {
-    finished = 1; gap = (gap * 10) / ShrinkFactor;
+  { finished = 1; gap = (gap * 10) / ShrinkFactor;
     if (gap < 1) gap = 1;
     if ( (gap==9) | (gap == 10) ) gap = 11;
     for(i=0; i < (cnum - gap); i++)
-    {
-      if ( (clist[i] & 0xff0000) < (clist[i+gap] & 0xff0000) )
-      {
-        temp = clist[i]; clist[i] = clist[i+gap];
+    { if ( (clist[i] & 0xff0000) < (clist[i+gap] & 0xff0000) )
+      { temp = clist[i]; clist[i] = clist[i+gap];
         clist[i+gap] = temp;
         finished = 0;
       }
@@ -1219,15 +1213,12 @@ xaULONG *clist,cnum;
   register xaULONG ShrinkFactor,gap,i,temp,finished;
   ShrinkFactor = 13; gap = cnum;
   do
-  {
-    finished = 1; gap = (gap * 10) / ShrinkFactor;
+  { finished = 1; gap = (gap * 10) / ShrinkFactor;
     if (gap < 1) gap = 1;
     if ( (gap==9) | (gap == 10) ) gap = 11;
     for(i=0; i < (cnum - gap); i++)
-    {
-      if ( (clist[i] & 0xff00) < (clist[i+gap] & 0xff00) )
-      {
-        temp = clist[i]; clist[i] = clist[i+gap];
+    { if ( (clist[i] & 0xff00) < (clist[i+gap] & 0xff00) )
+      { temp = clist[i]; clist[i] = clist[i+gap];
         clist[i+gap] = temp;
         finished = 0;
       }
@@ -1241,15 +1232,12 @@ xaULONG *clist,cnum;
   register xaULONG ShrinkFactor,gap,i,temp,finished;
   ShrinkFactor = 13; gap = cnum;
   do
-  {
-    finished = 1; gap = (gap * 10) / ShrinkFactor;
+  { finished = 1; gap = (gap * 10) / ShrinkFactor;
     if (gap < 1) gap = 1;
     if ( (gap==9) | (gap == 10) ) gap = 11;
     for(i=0; i < (cnum - gap); i++)
-    {
-      if ( (clist[i] & 0xff) < (clist[i+gap] & 0xff) )
-      {
-        temp = clist[i]; clist[i] = clist[i+gap];
+    { if ( (clist[i] & 0xff) < (clist[i+gap] & 0xff) )
+      { temp = clist[i]; clist[i] = clist[i+gap];
         clist[i+gap] = temp;
         finished = 0;
       }

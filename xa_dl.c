@@ -2,15 +2,15 @@
 /*
  * xa_dl.c
  *
- * Copyright (C) 1990,1991,1992,1993,1994,1995 by Mark Podlipec. 
+ * Copyright (C) 1990-1998,1999 by Mark Podlipec. 
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  * 
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
@@ -23,14 +23,13 @@ XA_ACTION *ACT_Get_Action();
 void  ACT_Setup_Mapped();
 void  ACT_Add_CHDR_To_Action();
 void  ACT_Setup_Loop();
-xaLONG  UTIL_Get_LSB_Short();
-xaULONG UTIL_Get_LSB_Long();
-void  UTIL_Sub_Image();
 xaULONG DL_Read_File();
 extern XA_ANIM_SETUP *XA_Get_Anim_Setup();
 void XA_Free_Anim_Setup();
 xaULONG DL_Decode_Image();
 ACT_DLTA_HDR *DL_Get_Dlta_HDR();
+
+extern void ACT_Setup_Delta();
 
 static xaULONG dl_version;
 static xaULONG dl_format;
@@ -109,27 +108,6 @@ DL_FRAME *fframes;
   }
 }
 
-/**********
- *
- *****/
-xaLONG Is_DL_File(filename)
-char *filename;
-{
-  FILE *fin;
-  xaLONG data0,data1;
-
-  if ( (fin=fopen(filename,XA_OPEN_MODE)) == 0) return(xaNOFILE);
-  data0 = fgetc(fin);
-  data1 = fgetc(fin);
-  fclose(fin);
-  if (data0 == 0x01) return(xaTRUE);
-  if (data0 == 0x02)
-  {
-    if ( (data1 >= 0x00) && (data1 <= 0x03) ) return(xaTRUE);
-  }
-  if (data0 == 0x03) return(xaTRUE);
-  return(xaFALSE);
-}
 
 /**********
  *
@@ -137,7 +115,7 @@ char *filename;
 xaULONG DL_Read_File(fname,anim_hdr)
 XA_ANIM_HDR *anim_hdr;
 char *fname;
-{ FILE *fin;
+{ XA_INPUT *xin = anim_hdr->xin;
   xaLONG i,j,tmp;
   XA_ACTION *prev_end_act;
   XA_ANIM_SETUP *dl;
@@ -153,13 +131,7 @@ char *fname;
 
   dl_ims_per_screen = 1;
 
-  if ( (fin = fopen(fname,XA_OPEN_MODE)) == 0)
-  { 
-    fprintf(stderr,"DL_Read_File: Can't open %s for reading.\n",fname); 
-    return(xaFALSE);
-  }
-
-  dl_version = fgetc(fin);  /* either 1 or 2 */
+  dl_version = xin->Read_U8(xin);  /* either 1 or 2 */
 
 /* EVENTUALLY MERGE below two switches into one */
   switch(dl_version)
@@ -169,11 +141,11 @@ char *fname;
 		dl_txt_size = 20;
 		break;
     case DL_VERSION_2:
-		dl_format = fgetc(fin);
+		dl_format = xin->Read_U8(xin);
 		dl_txt_size = 20;
 		break;
     case DL_VERSION_3:
-		dl_format = fgetc(fin);
+		dl_format = xin->Read_U8(xin);
 		dl_format = DL_FORM_LARGE; 
 		dl_txt_size = 40;
 		/* not really. size defined later.kludge */
@@ -200,7 +172,7 @@ char *fname;
 	dl_ims_per_screen = 16;
 	break;
     default:
-	fprintf(stderr,"DL_Read_File: unknown format %lx\n",dl_format);
+	fprintf(stderr,"DL_Read_File: unknown format %x\n",dl_format);
 	return(xaFALSE);
 	break;
   }
@@ -209,14 +181,14 @@ char *fname;
   if (dl_version==DL_VERSION_3)
   { int cnt;
     cnt = 50;
-    while(cnt--) {getc(fin); }
+    while(cnt--) {xin->Read_U8(xin); }
   }
 
   /********* GET TITLE ***********************/
   dl_title[dl_txt_size] = 0;
   for(i=0; i<dl_txt_size; i++) 
   {
-    tmp = fgetc(fin);
+    tmp = xin->Read_U8(xin);
     dl_title[i] = (tmp)?(tmp ^ 0xff):tmp;
   }
 
@@ -226,42 +198,42 @@ char *fname;
   {
     for(i=0; i< dl_txt_size; i++)
     {
-      tmp = fgetc(fin);
+      tmp = xin->Read_U8(xin);
       dl_author[i] = (tmp)?(tmp ^ 0xff):tmp;
     }
   }
 
   if (dl_version == DL_VERSION_3)
-    dl_num_of_screens = UTIL_Get_LSB_Short(fin);
+    dl_num_of_screens = xin->Read_LSB_U16(xin);
   else
-    dl_num_of_screens = fgetc(fin);
+    dl_num_of_screens = xin->Read_U8(xin);
 
   dl_num_of_images = dl_num_of_screens * dl_ims_per_screen;
 
   if (dl_version == DL_VERSION_1)
-     dl_num_of_frames = UTIL_Get_LSB_Short(fin);
+     dl_num_of_frames = xin->Read_LSB_U16(xin);
   else if (dl_version == DL_VERSION_2)
-     dl_num_of_frames = UTIL_Get_LSB_Long(fin);
+     dl_num_of_frames = xin->Read_LSB_U32(xin);
   else
   { xaULONG dl_num_of_audio;
-    dl_num_of_frames = UTIL_Get_LSB_Short(fin);
-    dl_num_of_audio = UTIL_Get_LSB_Short(fin);
+    dl_num_of_frames = xin->Read_LSB_U16(xin);
+    dl_num_of_audio = xin->Read_LSB_U16(xin);
   }
      
 
   dl->imagec = DL_MAX_COLORS;
   for(i=0; i < DL_MAX_COLORS; i++)
   {
-    dl->cmap[i].red   = fgetc(fin) & 0x3f;
-    dl->cmap[i].green = fgetc(fin) & 0x3f;
-    dl->cmap[i].blue  = fgetc(fin) & 0x3f;
+    dl->cmap[i].red   = xin->Read_U8(xin) & 0x3f;
+    dl->cmap[i].green = xin->Read_U8(xin) & 0x3f;
+    dl->cmap[i].blue  = xin->Read_U8(xin) & 0x3f;
   }
   dl->chdr = ACT_Get_CMAP(dl->cmap,DL_MAX_COLORS,0,DL_MAX_COLORS,0,6,6,6);
   
  DEBUG_LEVEL1
  {
-   fprintf(stderr,"   Version %ld  Format %ld",dl_version,dl_format);
-   fprintf(stderr," Images %ld  Frames %ld\n",
+   fprintf(stderr,"   Version %d  Format %d",dl_version,dl_format);
+   fprintf(stderr," Images %d  Frames %d\n",
 			dl_num_of_images, dl_num_of_frames );
    fprintf(stderr,"   Title = %s  Author = %s\n",dl_title,dl_author);
  }
@@ -288,12 +260,12 @@ char *fname;
 
           if (dl_version == DL_VERSION_3)
 	  {
-	    dl->imagex = UTIL_Get_LSB_Short(fin);
-	    dl->imagey = UTIL_Get_LSB_Short(fin);
+	    dl->imagex = xin->Read_LSB_U16(xin);
+	    dl->imagey = xin->Read_LSB_U16(xin);
 	    if (dl->imagex > dl->max_imagex) dl->max_imagex = dl->imagex;
 	    if (dl->imagey > dl->max_imagey) dl->max_imagey = dl->imagey;
 	    dl->pic_size = dl->imagex * dl->imagey;
-	    DEBUG_LEVEL1 fprintf(stderr,"DL %ld) size %ld %ld\n",
+	    DEBUG_LEVEL1 fprintf(stderr,"DL %d) size %d %d\n",
 						j,dl->imagex,dl->imagey);
 	  }
 	  DEBUG_LEVEL2 fprintf(stderr,"Read large format image\n");
@@ -301,14 +273,14 @@ char *fname;
           act = ACT_Get_Action(anim_hdr,ACT_DELTA);
 	  dl_acts[dl_image_cnt] = act;  dl_image_cnt++;
 
-	  dlta_hdr = DL_Get_Dlta_HDR(fin,dl->pic_size,act,
+	  dlta_hdr = DL_Get_Dlta_HDR(xin,dl->pic_size,act,
 					dl->imagex,dl->imagey,0,xaTRUE);
 	  if (dlta_hdr==0) return(xaFALSE);
-          fseek(fin,dl->pic_size,1);  /* skip over image */
+          /* xin->Seek_FPos(xin,dl->pic_size,1); */  /* skip over image */
 	  if (dl->pic_size > dl->max_fvid_size)
 					dl->max_fvid_size = dl->pic_size;
 	  dl->pic = 0;
-	  ACT_Setup_Delta(dl,act,dlta_hdr,fin);
+	  ACT_Setup_Delta(dl,act,dlta_hdr,xin);
 	}
 	break;
 
@@ -340,70 +312,70 @@ char *fname;
 	      dl_acts[dl_image_cnt] = act3;  dl_image_cnt++;
 	    }
 
-	    if (xa_file_flag == xaTRUE)
+	    if (xin->load_flag & XA_IN_LOAD_FILE)
 	    { if (s_size > dl->max_fvid_size) dl->max_fvid_size = s_size;
-	      d_hdr0 = DL_Get_Dlta_HDR(fin,s_size,act0,
+	      d_hdr0 = DL_Get_Dlta_HDR(xin,s_size,act0,
 					dl->imagex,dl->imagey,off,xaFALSE);
 	      if (d_hdr0 == 0) return(xaFALSE);
-	      fseek(fin,dl->imagex,1); s_size -= dl->imagex;
-	      d_hdr1 = DL_Get_Dlta_HDR(fin,s_size,act1,
+	      xin->Seek_FPos(xin,dl->imagex,1); s_size -= dl->imagex;
+	      d_hdr1 = DL_Get_Dlta_HDR(xin,s_size,act1,
 					dl->imagex,dl->imagey,off,xaFALSE);
 	      if (d_hdr1 == 0) return(xaFALSE);
 	      if (small_flag)
 	      {
-	        fseek(fin,dl->imagex,1); s_size -= dl->imagex;
-	        d_hdr2 = DL_Get_Dlta_HDR(fin,s_size,act2,
+	        xin->Seek_FPos(xin,dl->imagex,1); s_size -= dl->imagex;
+	        d_hdr2 = DL_Get_Dlta_HDR(xin,s_size,act2,
 					dl->imagex,dl->imagey,off,xaFALSE);
 	        if (d_hdr2 == 0) return(xaFALSE);
-	        fseek(fin,dl->imagex,1); s_size -= dl->imagex;
-	        d_hdr3 = DL_Get_Dlta_HDR(fin,s_size,act3,
+	        xin->Seek_FPos(xin,dl->imagex,1); s_size -= dl->imagex;
+	        d_hdr3 = DL_Get_Dlta_HDR(xin,s_size,act3,
 					dl->imagex,dl->imagey,off,xaFALSE);
 	        if (d_hdr3 == 0) return(xaFALSE);
 	      }
-	      fseek(fin,s_size,1);
+	      xin->Seek_FPos(xin,s_size,1);
 	    }
 	    else
 	    { xaULONG y = dl->imagey;
 	      xaUBYTE *dp0,*dp1,*dp2,*dp3;
 
-	      d_hdr0 = DL_Get_Dlta_HDR(fin,dl->pic_size,act0,
+	      d_hdr0 = DL_Get_Dlta_HDR(xin,dl->pic_size,act0,
 					dl->imagex,dl->imagey,0,xaFALSE);
 	      if (d_hdr0 == 0) return(xaFALSE);
 	      dp0 = d_hdr0->data;	
 
-	      d_hdr1 = DL_Get_Dlta_HDR(fin,dl->pic_size,act1,
+	      d_hdr1 = DL_Get_Dlta_HDR(xin,dl->pic_size,act1,
 					dl->imagex,dl->imagey,0,xaFALSE);
 	      if (d_hdr1 == 0) return(xaFALSE);
 	      dp1 = d_hdr1->data;
 
 	      if (small_flag)
 	      { 
-		d_hdr2 = DL_Get_Dlta_HDR(fin,dl->pic_size,act2,
+		d_hdr2 = DL_Get_Dlta_HDR(xin,dl->pic_size,act2,
 					dl->imagex,dl->imagey,0,xaFALSE);
 		if (d_hdr2 == 0) return(xaFALSE);
 		dp2 = d_hdr2->data;
 
-		d_hdr3 = DL_Get_Dlta_HDR(fin,dl->pic_size,act3,
+		d_hdr3 = DL_Get_Dlta_HDR(xin,dl->pic_size,act3,
 					dl->imagex,dl->imagey,0,xaFALSE);
 		if (d_hdr3 == 0) return(xaFALSE);
 		dp3 = d_hdr3->data; 
 	      }
 	      while(y--)
-	      { fread((char *)(dp0),dl->imagex,1,fin); dp0 += dl->imagex;
-		fread((char *)(dp1),dl->imagex,1,fin); dp1 += dl->imagex;
+	      { xin->Read_Block(xin,(char *)(dp0),dl->imagex); dp0 += dl->imagex;
+		xin->Read_Block(xin,(char *)(dp1),dl->imagex); dp1 += dl->imagex;
 		if (small_flag)
-	        { fread((char *)(dp2),dl->imagex,1,fin); dp2 += dl->imagex;
-		  fread((char *)(dp3),dl->imagex,1,fin); dp3 += dl->imagex;
+	        { xin->Read_Block(xin,(char *)(dp2),dl->imagex); dp2 += dl->imagex;
+		  xin->Read_Block(xin,(char *)(dp3),dl->imagex); dp3 += dl->imagex;
 	        }
 	      }
 	    }
 
-	    dl->pic = 0;	ACT_Setup_Delta(dl,act0,d_hdr0,fin);
-	    dl->pic = 0;	ACT_Setup_Delta(dl,act1,d_hdr1,fin);
+	    dl->pic = 0;	ACT_Setup_Delta(dl,act0,d_hdr0,xin);
+	    dl->pic = 0;	ACT_Setup_Delta(dl,act1,d_hdr1,xin);
 	    if (small_flag)
 	    {
-	      dl->pic = 0;	ACT_Setup_Delta(dl,act2,d_hdr2,fin);
-	      dl->pic = 0;	ACT_Setup_Delta(dl,act3,d_hdr3,fin);
+	      dl->pic = 0;	ACT_Setup_Delta(dl,act2,d_hdr2,xin);
+	      dl->pic = 0;	ACT_Setup_Delta(dl,act3,d_hdr3,xin);
 	    }
 	  } /* end of rows */
 	} /* end of case */
@@ -413,8 +385,8 @@ char *fname;
 
  if (xa_verbose == xaTRUE)
  {
-   fprintf(stderr,"   Version %ld  Format %ld",dl_version,dl_format);
-   fprintf(stderr," Images %ld  Frames %ld\n",
+   fprintf(stderr,"   Version %d  Format %d",dl_version,dl_format);
+   fprintf(stderr," Images %d  Frames %d\n",
 			dl_num_of_images, dl_num_of_frames );
    fprintf(stderr,"   Title = %s  Author = %s\n",dl_title,dl_author);
  }
@@ -428,7 +400,7 @@ char *fname;
 	for(i=0; i < dl_num_of_frames; i++)
 	{ DL_FRAME *dl_fm;
 	  register xaULONG tmp;
-	  tmp = fgetc(fin);
+	  tmp = xin->Read_U8(xin);
 	  tmp = (tmp % 10) - 1 + ((tmp / 10) - 1) * 4;
 
 	  if (tmp < dl_image_cnt)
@@ -437,7 +409,7 @@ char *fname;
 	    dl_fm->act = dl_acts[tmp];
 	    dl_frame_cnt++;
 	  }
-	  else fprintf(stderr,"   unknown code - ignored. %lx\n",tmp);
+	  else fprintf(stderr,"   unknown code - ignored. %x\n",tmp);
 	}
 	break;
    case DL_VERSION_3: /* POD TEMP FOR NOW */
@@ -450,8 +422,8 @@ char *fname;
 	  i = 0;
 	  while(i < dl_num_of_frames)
 	  { register xaULONG tmp;
-	    tmp  =  fgetc(fin); tmp |=  ( fgetc(fin) << 8); i++;
-	    DEBUG_LEVEL2 fprintf(stderr,"\t<%ld %lx>",i,tmp);
+	    tmp  =  xin->Read_U8(xin); tmp |=  ( xin->Read_U8(xin) << 8); i++;
+	    DEBUG_LEVEL2 fprintf(stderr,"\t<%d %x>",i,tmp);
 
 	    if (tmp & 0x8000)
 	    {
@@ -459,8 +431,8 @@ char *fname;
 	      {
 		case 0xffff:
 		  { xaULONG cnt;
-		    cnt  =  UTIL_Get_LSB_Short(fin); i++;
-		    DEBUG_LEVEL1 fprintf(stderr,"DL: begin loop %ld\n",cnt);
+		    cnt  =  xin->Read_LSB_U16(xin); i++;
+		    DEBUG_LEVEL1 fprintf(stderr,"DL: begin loop %d\n",cnt);
 		    if (cnt > 20) cnt = 20; /* POD NOTE: ARBITRARY */
 		    dl_fm = DL_Add_Cmd(0xffff,0,0);
 		    dl_fm->cnt = cnt;
@@ -482,11 +454,11 @@ char *fname;
 		  }
 		  break;
 		case 0xFFFD:
-		  tmp  =  UTIL_Get_LSB_Short(fin); i++;
-		  DEBUG_LEVEL1 fprintf(stderr,"DL: key press %lx\n",tmp);
+		  tmp  =  xin->Read_LSB_U16(xin); i++;
+		  DEBUG_LEVEL1 fprintf(stderr,"DL: key press %x\n",tmp);
 		  break;
 		default: 
-		  fprintf(stderr,"DL: unk code %lx\n",tmp);
+		  fprintf(stderr,"DL: unk code %x\n",tmp);
 		  break;
 	      }
 	    }
@@ -498,12 +470,12 @@ char *fname;
 	        if ( (dl_ffea_xpos) || (dl_ffea_ypos) )
 		else
 */
-		DEBUG_LEVEL1 fprintf(stderr,"DL: image %ld\n",tmp);
+		DEBUG_LEVEL1 fprintf(stderr,"DL: image %d\n",tmp);
 		dl_fm = DL_Add_Cmd(tmp,dl->vid_time,dl->vid_timelo);
 		dl_fm->act = dl_acts[tmp];
 	        dl_frame_cnt++;
 	      }
-	      else fprintf(stderr,"   unknown code - ignored. %lx\n",tmp);
+	      else fprintf(stderr,"   unknown code - ignored. %x\n",tmp);
 	    }
 	  }
 	  DEBUG_LEVEL2 fprintf(stderr,"\n");
@@ -511,11 +483,11 @@ char *fname;
 	}
 	break;
   }
-  fclose(fin);
+  xin->Close_File(xin);
 
-DEBUG_LEVEL1 fprintf(stderr,"OLD: dl_frame_cnt %ld\n",dl_frame_cnt);
+DEBUG_LEVEL1 fprintf(stderr,"OLD: dl_frame_cnt %d\n",dl_frame_cnt);
 dl_frame_cnt = DL_Cnt_Cmds();
-DEBUG_LEVEL1 fprintf(stderr,"NEW: dl_frame_cnt %ld\n",dl_frame_cnt);
+DEBUG_LEVEL1 fprintf(stderr,"NEW: dl_frame_cnt %d\n",dl_frame_cnt);
 
   anim_hdr->frame_lst = 
 	(XA_FRAME *)malloc(sizeof(XA_FRAME) * (dl_frame_cnt + 1) ); 
@@ -538,8 +510,8 @@ DEBUG_LEVEL1 fprintf(stderr,"NEW: dl_frame_cnt %ld\n",dl_frame_cnt);
     anim_hdr->last_frame = 0;
     anim_hdr->total_time = 0;
   }
-  if (xa_buffer_flag == xaFALSE) anim_hdr->anim_flags |= ANIM_SNG_BUF;
-  if (xa_file_flag == xaTRUE)    anim_hdr->anim_flags |= ANIM_USE_FILE;
+  if (!(xin->load_flag & XA_IN_LOAD_BUF)) anim_hdr->anim_flags |= ANIM_SNG_BUF;
+  if (xin->load_flag & XA_IN_LOAD_FILE)  anim_hdr->anim_flags |= ANIM_USE_FILE;
   anim_hdr->anim_flags |= ANIM_FULL_IM; /* always full image - until V3 */
   anim_hdr->loop_frame = dl_loop_frame;
   anim_hdr->imagex = dl->max_imagex;
@@ -570,17 +542,17 @@ xaULONG DL_Cnt_Cmds()
        {
          case 0xffff:
 		fm->dat0 = fm->cnt;
-DEBUG_LEVEL1 { fprintf(stderr,"BEGIN: dat0 <= %ld\n",fm->cnt); }
+DEBUG_LEVEL1 { fprintf(stderr,"BEGIN: dat0 <= %d\n",fm->cnt); }
 		break;
          case 0xfffe:
 		{ DL_FRAME *lp = fm->loop;
 		  lp->dat0--;
-DEBUG_LEVEL1 { fprintf(stderr,"END: dat0 = %ld\n",lp->dat0); }
+DEBUG_LEVEL1 { fprintf(stderr,"END: dat0 = %d\n",lp->dat0); }
 		  if (lp->dat0 > 0) fm_next = lp->next;
 		}
 		break;
          default: 
-		fprintf(stderr,"DL_Cnt_Cmds: def err %lx\n",fm->type);
+		fprintf(stderr,"DL_Cnt_Cmds: def err %x\n",fm->type);
 		break;
 	  
        }
@@ -610,8 +582,8 @@ xaLONG frame_cnt;
       t_timelo += fm->timelo;
       while(t_timelo > (1<<24)) {t_time++; t_timelo -= (1<<24);}
 
-DEBUG_LEVEL3 fprintf(stderr,"frame list %ld) type = %lx act = %lx\n",
-		i,fm->type,frame_lst[i].act);
+DEBUG_LEVEL3 fprintf(stderr,"frame list %d) type = %x act = %x\n",
+		i,fm->type,(xaULONG)frame_lst[i].act);
       i++;
     }
     else
@@ -627,7 +599,7 @@ DEBUG_LEVEL3 fprintf(stderr,"frame list %ld) type = %lx act = %lx\n",
 		  if (lp->dat0 > 0) fm_next = lp->next;
 		}
 		break;
-         default: fprintf(stderr,"DL_Cnt_Cmds: def err %lx\n",fm->type);
+         default: fprintf(stderr,"DL_Cnt_Cmds: def err %x\n",fm->type);
 	  
        }
     }
@@ -636,20 +608,20 @@ DEBUG_LEVEL3 fprintf(stderr,"frame list %ld) type = %lx act = %lx\n",
   return(i);
 }
 
-ACT_DLTA_HDR *DL_Get_Dlta_HDR(fin,fsize,act,imx,imy,extra,rd_flag)
-FILE *fin;
+ACT_DLTA_HDR *DL_Get_Dlta_HDR(xin,fsize,act,imx,imy,extra,rd_flag)
+XA_INPUT *xin;
 xaULONG fsize;
 XA_ACTION *act;
 xaULONG imx,imy,extra;
 xaULONG rd_flag;
 { ACT_DLTA_HDR *dlta_hdr;
-  if (xa_file_flag==xaTRUE)
+  if (xin->load_flag & XA_IN_LOAD_FILE)
   {
     dlta_hdr = (ACT_DLTA_HDR *) malloc(sizeof(ACT_DLTA_HDR));
     if (dlta_hdr == 0) TheEnd1("DL dlta: malloc err0");
     act->data = (xaUBYTE *)dlta_hdr;
     dlta_hdr->flags = ACT_SNGL_BUF;
-    dlta_hdr->fpos  = ftell(fin);
+    dlta_hdr->fpos  = xin->Get_FPos(xin);
     dlta_hdr->fsize = fsize;
   }
   else
@@ -661,10 +633,10 @@ xaULONG rd_flag;
     dlta_hdr->fpos  = 0;
     dlta_hdr->fsize = fsize;
     if (rd_flag == xaTRUE)
-    { xaLONG ret,fpos = ftell(fin);
-      ret = fread( dlta_hdr->data, fsize, 1, fin);
-      if (ret != 1) {fprintf(stderr,"DL dlta: read err\n"); return(0);}
-      fseek(fin,fpos,0);
+    { xaLONG ret;    /* POD fpos = xin->Get_FPos(xin); */
+      ret = xin->Read_Block(xin,dlta_hdr->data, fsize);
+      if (ret < fsize) {fprintf(stderr,"DL dlta: read err\n"); return(0);}
+      /* xin->Seek_FPos(xin,fpos,0); */
     }
   }
   dlta_hdr->xpos = dlta_hdr->ypos = 0;
@@ -686,8 +658,7 @@ xaULONG dsize;          /* delta size */
 XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 { xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
   xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
+  void *extra = dec_info->extra;
   xaUBYTE *dp = delta;
   xaULONG skip_lines = imagex * ((xaULONG)(extra));
   xaULONG x, y = imagey;

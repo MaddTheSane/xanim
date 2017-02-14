@@ -1,0 +1,185 @@
+
+
+This file lists some example of using XAnim.
+
+
+1) View one:
+
+    xanim anim.mov
+
+2) View several:
+
+    xanim anim1.mov anim2.avi anim3.mpg
+
+3) View one and find out what it is:
+
+    xanim +v anim.mov
+
+4) For those with only a 256 color display(myself included), there
+   are many options that can control how XAnim deals with the
+   very limited number of colors.
+
+ 4a) Private Colormap. (the option turns of the cmap_play_nice flag).
+     Now your X11 Window Manager(not XAnim) is responsible for
+     changing the Colormap as the ColorFocus changes(Color Focus
+     typically follows your mouse ptr. See your X11 Window Manager
+     documentation for more info).
+
+     xanim  -Cn  anim.mov
+
+ 4b) Since XAnim can only use 256 colors(usually significantly less
+     because other applications are already using them), just
+     how does it pick when an animation is potentially made of
+     thousands of colors?   
+
+     By default, XAnim creates an RGB332 colormap. Iterates between
+     every combination of 3 bits Red, 3 bits Green and 2 bits of
+     Blue(which just happens to be 256).  With the -Cn option, this
+     is the colormap, without the -Cn option, this colormap is
+     further reduced depending on which of those colors, XAnim
+     can actually allocate.
+
+     BUT! We can do better. If you use the +CF4 option. XAnim
+     will scan a preset number of equally spaced frames from 
+     the animation in order to sample what colors are being
+     used and then select the "best" 256 colors from the thousands
+     that are sampled.  (NOTE: you can change the number of frames
+     that are prescanned with the +Cs# option).   "best" actually
+     means XAnim uses a variation of the Median Cut algorithm.
+
+     Later it utilizes a colormap  caches to help speed up remapping
+     each pixel in the animation to one of the available colors
+     in the colormap.
+
+     xanim +CF4 anim.mov
+
+     xanim +CF4 -Cn anim.mov
+
+     xanim +Cs20 +CF4 -Cn anim.mov
+
+
+     One other thing to note. The +CF4 will also trigger the -F option
+     which shuts off dithering for the Video Codecs that support it.
+     See 4c).  You can turn dithering back on:
+
+     xanim +CF4 +F -Cn anim.mov
+
+ 4c) Dithering. Dithering is slow and while it increases color resolution,
+     it does so at the expense of spatial resolution.  In XAnim, I've
+     worked dithering into the decompression routines of several Video
+     Codecs(actually it's a separate alternative routine for each one
+     for speed reasons). The following Video Codecs/formats support
+     this low level dithering. Cinepak, Indeo, MPEG, JPEG, MJPG
+     and IJPG.
+
+     This option (+F) is on by default if you have a 256 color display.
+     As noted above in section 4b), it gets turned off by +CF4, but
+     can be overridden.
+
+     Dithering does slow things down, but since it's built into the
+     decompression routines, I can take several opportunities to
+     speed things up that I couldn't do if the dithering was done
+     later at a higher level.
+
+     If you have a 256 color display, you should really take the time
+     to experiment with dithering, -Cn and +CF4 options to get
+     a feel for how they affect video quality and playback speed for
+     various formats and Video Codecs.
+
+     To start with, find an animation that uses one of the above mentioned
+     codecs and then run the following command lines:
+
+      xanim anim		# Dithering and shared colormap
+
+      xanim -F anim		# No dithering and shared colormap
+
+      xanim -Cn anim		# Dithering and private colormap
+
+      xanim -F -Cn anim		# No dithering and private colormap
+
+      xanim +CF4  anim		# Median Cut, no dithering, shared colormap
+
+      xanim +CF4  -Cn anim	# Median Cut, no dithering, private colormap
+
+      xanim +CF4 +F -Cn anim	# Median Cut,   dithering,  private colormap
+
+5) Scaling animations.  Scaling is very cpu intensive and will
+   cause slow downs in playback. Also, at the moment, XAnim
+   dithers before scaling and this causes/enhances artifacts in the
+   image. Best to use the +CF4 option instead.
+
+   On the fly scaling requires the +Sr option:
+
+    xanim +Sr anim.mov
+
+   See "xanim.readme" for a more detail discusion of image and buffer
+   scaling.
+
+
+6) Need for Speed!  Almost all animations formats indicate how fast
+   XAnim play each frame. You can over ride this with the [-] and [+]
+   buttons of the remote control  OR  you can force frame timing
+   with the +j# option where # is given in milliseconds. If # is 0,
+   then forced timing is turned off and the timing specified by the
+   animation is used again.
+
+   This is useful in benchmarking where you want XAnim to play as
+   fast as possible(NOTE: see 7) for the +t option)
+
+      xanim +j1 +t  +l5  anim.mov
+
+   Or for slideshows
+
+      xanim +bC1d  +j5000 image1.jpg  image2.jpg +j8000 image3.jpg
+
+7) Benchmarking. The +t option will indicate how long it took XAnim
+   to display the command line. Since XAnim loops on the command
+   line by default, you will get the time of each of these loops.
+   Typically, the +j1 option is used to force as-fast-as-possible
+   playback.
+
+    xanim +tj1  anim.mov
+   
+   If the animation is short, you might want to time it over a longer
+   period of time. Since the timing is done over the entire command
+   line, you can use the +l# option to loop the animation. In the
+   example below, anim.mov is looped 5 times each time the command
+   line is looped.
+
+    xanim +tj1 +l5 anim.mov
+
+   Since +t also reports how many frames were dropped because of
+   audio/video synchronization, it's sometimes useful to not
+   specific +j1.
+
+     xanim +t anim.mov
+
+8) Audio, what? AUDIO!   Audio is enabled by default. You can
+   turn it off with -Ae
+
+   xanim -Ae anim.mov
+
+   You can select the speaker output with the SPEAKER env variable:
+
+     setenv SPEAKER INTERNAL
+     setenv SPEAKER HEADPHONES
+     setenv SPEAKER EXTERNAL
+
+   The above is for csh, for bourne shell(sh) do the following
+
+     SPEAKER=INTERNAL
+     export SPEAKER
+ 
+   Note: No spaces around the "=" sign are allowed.
+
+  
+   You can also specify audio port with the +Ap# command. See xanim.readme.
+ 
+
+   Currently, XAnim automatically sets the volume. This will change in
+   the near future, but until then you can use the +Av# option to
+   set the volume. The range is bewteen 0 and 100. You can also
+   compile this in. See the DEFAULT_XA_AUDIO_VOLUME define in
+   the "xa_config.h" file. 
+
+

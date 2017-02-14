@@ -1,0 +1,295 @@
+
+FILE: cinepak.readme
+DATE: 16Oct96
+AUTH: Mark Podlipec
+
+
+/* Cinepak Decompression Module for XAnim
+ *
+ * Revision History
+ *----------------------
+ *  Rev 1.0 02Oct95  Podlipec (podlipec@ici.net)
+ *                   Initial release. For use with XAnim 2.70.1 or higher.
+ *  Rev 2.0 01Dec95  Podlipec (podlipec@ici.net)
+ *                   Permission from Radius to remove the TimeBomb.
+ */
+
+-------------------------------------------------------------------------------
+              Copyright and Licensing Notice
+
+  Cinepak (r) and the Cinepak logo are trademarks of Radius Inc and may be
+  registered in certain jurisdictions.  Copyright 1995 Radius Inc.  All rights
+  reserved.
+ 
+  For more information on tools for creating Cinepak and other video content,
+  please contact Radius.
+ 
+  Cinepak@radius.com
+  http://www.radius.com
+
+----
+
+  The Cinepak Decompression Modules for Xanim are owned by Radius and 
+  are licensed to the user, not sold or given away.  
+
+  These modules may not be distributed without this readme file. Or in
+  other words, any distribution of these modules must be accompanied
+  by this readme file.
+
+                    !!!!!!!!IMPORTANT!!!!!!!!
+  The rev xa1.0_cvid* modules contain a Time Bomb that disables Cinepak
+  support after July 31st, 1996.  Radius has allowed me to remove this
+  Time Bomb from the xa2.0_cvid* modules.
+
+-------------------------------------------------------------------------------
+
+  XAnim is owned and copyrighted by Mark Podlipec.
+  Copyright (C) 1990-1998,1999 Mark Podlipec.
+  All rights reserved.
+
+  podlipec@ici.net
+  ---
+  http://xanim.va.pubnix.com/home.html
+  http://smurfland.cit.buffalo.edu/xanim/home.html
+  http://www.tm.informatik.uni-frankfurt.de/xanim/
+  http://xanim.resnet.gatech.edu
+  
+-------------------------------------------------------------------------------
+
+NOTE: XAnim 2.70.1 OR GREATER IS REQUIRED FOR CINEPAK SUPPORT!!!
+
+Cinepak support for XAnim is being provided as an optional machine
+specific object module that is linked into XAnim at compile time.
+
+These modules will add AVI and Quicktime support for the following
+Video Codecs:
+
+            + Radius Cinepak    (CVID)      depth 24. 
+            + Radius Cinepak    (CVID)      depth  8.
+
+
+ 1) The first step is figuring out which XAnim Cinepak decompression
+    library module you need to obtain for your machine.
+
+    Below is a table that matches your machine/OS to which library
+    you need to download(ok, they're really object files). 
+
+      Machine/OS                        Library Name(LIB_NAME)  Size(bytes)
+    ------------                        ----------------------------------
+     Sun 3's(SunOS 4.x)			xa2.0_cvid_sun3.o	 5411
+	cross-compiler provided to me
+	by Sebastien C. Roy (Sebastien.Roy@unh.edu)
+    ------------                        ----------------------------------
+     Sun Sparcs(SunOS 4.x)		xa2.0_cvid_sparcCOFF.o	 7832
+     Sun Sparcs(SunOS 5.x)		xa2.0_cvid_sparcELF.o	 8568
+     Sun Sparcs(Solaris X)		xa2.0_cvid_sparcELF.o	 8568
+    ------------                        ----------------------------------
+     Sun Solaris x86 			xa2.0_cvid_sol86.o	 7308
+	cross-compiler provided to me 
+	by Daniel Rock (rock@wurzelausix.CS.Uni-SB.DE)
+    ------------                        ----------------------------------
+     HP 9000/7xx          		xa2.0_cvid_parisc.o	 6716
+    ------------                        ----------------------------------
+     HP 68k               		xa2.0_cvid_hp68k.o	 5503
+	cross-compiler provided to me 
+	by Stan Brown
+    ------------                        ----------------------------------
+     AIX Power PC			xa2.0_cvid_PPCaix.o	10772
+	cross-compiler provided to me
+	by Kay Nettle
+    ------------                        ----------------------------------
+     DEC Alpha OSF/1(v3.x only)		xa2.0_cvid_alphaOSF1.o	14208
+					Avoid Revs 27052-27053
+    ------------                        ----------------------------------
+     x86 Esix 4.03a			xa2.0_cvid_sol86.o	 7308
+     x86 Unixware 2.1			xa2.0_cvid_sol86.o	 7308
+    ------------                        ----------------------------------
+     x86 386/NetBSD			xa2.0_cvid_netbsd386.o	 6563
+	cross-compiler provided to me 
+	by Roland C Dowdeswell(roland@imrryr.org)
+    ------------                        ----------------------------------
+     x86 BSDI 2				xa2.0_cvid_netbsd386.o	 6563
+    ------------                        ----------------------------------
+     x86 FreeBSD			xa2.0_cvid_netbsd386.o   6563
+    ------------                        ----------------------------------
+     x86 Linux AOUT			xa2.0_cvid_linuxAOUT.o	 6755
+     x86 Linux ELF			xa2.0_cvid_linuxELF.o	 7584
+	both cross-compilers provided to me 
+	by Mark Nordberg(mpn@mindspring.com) 
+    ------------                        ----------------------------------
+     PowerPC Linux			xa2.0_cvid_linuxPPC.o	 8528
+	cross-compiler provided to me
+	by Tom Rini
+    ------------                        ----------------------------------
+     NetBSD 68K				xa2.0_cvid_netbsd68k.o	 5471
+	cross-compilers provided to me 
+	by Ingolf Koch(ingolf@mipool.uni-jena.de)
+    ------------                        ----------------------------------
+     SGI Irix 5.x and 6.x               xa2.0_cvid_sgi.o        11688
+	cross-compiler provided to me
+	by Paul Close
+    ------------                        ----------------------------------
+     Pyramid Nile DC/OSx d087		xa2.0_cvid_sgi.o        11688
+	There are some warnings that you can ignore.
+	Might also work with MIS series DC/OSx c087.
+    ------------                        ----------------------------------
+     Amiga(gcc compiler?)		xa2.0_cvid_amiga.lha	 5411
+	Thanks to Adrian (Sauron) Siemieniak for creating
+	and providing this object file derived from the
+	Sun 3x object module.
+    ------------                        ----------------------------------
+
+    yeah, I know it's a short list, but these are the only machines
+    that I have physical access to.
+
+    NOTE: SunOS 4.1.3 uses AOUT and Sun Solaris used ELF. They're not
+    compatible.
+
+    NOTE: If your machine is not supported, it's because I don't have physical
+    access to that type of machine. There are a handful of options
+    available to you(not all of them may be feasible)
+
+	a) Ask Radius about supporting your machine type.
+
+        b) Permanently loan me that type of machine so that I may
+           compile a library module for that machine type. Please
+           contact me first and yes, I'd be surprised if someone
+           chose this option. :^) 
+
+        c) Send me a cross-compiler for your machine type. Must
+           be a Sparc SunOS 4.1.x executable or more specifically
+           it must run on my machine.  I'll do the compile and then
+           you'll need to verify that the resulting library module
+           works on your machine.
+
+	   Yes, I know gcc can be a cross-compiler. No, I don't currently
+	   have the time to setup it up for all the various
+	   platforms.
+           
+     Since I'm not allowed to distribute the source code I can't login
+     to an account on a remote machine in order to do the compile.
+
+     Also, I personally can't give you a non-disclosure, because I
+     don't own the Cinepak code. You need to contact Radius about that.
+
+ 2) Obtaining the object files. Follow the steps below:
+
+	EITHER
+
+	1) Download the modules from one of the XAnim Web Pages
+
+		http://xanim.va.pubnix.com/home.html
+		http://smurfland.cit.buffalo.edu/xanim/home.html
+		http://www.tm.informatik.uni-frankfurt.de/xanim/
+		http://xanim.resnet.gatech.edu
+
+
+        OR
+
+	1) cd into the XAnim directory on your machine
+	2) ftp xanim.va.pubnix.com     OR  ftp 208.240.89.238
+	3) user is "anonymous"
+	4) passwd is your email address
+	5) "type binary"			VERY IMPORTANT
+	6) "cd modules"
+	7) "get LIB_NAME.Z"			NOTE: the .Z at the end
+	8) "quit"
+
+    NOTE: LIB_NAME is obtained from the table in section 1 based
+     on the type of machine and OS you are running. If you don't
+     know, contact your system administrator or a coworker who
+     does know. 
+
+ 3) "uncompress LIB_NAME.Z"
+
+     This will create LIB_NAME from LIB_NAME.Z
+
+ 3a) Put LIB_NAME into a directory called "mods" inside the xanim directory.
+
+ 4) Edit Section III of either your Imakefile or Makefile(derived
+    from Makefile.unx).  If you are not sure which one to
+    use then read the compile.help that came with xanim.
+      
+    a) In Section III of either the Imakefile or Makefile
+
+       Uncomment out the following define:
+
+        XA_CVID_DEF = -DXA_CVID
+
+      and add LIB_NAME to the XA_CVID_LIB define. For example
+      if you have Sun Sparc running SunOS 4.1.3 then you would
+      use the following:
+
+        XA_CVID_LIB = mods/xa2.0_cvid_sparcCOFF.o
+
+      For other machine/OS types, use the approriate xa2.0_cvid_*.o file
+      listed in the table at the top of this readme.
+
+      NOTE:  There is no "-" or anything other prefix. Just the object
+             file name.
+
+    b) If and ONLY if you are using the Imakefile(in other
+       words DON'T do this if you are using the Makefile(derived
+       from Makefile.unx)) then do the following:
+
+	  "xmkmf" 
+   
+    c) Now(regardless of which makefile)
+
+	  "touch xanim.h" 
+	  "make xanim"
+ 
+    NOTE: make sure you see -DXA_CVID on the compile command lines
+    and make sure both xa_avi.c and xa_qt.c get recompiled.
+
+ 5)  Have fun.
+
+-------------------------------------------------------------------------
+NOTES on how XAnim options affect Cinepak on 8 bit Color displays/visuals.
+
+None of these options matter on monochrome/TrueColor/DirectColor displays
+and visuals.
+
+  With no options, XAnim will create a 256 entry RGB332 colormap
+  and dither to that. 
+
+     xanim  free_fall.avi
+
+  -F will turn off this dithering and XAnim will instead truncate
+  the 24bit RGB values down to the RGB332 colormap.(I see no real
+  advantage to this, which is why +F is on by default)
+
+     xanim  -F free_fall.avi
+
+  The +CF4 option will TURN OFF the dithering by default. +CF4 causes
+   XAnim to scan the animation ahead of time and the select the
+   "best" 256 colors from the possible thousands sampled. These colors
+   may be further reduced depending on how many colors are still 
+   available(ie not in use by other X11 applications).
+
+     xanim +CF4 free_fall.avi
+
+  If you specify +F AFTER the +CF4 option, dithering will be used
+  with the +CF4 option.
+
+     xanim +CF4 +F free_fall.avi
+ 
+
+  The -Cn option may be used with all of the above examples. -Cn tells
+   XAnim to create it's own colormap, giving it FULL USE of those
+   256 colors. Please note that it is up to your X11 Window Manager(NOT
+   XAnim) to install this colormap based on which window the Color Focus
+   is on. Normally, Color Focus follows the mouse pointer, but not
+   always.
+
+
+      xanim -Cn free_fall.avi
+
+      xanim -Cn +CF4 free_fall.avi
+
+
+
+Mark Podlipec
+podlipec@ici.net
+
+

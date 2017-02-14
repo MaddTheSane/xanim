@@ -2,15 +2,15 @@
 /*
  * xa_set.c
  *
- * Copyright (C) 1992,1993,1994,1995 by Mark Podlipec.
+ * Copyright (C) 1992-1998,1999 by Mark Podlipec.
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  *
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
@@ -20,7 +20,6 @@
 #include "xa_iff.h"
 #include <ctype.h>
 
-xaLONG Is_SET_File();
 xaULONG SET_Read_File();
 SET_FRAM_HDR *SET_Init_FRAM_HDRS();
 xaUBYTE *SET_Read_BACK();
@@ -42,9 +41,6 @@ void SET_Read_Sound_IFF();
 void SET_Add_CHDR();
 void SET_Free_Stuff();
 
-xaULONG UTIL_Get_MSB_Long();
-xaLONG UTIL_Get_MSB_Short();
-xaULONG UTIL_Get_MSB_UShort();
 XA_ACTION *ACT_Get_Action();
 xaULONG UTIL_Get_Buffer_Scale();
 void UTIL_Scale_Buffer_Pos();
@@ -59,7 +55,7 @@ void IFF_Print_ID();
 XA_CHDR *ACT_Get_CMAP();
 xaULONG CMAP_Get_Or_Mask();
 void ACT_Add_CHDR_To_Action();
-
+extern void XA_Setup_Input_Methods();
 
 static ColorReg set_cmap[256];
 static XA_CHDR *set_chdr;
@@ -84,6 +80,8 @@ static Bit_Map_Header bmhd;
 
 static xaULONG set_imagex,set_imagey,set_imagec,set_imaged;
 
+static xaULONG set_frame_dur = 16;
+static xaULONG set_frame_time = 0;
 
 void SET_Print_CHID(chid)
 xaULONG chid;
@@ -107,7 +105,7 @@ xaULONG back_num;
     if (tmp->num == back_num) return(tmp);
     tmp = tmp->next;
   }
-  fprintf(stderr,"SET_Get_BACK: invalid back_num %lx\n",back_num);
+  fprintf(stderr,"SET_Get_BACK: invalid back_num %x\n",back_num);
   SET_TheEnd();
   return(0);
 }
@@ -197,7 +195,7 @@ xaULONG sset_num;
     if (tmp->num == sset_num) return(tmp);
     tmp = tmp->next;
   }
-  fprintf(stderr,"SET_Get_SSET: invalid sset_num %lx\n",sset_num);
+  fprintf(stderr,"SET_Get_SSET: invalid sset_num %x\n",sset_num);
   SET_TheEnd();
   return(0);
 }
@@ -221,32 +219,11 @@ SET_SSET_HDR *SET_Alloc_SSET_HDR()
   return(set_sset_cur);
 }
 
-/*
- *
- */
-xaLONG Is_SET_File(filename)
-char *filename;
-{
-  FILE *fin;
-  xaULONG d1,d2;
-
-  if ( (fin=fopen(filename,XA_OPEN_MODE)) == 0) return(xaNOFILE);
-
-  d1 = UTIL_Get_MSB_Long(fin);  /* read past size */
-  d2 = UTIL_Get_MSB_Long(fin); /* read magic */
-  fclose(fin);
-  /* check for "xSceneEd"itor */
-  if ( (d1 == 0x78536365) && (d2 == 0x6e654564) )return(xaTRUE);
-  /* check for "xMovieSe"tter */
-  if ( (d1 == 0x784d6f76) && (d2 == 0x69655365) )return(xaTRUE);
-  return(xaFALSE);
-}
 
 xaULONG SET_Read_File(fname,anim_hdr)
 char *fname;
 XA_ANIM_HDR *anim_hdr;
-{
-  FILE *fin;
+{ XA_INPUT *xin = anim_hdr->xin;
   xaULONG op; 
   xaULONG cur_fram_num;
   xaULONG cur_fram_cnt;
@@ -281,19 +258,13 @@ XA_ANIM_HDR *anim_hdr;
 
   set_or_mask = CMAP_Get_Or_Mask(1 << set_imaged);
 
-  if ( (fin=fopen(fname,XA_OPEN_MODE)) == 0)
-  {
-    fprintf(stderr,"Can't open SET File %s for reading\n",fname);
-    return(xaFALSE);
-  }
- 
   DEBUG_LEVEL1 fprintf(stderr,"Reading SET file %s:\n",fname);
   exit_flag = 0;
-  while(!feof(fin) && !exit_flag)
+  while( !(xin->At_EOF(xin)) && !exit_flag)
   {
    XA_ACTION *act;
 
-    op = fgetc(fin);
+    op = xin->Read_U8(xin);
 
     switch(op)
     {
@@ -301,28 +272,29 @@ XA_ANIM_HDR *anim_hdr;
 	{
 	  SET_BACK_HDR *tmp_back_hdr;
 	  xaUBYTE *pic;
-	  fread((char *)set_buff,1,256,fin); set_buff[256] = 0;
+	  xin->Read_Block(xin,set_buff,256);	set_buff[256] = 0;
 	  DEBUG_LEVEL1 fprintf(stderr," a) %s    ",set_buff);
-	  fread((char *)set_buff1,1,32,fin); set_buff1[32] = 0;
+	  xin->Read_Block(xin,set_buff1,32);	set_buff1[32] = 0;
 	  DEBUG_LEVEL1 fprintf(stderr,"   %s\n",set_buff1);
 	  tmp_back_hdr = SET_Alloc_BACK_HDR();
 	  if (set_multi_flag == xaFALSE)
-		  pic = SET_Read_BACK(fin,tmp_back_hdr);
+		  pic = SET_Read_BACK(xin,tmp_back_hdr);
 	  else
-	  {
-	    FILE *fnew;
+	  { XA_INPUT xin_new;
 	    SET_Extract_Directory(set_buff,set_buff1);
-	    if ( (fnew=fopen(set_buff,XA_OPEN_MODE)) == 0)
+	    (void)XA_Setup_Input_Methods(&xin_new,set_buff);
+	    if (xin_new.Open_File(&xin_new) == xaFALSE)
 	    {
 	      SET_Modify_Directory(set_buff,0);
-	      if ( (fnew=fopen(set_buff,XA_OPEN_MODE)) == 0)
+	      (void)XA_Setup_Input_Methods(&xin_new,set_buff);
+	      if (xin_new.Open_File(&xin_new) == xaFALSE)
 	      {
 	        fprintf(stderr,"Can't open SET File %s for reading\n",set_buff);
 	        SET_TheEnd();
 	      }
 	    }
-	    pic = SET_Read_BACK(fnew,tmp_back_hdr);
-	    fclose(fnew);
+	    pic = SET_Read_BACK(&xin_new,tmp_back_hdr);
+	    xin_new.Close_File(&xin_new);
 	  }
 	  if (pic == 0) SET_TheEnd1("SET read a) failed");
 	  if (work_act == 0)
@@ -351,54 +323,67 @@ XA_ANIM_HDR *anim_hdr;
 	{
 	  SET_SSET_HDR *tmp_sset_hdr;
 	  tmp_sset_hdr = SET_Alloc_SSET_HDR();
-	  fread((char *)set_buff,1,256,fin); /* disk:directory name */
+	  xin->Read_Block(xin,set_buff,256); /* disk:directory name */
 	  set_buff[256] = 0;
 	  DEBUG_LEVEL1 fprintf(stderr," b) %s    ",set_buff);
-	  fread((char *)set_buff1,1,32,fin); /* file name */
+	  xin->Read_Block(xin,set_buff1,32); /* file name */
 	  set_buff1[32] = 0;
 	  DEBUG_LEVEL1 fprintf(stderr,"   %s\n",set_buff1);
-          if (set_multi_flag == xaFALSE) SET_Read_SSET(anim_hdr,fin,tmp_sset_hdr);
+          if (set_multi_flag == xaFALSE) SET_Read_SSET(anim_hdr,xin,tmp_sset_hdr);
           else
-          {
-
-            FILE *fnew;
+          { XA_INPUT xin_new;
             SET_Extract_Directory(set_buff,set_buff1);
-            if ( (fnew=fopen(set_buff,XA_OPEN_MODE)) == 0)
+	    (void)XA_Setup_Input_Methods(&xin_new,set_buff);
+	    if (xin_new.Open_File(&xin_new) == xaFALSE)
             {
 	      SET_Modify_Directory(set_buff,0);
-	      if ( (fnew=fopen(set_buff,XA_OPEN_MODE)) == 0)
+	      (void)XA_Setup_Input_Methods(&xin_new,set_buff);
+	      if (xin_new.Open_File(&xin_new) == xaFALSE)
 	      {
 		fprintf(stderr,"Can't open SET File %s for reading\n",set_buff);
 		SET_TheEnd();
 	      }
             }
-	    SET_Read_SSET(anim_hdr,fnew,tmp_sset_hdr);
-            fclose(fnew);
+	    SET_Read_SSET(anim_hdr,&xin_new,tmp_sset_hdr);
+            xin_new.Close_File(&xin_new);
 	  }
 	}
 	break;
      case 'c': /* 10 bytes set current frame */
-	{
-	  xaULONG i;
-	  i = 8; while(i--) fgetc(fin);
-	  cur_fram_num  = UTIL_Get_MSB_UShort(fin);
+	{ xaULONG i;
+	  xaUBYTE unk[10];
+	  for(i=0; i<8; i++) unk[i] = xin->Read_U8(xin);
+	  cur_fram_num  = xin->Read_MSB_U16(xin);
 	  cur_fram_cnt = cur_fram_num;
-	  DEBUG_LEVEL2 fprintf(stderr," c) %lx\n",cur_fram_num);
+	  if (cur_fram_num == 1)
+	  {
+	    set_frame_time = 0;
+	  }
+	  else
+	  {
+	    set_frame_time += set_frame_dur;
+	  }
+	  DEBUG_LEVEL2 
+	  {
+	    fprintf(stderr," c) %x %06x: ",cur_fram_num,set_frame_time);
+	    for(i=0; i<8; i++) fprintf(stderr," %02x",unk[i]);
+	    fprintf(stderr,"\n");
+	  }
 	}
 	break;
      case 'd': /* new SSET header 32 ascii + 10 bytes */
 	{
 	  xaULONG i;
-	  fread((char *)set_buff,1,32,fin);
+	  xin->Read_Block(xin,set_buff,32);
 	  set_buff[32] = 0;
 	  DEBUG_LEVEL1 fprintf(stderr," d) sset hdr %s  ",set_buff);
-	  set_sset_cur_num = UTIL_Get_MSB_UShort(fin);
-	  set_sset_xoff = UTIL_Get_MSB_Short(fin);
-	  set_sset_yoff = UTIL_Get_MSB_Short(fin);
-	  i = UTIL_Get_MSB_Short(fin);
-	  i = UTIL_Get_MSB_Short(fin); /* last fram in series */
+	  set_sset_cur_num = xin->Read_MSB_U16(xin);
+	  set_sset_xoff = xin->Read_MSB_U16(xin);
+	  set_sset_yoff = xin->Read_MSB_U16(xin);
+	  i = xin->Read_MSB_U16(xin);
+	  i = xin->Read_MSB_U16(xin); /* last fram in series */
 	  set_sset_cur = SET_Get_SSET(set_sset_cur_num);
-	  DEBUG_LEVEL2 fprintf(stderr,"  %lx %lx\n",
+	  DEBUG_LEVEL2 fprintf(stderr,"  %x %x\n",
 		set_sset_cur_num,set_sset_cur->num);
 	  cur_fram_cnt = cur_fram_num;
 	}
@@ -410,17 +395,17 @@ XA_ANIM_HDR *anim_hdr;
 	  xaLONG xpos,ypos,xoff,yoff;
 	  xaLONG back_x,back_y;
 
-	  face_num = UTIL_Get_MSB_UShort(fin);
-	  xoff     = UTIL_Get_MSB_Short(fin);
-	  yoff     = UTIL_Get_MSB_Short(fin);
-	  depth    = UTIL_Get_MSB_UShort(fin);
-	  garb     = UTIL_Get_MSB_UShort(fin);
-	  fram_num = UTIL_Get_MSB_UShort(fin); /* not correct */
-	  DEBUG_LEVEL2 fprintf(stderr," e) %lx (%lx %x) %lx %lx %lx\n",
+	  face_num = xin->Read_MSB_U16(xin);
+	  xoff     = xin->Read_MSB_U16(xin);
+	  yoff     = xin->Read_MSB_U16(xin);
+	  depth    = xin->Read_MSB_U16(xin);
+	  garb     = xin->Read_MSB_U16(xin);
+	  fram_num = xin->Read_MSB_U16(xin); /* not correct */
+	  DEBUG_LEVEL2 fprintf(stderr," e) %x (%x %x) %x %x %x\n",
 	    face_num,xoff,yoff,depth,garb,fram_num);
 	  if (face_num > set_sset_cur->face_num)
 	  {
-	    fprintf(stderr,"SET_Read: e) face_num invalid %lx (%lx)",
+	    fprintf(stderr,"SET_Read: e) face_num invalid %x (%x)",
 		face_num, set_sset_cur->face_num);
 	    SET_TheEnd();
 	  }
@@ -430,7 +415,7 @@ XA_ANIM_HDR *anim_hdr;
 	  xpos += xoff;
 	  ypos  = face_hdr->yoff + set_sset_yoff;
 	  ypos += yoff;
-DEBUG_LEVEL2 fprintf(stderr,"      e FACE off <%ld,%ld> fin <%ld,%ld>\n",
+DEBUG_LEVEL2 fprintf(stderr,"      e FACE off <%d,%d> fin <%d,%d>\n",
 		xoff,yoff,xpos,ypos);
 
 
@@ -458,13 +443,13 @@ DEBUG_LEVEL2 fprintf(stderr,"      e FACE off <%ld,%ld> fin <%ld,%ld>\n",
      case 'f': /* backgrnd display info  4 bytes */
 	{
 	  xaULONG back,effect;
-	  back = UTIL_Get_MSB_UShort(fin);
-	  effect = UTIL_Get_MSB_UShort(fin);
+	  back = xin->Read_MSB_U16(xin);
+	  effect = xin->Read_MSB_U16(xin);
 	  DEBUG_LEVEL2 
-	     fprintf(stderr," f) backgrnd info %lx %lx  ",back,effect);
+	     fprintf(stderr," f) backgrnd info %x %x  ",back,effect);
 	  if (back == 0xffff) set_back_cur = SET_Add_Black(anim_hdr);
 	  else set_back_cur = SET_Get_BACK(back);
-	  DEBUG_LEVEL2 fprintf(stderr,"  %lx\n",set_back_cur->num);
+	  DEBUG_LEVEL2 fprintf(stderr,"  %x\n",set_back_cur->num);
 	  SET_Add_BACK(cur_fram_num,set_back_cur->back_act,set_back_cur->chdr);
 	}
 	break;
@@ -472,10 +457,10 @@ DEBUG_LEVEL2 fprintf(stderr,"      e FACE off <%ld,%ld> fin <%ld,%ld>\n",
 	{
 	  xaLONG tmp1,tmp2,tmp3,tmp4;
 
-	  tmp1 = UTIL_Get_MSB_Short(fin);
-	  tmp2 = UTIL_Get_MSB_Short(fin);
-	  tmp3 = UTIL_Get_MSB_Short(fin);
-	  tmp4 = UTIL_Get_MSB_Short(fin);
+	  tmp1 = xin->Read_MSB_U16(xin);  if (tmp1 & 0x8000) tmp1 -= 0x10000;
+	  tmp2 = xin->Read_MSB_U16(xin);  if (tmp2 & 0x8000) tmp2 -= 0x10000;
+	  tmp3 = xin->Read_MSB_U16(xin);  if (tmp3 & 0x8000) tmp3 -= 0x10000;
+	  tmp4 = xin->Read_MSB_U16(xin);  if (tmp4 & 0x8000) tmp4 -= 0x10000;
 
 	  if (tmp4 == 0)
 	  { /* scroll only in x direction */
@@ -497,42 +482,47 @@ DEBUG_LEVEL2 fprintf(stderr,"      e FACE off <%ld,%ld> fin <%ld,%ld>\n",
 	    if (set_yscroll_len == 0) set_yscroll_flag = 0;
 	  }
 	  set_back_scroll_fram = cur_fram_num;
-	  DEBUG_LEVEL2 fprintf(stderr," g) %ld %ld %ld %ld\n",
+	  DEBUG_LEVEL2 fprintf(stderr," g) %d %d %d %d\n",
 	     set_xscroll_flag,set_xscroll_len,set_yscroll_flag,set_yscroll_len);
 	}
 	break;
      case 'h': /* sound info  10 bytes */
 	{
-	  xaULONG i;
-	  DEBUG_LEVEL2 fprintf(stderr," h) sound info - not supported\n");
-	  i = 10; while(i--) fgetc(fin);
+	  xaULONG a,b,c,d,e;
+	  a = xin->Read_MSB_U16(xin);
+	  b = xin->Read_MSB_U16(xin);
+	  c = xin->Read_MSB_U16(xin);
+	  d = xin->Read_MSB_U16(xin);
+	  e = xin->Read_MSB_U16(xin);
+	  DEBUG_LEVEL2 fprintf(stderr," h) sound info: %04x %04x %04x %04x %04x\n",a,b,c,d,e);
 	}
 	break;
      case 'i': /* timing info  2 bytes*/
-	set_time = UTIL_Get_MSB_UShort(fin); if (set_time == 0) set_time = 1;
-	DEBUG_LEVEL2 fprintf(stderr," i) %lx\n",set_time);
+	set_time = xin->Read_MSB_U16(xin); if (set_time == 0) set_time = 1;
+	DEBUG_LEVEL2 fprintf(stderr," i) %x\n",set_time);
 	set_time = set_time * 16;
         SET_Add_TIME(cur_fram_num,set_time);
+	set_frame_dur = set_time;
 	break;
      case 'j':  /* 256 ascii 32 ascii IFF stuff  Sounds Info */
-	fread((char *)set_buff,1,256,fin); set_buff[256] = 0;
+	xin->Read_Block(xin,set_buff,256); set_buff[256] = 0;
 	DEBUG_LEVEL1 fprintf(stderr," j) %s    ",set_buff);
-	fread((char *)set_buff1,1,32,fin); set_buff1[32] = 0;
+	xin->Read_Block(xin,set_buff1,32); set_buff1[32] = 0;
 	DEBUG_LEVEL1 fprintf(stderr,"   %s\n",set_buff1);
-        if (set_multi_flag == xaFALSE) SET_Read_Sound_IFF(fin);
+        if (set_multi_flag == xaFALSE) SET_Read_Sound_IFF(xin);
 	/* else ignore */
 	break;
      case 'k': /* ? header of some sort 40 bytes */
 	{
 	  xaULONG i;
 	  DEBUG_LEVEL2 fprintf(stderr," k) ???\n");
-	  i = 40; while(i--) fgetc(fin);
+	  i = 40; while(i--) xin->Read_U8(xin);
 	}
 	break;
      case 'l': /* cmap info 64 bytes */
 	DEBUG_LEVEL2 fprintf(stderr," l) cmap\n");
 	set_imagec = 32;
-	IFF_Read_CMAP_1(set_cmap,set_imagec,fin);
+	IFF_Read_CMAP_1(set_cmap,set_imagec,xin);
 	IFF_Shift_CMAP(set_cmap,set_imagec);
 	set_chdr = ACT_Get_CMAP(set_cmap,set_imagec,set_or_mask,
 				set_imagec,set_or_mask,4,4,4);
@@ -542,16 +532,16 @@ DEBUG_LEVEL2 fprintf(stderr,"      e FACE off <%ld,%ld> fin <%ld,%ld>\n",
 	{
 	  xaULONG i;
 	  DEBUG_LEVEL2 fprintf(stderr," v) ?header?\n");
-	  i = 26; while(i--) fgetc(fin);
+	  i = 26; while(i--) xin->Read_U8(xin);
 	}
 	break;
      case 'w': /* frame count */
-	set_fram_num = UTIL_Get_MSB_UShort(fin)+1;
+	set_fram_num = xin->Read_MSB_U16(xin)+1;
         set_frames = SET_Init_FRAM_HDRS(set_fram_num);
-	DEBUG_LEVEL1 fprintf(stderr," w) %ld frames\n",set_fram_num);
+	DEBUG_LEVEL1 fprintf(stderr," w) %d frames\n",set_fram_num);
 	break;
      case 'x': /* title and version 32 ascii*/
-	fread((char *)set_buff1,1,32,fin); set_buff1[32] = 0;
+	xin->Read_Block(xin,set_buff1,32); set_buff1[32] = 0;
 	DEBUG_LEVEL1 fprintf(stderr," x) %s\n",set_buff1);
 	break;
      case 'y': /*  8 bytes  if present indicates IFF chunks included  */
@@ -563,12 +553,12 @@ DEBUG_LEVEL2 fprintf(stderr,"      e FACE off <%ld,%ld> fin <%ld,%ld>\n",
 	break;
 
 
-    default: fprintf(stderr,"Unknown opcode = %lx\n",op);
-        fclose(fin);
+    default: fprintf(stderr,"Unknown opcode = %x\n",op);
+        xin->Close_File(xin);
 	SET_TheEnd();
    } /* end of switch */
  } /* end of while */
- fclose(fin);
+ xin->Close_File(xin);
 
  {
    xaULONG frame_cnt,i,j;
@@ -633,8 +623,8 @@ DEBUG_LEVEL2 fprintf(stderr,"      e FACE off <%ld,%ld> fin <%ld,%ld>\n",
        pms_hdr->yback = back_map_hdr->ysize;
 DEBUG_LEVEL1
 {
-  fprintf(stderr,"---> %ld %ld   ",pms_hdr->xpback,pms_hdr->ypback);
-  if (pms_hdr->face) fprintf(stderr,"%ld %ld\n",pms_hdr->xpface,pms_hdr->ypface);
+  fprintf(stderr,"---> %d %d   ",pms_hdr->xpback,pms_hdr->ypback);
+  if (pms_hdr->face) fprintf(stderr,"%d %d\n",pms_hdr->xpface,pms_hdr->ypface);
   else fprintf(stderr,"\n");
 }
        if (need_to_scale)
@@ -651,9 +641,9 @@ DEBUG_LEVEL1
        }
 DEBUG_LEVEL1
 {
-  fprintf(stderr,"     %ld %ld   ",pms_hdr->xpback,pms_hdr->ypback);
+  fprintf(stderr,"     %d %d   ",pms_hdr->xpback,pms_hdr->ypback);
   if (pms_hdr->face) 
-	fprintf(stderr,"%ld %ld\n",pms_hdr->xpface,pms_hdr->ypface);
+	fprintf(stderr,"%d %d\n",pms_hdr->xpface,pms_hdr->ypface);
   else fprintf(stderr,"\n");
 }
        pms_hdr = pms_hdr->next;
@@ -702,8 +692,8 @@ DEBUG_LEVEL1
  return(xaTRUE);
 }
 
-xaUBYTE *SET_Read_BACK(fin,back_hdr)
-FILE *fin;
+xaUBYTE *SET_Read_BACK(xin,back_hdr)
+XA_INPUT *xin;
 SET_BACK_HDR *back_hdr;
 {
   xaULONG chid,data;
@@ -711,30 +701,30 @@ SET_BACK_HDR *back_hdr;
   xaUBYTE *pic;
 
   pic = 0;
-  chid = UTIL_Get_MSB_Long(fin);
+  chid = xin->Read_MSB_U32(xin);
   /* NOTE: for whatever reason the Anti-Lemmin' animation as a "bad" form 
    * size with the upper 16 bits set to 0xffff. By making sure the last
    * bit is clear, things should work ok anyways. We just read to the BODY.
    */
-  form_size = UTIL_Get_MSB_Long(fin);
+  form_size = xin->Read_MSB_U32(xin);
   form_size &= 0x7fffffff;  /* PODNOTE: Anti-Lemmin' kludge/workaround */
-  data = UTIL_Get_MSB_Long(fin); form_size -= 4;
-  DEBUG_LEVEL1 fprintf(stderr,"SET_Read_BACK: chid %lx fsize %lx dat %lx\n", chid,form_size,data);
-  if (chid != FORM) SET_TheEnd1("SET: back is not FORM\n");
+  data = xin->Read_MSB_U32(xin); form_size -= 4;
+  DEBUG_LEVEL1 fprintf(stderr,"SET_Read_BACK: chid %x fsize %x dat %x\n", chid,form_size,data);
+  if (chid != IFF_FORM) SET_TheEnd1("SET: back is not FORM\n");
   while(form_size)
   {
-    chid = UTIL_Get_MSB_Long(fin); form_size -= 4;
-    size = UTIL_Get_MSB_Long(fin); form_size -= 4;
+    chid = xin->Read_MSB_U32(xin); form_size -= 4;
+    size = xin->Read_MSB_U32(xin); form_size -= 4;
     size &= 0x0000ffff;   /* PODNOTE: Anti-Lemmin' kludge/workaround */
     form_size -= size;
     if (form_size < 0) form_size = 0;
 
     DEBUG_LEVEL2 IFF_Print_ID(stderr,chid);
-    DEBUG_LEVEL2 fprintf(stderr," size %lx ",size);
+    DEBUG_LEVEL2 fprintf(stderr," size %x ",size);
     switch(chid)
     {
-      case BMHD:
-	IFF_Read_BMHD(fin,&bmhd);
+      case IFF_BMHD:
+	IFF_Read_BMHD(xin,&bmhd);
 	set_imagex = bmhd.width;  /*pageWidth;*/
 	set_imagey = bmhd.height; /*pageHeight;*/
 	set_imaged = bmhd.depth;
@@ -742,37 +732,37 @@ SET_BACK_HDR *back_hdr;
 	back_hdr->ysize = bmhd.height;
 	back_hdr->xscreen = bmhd.width; /*pageWidth; */
 	back_hdr->yscreen = bmhd.height; /*pageHeight; */
-	DEBUG_LEVEL1 fprintf(stderr,"    %ldx%ldx%ld %ldx%ld cmp=%ld msk=%ld\n",
+	DEBUG_LEVEL1 fprintf(stderr,"    %dx%dx%d %dx%d cmp=%d msk=%d\n",
 		back_hdr->xsize,back_hdr->ysize,
 	        set_imaged,back_hdr->xscreen,back_hdr->yscreen,
 		bmhd.compression, bmhd.masking);
 	break;
-      case CMAP:
+      case IFF_CMAP:
 	set_imagec = size/3;
 	back_hdr->csize = set_imagec;
-	IFF_Read_CMAP_0(set_cmap,set_imagec,fin);
+	IFF_Read_CMAP_0(set_cmap,set_imagec,xin);
 	IFF_Shift_CMAP(set_cmap,set_imagec);
 	set_chdr = ACT_Get_CMAP(set_cmap,set_imagec,set_or_mask,
 				set_imagec,set_or_mask,4,4,4);
 	back_hdr->chdr = set_chdr;
 	break;
-      case CAMG: /* ignore for now */
-      case CRNG: /* ignore for now */
-      case DPPS: /* ignore for now */
-      case DPPV: /* ignore for now */
+      case IFF_CAMG: /* ignore for now */
+      case IFF_CRNG: /* ignore for now */
+      case IFF_DPPS: /* ignore for now */
+      case IFF_DPPV: /* ignore for now */
 	{
 	  xaULONG d;
-          while( (size--) && !feof(fin) ) d = fgetc(fin);
+          while( (size--) && !xin->At_EOF(xin) ) d = xin->Read_U8(xin);
 	}
         break;
-      case BODY:
+      case IFF_BODY:
 	{
 	  xaULONG xsize,ysize;
 	  xsize = bmhd.width;
 	  ysize = bmhd.height;
 	  pic = (xaUBYTE *) malloc( XA_PIC_SIZE(xsize * ysize) );
 	  if (pic == 0) SET_TheEnd1("SET_Read_BODY: malloc failed\n");
-	  IFF_Read_BODY(fin,pic,size, xsize, ysize, (xaULONG)(bmhd.depth),
+	  IFF_Read_BODY(xin,pic,size, xsize, ysize, (xaULONG)(bmhd.depth),
 		(int)(bmhd.compression), (int)(bmhd.masking),set_or_mask);
 	  form_size = 0; /* body is always last */
 	  break;
@@ -786,49 +776,49 @@ SET_BACK_HDR *back_hdr;
 }
 
 
-void SET_Read_SSET(anim_hdr,fin,set_hdr)
+void SET_Read_SSET(anim_hdr,xin,set_hdr)
 XA_ANIM_HDR *anim_hdr;
-FILE *fin;
+XA_INPUT *xin;
 SET_SSET_HDR *set_hdr;
 {
   xaULONG chid,data;
   xaLONG list_num,type,i;
 
-  chid = UTIL_Get_MSB_Long(fin);
-  list_num = UTIL_Get_MSB_Long(fin) + 1;
-  data = UTIL_Get_MSB_Long(fin);
+  chid = xin->Read_MSB_U32(xin);
+  list_num = xin->Read_MSB_U32(xin) + 1;
+  data = xin->Read_MSB_U32(xin);
   set_hdr->face_num = list_num;
   DEBUG_LEVEL1 
   {
     fprintf(stderr,"    ");
     SET_Print_CHID(chid);
-    fprintf(stderr,"%lx ",list_num);
+    fprintf(stderr,"%x ",list_num);
     SET_Print_CHID(data);
     fprintf(stderr,"\n");
   }
-  if (chid != LIST) SET_TheEnd1("SET: LIST not 1st in SSET\n");
+  if (chid != IFF_LIST) SET_TheEnd1("SET: LIST not 1st in SSET\n");
 
   set_hdr->faces = (SET_FACE_HDR *)malloc(list_num * sizeof(SET_FACE_HDR) );
   if (set_hdr->faces == 0) SET_TheEnd1("SET: faces malloc failed\n");
 
   /* Read PROP */
-  chid = UTIL_Get_MSB_Long(fin);  /* PROP */
+  chid = xin->Read_MSB_U32(xin);  /* PROP */
   DEBUG_LEVEL1 fprintf(stderr,"    ");
   DEBUG_LEVEL1 SET_Print_CHID(chid);
-  if (chid != PROP) SET_TheEnd1("SET: 1st not PROP in SET\n");
-  data = UTIL_Get_MSB_Long(fin);  /* prop size */
-  type = UTIL_Get_MSB_Long(fin);  /* prop type */
-  DEBUG_LEVEL1 fprintf(stderr,"%lx ",data);
+  if (chid != IFF_PROP) SET_TheEnd1("SET: 1st not PROP in SET\n");
+  data = xin->Read_MSB_U32(xin);  /* prop size */
+  type = xin->Read_MSB_U32(xin);  /* prop type */
+  DEBUG_LEVEL1 fprintf(stderr,"%x ",data);
   DEBUG_LEVEL1 SET_Print_CHID(type);
 
   /* Read CMAP */
-  chid = UTIL_Get_MSB_Long(fin);  /* CMAP */
+  chid = xin->Read_MSB_U32(xin);  /* CMAP */
   DEBUG_LEVEL1 SET_Print_CHID(chid);
-  if (chid != CMAP) SET_TheEnd1("SET: 2st not CMAP in SET\n");
-  set_imagec = UTIL_Get_MSB_Long(fin);  /* CMAP size */
+  if (chid != IFF_CMAP) SET_TheEnd1("SET: 2st not CMAP in SET\n");
+  set_imagec = xin->Read_MSB_U32(xin);  /* CMAP size */
   set_imagec /= 2;
-  DEBUG_LEVEL1 fprintf(stderr," %lx\n",set_imagec);
-  IFF_Read_CMAP_1(set_cmap,set_imagec,fin);
+  DEBUG_LEVEL1 fprintf(stderr," %x\n",set_imagec);
+  IFF_Read_CMAP_1(set_cmap,set_imagec,xin);
   IFF_Shift_CMAP(set_cmap,set_imagec);
   set_chdr = ACT_Get_CMAP(set_cmap,set_imagec,set_or_mask,
 				set_imagec,set_or_mask,4,4,4);
@@ -840,7 +830,7 @@ SET_SSET_HDR *set_hdr;
     XA_ACTION *act;
 
     face = &set_hdr->faces[i];
-    pic = SET_Read_FACE(fin,face);
+    pic = SET_Read_FACE(xin,face);
     if (pic==0) SET_TheEnd1("SET_Read_SSET: read face failed\n");
 
     act = ACT_Get_Action(anim_hdr,ACT_MAPPED);
@@ -853,8 +843,8 @@ SET_SSET_HDR *set_hdr;
 }
 
 
-xaUBYTE *SET_Read_FACE(fin,face_hdr)
-FILE *fin;
+xaUBYTE *SET_Read_FACE(xin,face_hdr)
+XA_INPUT *xin;
 SET_FACE_HDR *face_hdr;
 {
   xaULONG chid,data;
@@ -864,50 +854,50 @@ SET_FACE_HDR *face_hdr;
   pic = 0;
   face_hdr->xsize = 0;
   face_hdr->ysize = 0;
-  chid = UTIL_Get_MSB_Long(fin);
-  form_size = UTIL_Get_MSB_Long(fin);
-  data = UTIL_Get_MSB_Long(fin); form_size -= 4;
+  chid = xin->Read_MSB_U32(xin);
+  form_size = xin->Read_MSB_U32(xin);
+  data = xin->Read_MSB_U32(xin); form_size -= 4;
   DEBUG_LEVEL2 fprintf(stderr,"    ");
   DEBUG_LEVEL2 SET_Print_CHID(chid);
-  DEBUG_LEVEL2 fprintf(stderr,"%lx ",form_size);
+  DEBUG_LEVEL2 fprintf(stderr,"%x ",form_size);
   DEBUG_LEVEL2 SET_Print_CHID(data);
-  if (chid != FORM) SET_TheEnd1("SET: face is not FORM\n");
+  if (chid != IFF_FORM) SET_TheEnd1("SET: face is not FORM\n");
   while(form_size)
   {
-    chid = UTIL_Get_MSB_Long(fin); form_size -= 4;
-    size = UTIL_Get_MSB_Long(fin); form_size -= 4;
+    chid = xin->Read_MSB_U32(xin); form_size -= 4;
+    size = xin->Read_MSB_U32(xin); form_size -= 4;
     DEBUG_LEVEL2 SET_Print_CHID(chid);
-    DEBUG_LEVEL2 fprintf(stderr,"%lx ",size);
+    DEBUG_LEVEL2 fprintf(stderr,"%x ",size);
     form_size -= size;
     if (form_size < 0) form_size = 0;
 
     switch(chid)
     {
-      case FACE:
-	face_hdr->xsize = UTIL_Get_MSB_UShort(fin);
-	face_hdr->ysize = UTIL_Get_MSB_UShort(fin);
-	face_hdr->x     = UTIL_Get_MSB_Short(fin);
-	face_hdr->y     = UTIL_Get_MSB_Short(fin);
-	face_hdr->xoff  = UTIL_Get_MSB_Short(fin);
-	face_hdr->yoff  = UTIL_Get_MSB_Short(fin);
+      case IFF_FACE:
+	face_hdr->xsize = xin->Read_MSB_U16(xin);
+	face_hdr->ysize = xin->Read_MSB_U16(xin);
+	face_hdr->x     = xin->Read_MSB_U16(xin);
+	face_hdr->y     = xin->Read_MSB_U16(xin);
+	face_hdr->xoff  = xin->Read_MSB_U16(xin);
+	face_hdr->yoff  = xin->Read_MSB_U16(xin);
 	DEBUG_LEVEL2 
 	{
-  fprintf(stderr,"      FACE size <%ld,%ld> p <%ld,%ld> off <%ld,%ld>\n",
+  fprintf(stderr,"      FACE size <%d,%d> p <%d,%d> off <%d,%d>\n",
 	  (xaLONG)face_hdr->xsize,(xaLONG)face_hdr->ysize,
 	  (xaLONG)face_hdr->x,    (xaLONG)face_hdr->y,
 	  (xaLONG)face_hdr->xoff, (xaLONG)face_hdr->yoff );
 	}
 	break;
-      case BODY:
+      case IFF_BODY:
 	{
 	  pic = (xaUBYTE *) 
 		malloc( XA_PIC_SIZE(face_hdr->xsize * face_hdr->ysize) );
 	  if (pic == 0) SET_TheEnd1("SET_Read_BODY: malloc failed\n");
-          DEBUG_LEVEL2 fprintf(stderr,"   %ldx%ldx%ld comp=%ld msk=%ld",
+          DEBUG_LEVEL2 fprintf(stderr,"   %dx%dx%d comp=%d msk=%d",
                 face_hdr->xsize,face_hdr->ysize,set_imaged,bmhd.compression,
 		bmhd.masking);
 
-	  IFF_Read_BODY(fin,pic,size,
+	  IFF_Read_BODY(xin,pic,size,
 		face_hdr->xsize, face_hdr->ysize, 5,
 		(xaULONG)(bmhd.compression), (xaULONG)(bmhd.masking),set_or_mask);
 	  form_size = 0; /* body is always last */
@@ -958,35 +948,35 @@ void SET_TheEnd()
   TheEnd();
 }
 
-void SET_Read_Sound_IFF(fin)
-FILE *fin;
+void SET_Read_Sound_IFF(xin)
+XA_INPUT *xin;
 {
   xaULONG chid,data;
   xaLONG size,form_size;
 
-  chid = UTIL_Get_MSB_Long(fin);
-  form_size = UTIL_Get_MSB_Long(fin);
-  DEBUG_LEVEL2 fprintf(stderr,"    FORM %lx ",form_size);
-  data = UTIL_Get_MSB_Long(fin); form_size -= 4;
+  chid = xin->Read_MSB_U32(xin);
+  form_size = xin->Read_MSB_U32(xin);
+  DEBUG_LEVEL2 fprintf(stderr,"    FORM %x ",form_size);
+  data = xin->Read_MSB_U32(xin); form_size -= 4;
   DEBUG_LEVEL2 SET_Print_CHID(data);
-  if (chid != FORM) SET_TheEnd1("SET: sound is not FORM\n");
+  if (chid != IFF_FORM) SET_TheEnd1("SET: sound is not FORM\n");
   while(form_size)
   {
     xaULONG d;
-    chid = UTIL_Get_MSB_Long(fin); form_size -= 4;
-    size = UTIL_Get_MSB_Long(fin); form_size -= 4;
+    chid = xin->Read_MSB_U32(xin); form_size -= 4;
+    size = xin->Read_MSB_U32(xin); form_size -= 4;
     DEBUG_LEVEL2 SET_Print_CHID(data);
-    DEBUG_LEVEL2 fprintf(stderr," %lx ",size);
+    DEBUG_LEVEL2 fprintf(stderr," %x ",size);
     form_size -= size;
     if (form_size < 0) form_size = 0;
     switch(chid)
     {
-      case BODY:
+      case IFF_BODY:
 	form_size = 0; /* last chunk */
-      case VHDR:
-      case ANNO:
-      case CHAN:
-	while( (size--) && !feof(fin) ) d = fgetc(fin);
+      case IFF_VHDR:
+      case IFF_ANNO:
+      case IFF_CHAN:
+	while( (size--) && !xin->At_EOF(xin) ) d = xin->Read_U8(xin);
 	break;
       default: 
 	SET_Print_CHID(chid); SET_TheEnd1("\nUnknown in SOUND chunk\n");
@@ -1026,7 +1016,7 @@ xaULONG fram_num;
 
   if (fram_num > set_fram_num)
   {
-    fprintf(stderr,"SET_Add_CHDR: invalid frame %lx\n", fram_num);
+    fprintf(stderr,"SET_Add_CHDR: invalid frame %x\n", fram_num);
     return;
   }
   fram_hdr = &set_frames[fram_num];
@@ -1046,7 +1036,7 @@ XA_CHDR *chdr;
 
   if (fram_num > set_fram_num)
   {
-    fprintf(stderr,"SET_Add_BACK: invalid frame %lx\n", fram_num);
+    fprintf(stderr,"SET_Add_BACK: invalid frame %x\n", fram_num);
     return;
   }
   fram_hdr = &set_frames[fram_num];
@@ -1065,7 +1055,7 @@ xaULONG fram_num,fram_time;
   SET_FRAM_HDR *fram_hdr;
   if (fram_num > set_fram_num) 
   {
-    fprintf(stderr,"SET_Add_TIME: invalid fram_num %lx\n",fram_num);
+    fprintf(stderr,"SET_Add_TIME: invalid fram_num %x\n",fram_num);
     return;
   }
   fram_hdr = &set_frames[fram_num]; 
@@ -1092,7 +1082,7 @@ xaULONG depth;
 
   if (fram_num > set_fram_num) 
   {
-    fprintf(stderr,"SET_Add_SETTER: invalid fram_num %lx\n",fram_num);
+    fprintf(stderr,"SET_Add_SETTER: invalid fram_num %x\n",fram_num);
     return;
   }
   fram_hdr = &set_frames[fram_num]; 

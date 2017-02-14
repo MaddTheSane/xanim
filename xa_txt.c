@@ -2,15 +2,15 @@
 /*
  * xa_txt.c
  *
- * Copyright (C) 1990,1991,1992,1993,1994,1995 by Mark Podlipec. 
+ * Copyright (C) 1990-1998,1999 by Mark Podlipec. 
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  * 
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
@@ -19,12 +19,12 @@
 #include "xa_gif.h"
 
 
-xaLONG Is_TXT_File();
 xaULONG TXT_Read_File();
-void GIF_Free_Frame_List();
-GIF_FRAME *GIF_Read_File();
+extern void GIF_Free_Frame_List();
+extern GIF_FRAME *GIF_Read_File();
 
-xaULONG UTIL_Get_MSB_Long();
+extern xaULONG XA_Open_And_ID_File();
+extern xaULONG XA_Setup_Input_Methods();
 
 typedef struct
 {
@@ -36,44 +36,27 @@ static char gif_file_name[256];
 static xaULONG txt_max_imagex,txt_max_imagey,txt_max_imagec,txt_max_imaged;
 
 /*
- * This file will open the filename passed to it and determine if
- * it is a txt91 file. If it is it returns xaTRUE, else xaFALSE. It
- * closes the file before returning.
- */
-xaLONG Is_TXT_File(filename)
-char *filename;
-{
-  FILE *fp;
-  xaULONG firstword;
-
-  if ( (fp=fopen(filename,XA_OPEN_MODE)) == 0) return(xaNOFILE);
-  firstword = UTIL_Get_MSB_Long(fp);
-  fclose(fp);
-  /*                   t x t 9     so we ignore the 1 */
-  if (firstword == 0x74787439) return(xaTRUE);
-  return(xaFALSE);
-}
-
-/*
  * This file parse the txt animation file and converts it into actions. 
  *
  */
 xaULONG TXT_Read_File(fname,anim_hdr)
 XA_ANIM_HDR *anim_hdr;
 char *fname;
-{
+{ XA_INPUT *xin = anim_hdr->xin;
   FILE *fp;
   xaLONG ret,i,f_cnt;
   xaLONG num_of_files;
   xaLONG total_frame_cnt,txt_frame_cnt,t_time;
   xaLONG *txt_frames,txtframe_num;
   TXT_FRAME_LST *txt_frame_lst;
+  char *tmp_fname = anim_hdr->name;
 
   txt_max_imagex = 0;
   txt_max_imagey = 0;
   txt_max_imagec = 0;
   txt_max_imaged = 0;
 
+  xin->Close_File(xin); /* POD Temporary */
   if ( (fp=fopen(fname,XA_OPEN_MODE))==0)
   { 
     fprintf(stderr,"Can't open %s for reading.\n",fname); 
@@ -84,10 +67,10 @@ char *fname;
   fscanf(fp,"%*s");
 
   /* Read the number of files */
-  fscanf(fp,"%ld",&num_of_files);
+  fscanf(fp,"%d",&num_of_files);
   if (num_of_files <= 0)
   {
-    fprintf(stderr,"num_of_file is invalid %ld\n",num_of_files);
+    fprintf(stderr,"num_of_file is invalid %d\n",num_of_files);
     fclose(fp);
     return(xaFALSE);
   }
@@ -99,21 +82,43 @@ char *fname;
   /* Read in the GIF files, use only the 1st one's colormap
    */
   for(i=0; i<num_of_files; i++)
-  {
+  { xaULONG anim_type;
+
     fscanf(fp,"%s",gif_file_name);
     fprintf(stderr,"Reading %s\n",gif_file_name);
-    txt_frame_lst[i].gframes 
+
+    anim_hdr->name = gif_file_name;
+
+    if (XA_Setup_Input_Methods(anim_hdr->xin, anim_hdr->name) == xaFALSE)
+								    continue;
+
+    anim_type = XA_Open_And_ID_File(anim_hdr);
+    if (anim_hdr->xin->type_flag & XA_IN_TYPE_RANDOM)
+    { anim_hdr->xin->Seek_FPos(anim_hdr->xin,0,0);
+      anim_hdr->xin->buf_cnt = 0;
+      anim_hdr->xin->fpos = 0;
+    }
+    if (anim_type == XA_GIF_ANIM)
+    {
+      txt_frame_lst[i].gframes 
 	= GIF_Read_File(gif_file_name,anim_hdr,&ret);
-    txt_frame_lst[i].frame_cnt = ret;
-    if (anim_hdr->imagex > txt_max_imagex) txt_max_imagex = anim_hdr->imagex;
-    if (anim_hdr->imagey > txt_max_imagey) txt_max_imagey = anim_hdr->imagey;
-    if (anim_hdr->imagec > txt_max_imagec) txt_max_imagec = anim_hdr->imagec;
-    if (anim_hdr->imaged > txt_max_imaged) txt_max_imaged = anim_hdr->imaged;
+      txt_frame_lst[i].frame_cnt = ret;
+      if (anim_hdr->imagex > txt_max_imagex) txt_max_imagex = anim_hdr->imagex;
+      if (anim_hdr->imagey > txt_max_imagey) txt_max_imagey = anim_hdr->imagey;
+      if (anim_hdr->imagec > txt_max_imagec) txt_max_imagec = anim_hdr->imagec;
+      if (anim_hdr->imaged > txt_max_imaged) txt_max_imaged = anim_hdr->imaged;
+    }
+    else
+    {
+      fprintf(stderr,"TXT files only allow GIF images to be listed %x\n",
+								anim_type);
+    }
   }
 
+  anim_hdr->name = tmp_fname;
   /* Check for Frame list at end of images.
    */
-  ret=fscanf(fp,"%ld",&txtframe_num);
+  ret=fscanf(fp,"%d",&txtframe_num);
   if ( (ret == 1) && (txtframe_num >= 0))
   {
     xaLONG tmp_txtframe; 
@@ -128,7 +133,7 @@ char *fname;
 
     for(i=0; i < txtframe_num; i++)
     {
-      ret = fscanf(fp,"%ld",&tmp_txtframe);
+      ret = fscanf(fp,"%d",&tmp_txtframe);
       if ( (ret==1) && (tmp_txtframe >= 0) && (tmp_txtframe < num_of_files) )
       {
         txt_frames[txt_frame_cnt] = tmp_txtframe;
@@ -136,7 +141,7 @@ char *fname;
         txt_frame_cnt++;
       }
       else
-        fprintf(stderr,"TXT_READ: bad frame number (%ld) in frame list\n",
+        fprintf(stderr,"TXT_READ: bad frame number (%d) in frame list\n",
 							  tmp_txtframe);
     }
   } /* end of frame included at end */
@@ -175,7 +180,7 @@ char *fname;
     {
       if (k >= frame_cnt)
       {
-        fprintf(stderr,"TXT_Read_Anim: frame inconsistency %ld %ld\n",
+        fprintf(stderr,"TXT_Read_Anim: frame inconsistency %d %d\n",
 		k,frame_cnt);
         break;
       }

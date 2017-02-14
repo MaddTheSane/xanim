@@ -1,0 +1,297 @@
+
+FILE: creative.readme
+DATE: 16Oct96
+AUTH: Mark Podlipec
+
+/* Creative CYUV Decompression Module for XAnim
+ *
+ * Revision History
+ *----------------------
+ *  Rev 0.0 31May96  Podlipec (podlipec@ici.net)
+ *		     Wrote the Code from Spec.
+ *  Rev 1.0 04Jun96  Podlipec (podlipec@ici.net)
+ *                   Initial release. For use with XAnim 2.70.6 or higher.
+ */
+
+-------------------------------------------------------------------------------
+              Copyright and Licensing Notice
+
+  The CYUV Video Codec is Copyrighted by Creative Technology Ltd, 1994-1996.
+  All rights reserved.
+
+  By Using this Software, you are agreeing to be bound by the terms of
+  this agreement. Do not use this software until you have carefully
+  read and agreed to the following terms and conditions. If you do
+  not agree to the terms of this agreement, then remove all copies.
+
+  Restrictions:
+
+  You MAY:
+      1: Freely use this Software in conjunction with XAnim.
+
+  You MAY NOT:
+      1: Use this Software for any application other than XAnim.
+      2: Sell or distribute this Software without direct written
+         permission from the Author.
+      3: Sublicense this Software.
+      4: Reverse engineer, decompile, or disassemble this Software.
+
+  WARRANTY: This Software is provided "AS IS". There are no warranties
+  of any kind either express or implied including warranties of
+  merchantability or fitness for any particular purpose.
+
+  LIMITATION OF LIABILITY: Neither Creative Technology nor the Author 
+  shall be liable for any loss of profits, loss of use, mood swings,
+  loss of data, interruptions of business, nor for indirect, special, 
+  incidental or consequential damages of any kind whether under this 
+  agreement or otherwise, even if advised of the possibility of such 
+  damages.
+  
+  Definitions:
+     Software: XAnim CYUV decompression modules precompiled for various
+               machine platforms and OS. 
+     Author:   Mark Podlipec (podlipec@ici.net)
+
+-------------------------------------------------------------------------------
+
+  XAnim is owned and copyrighted by Mark Podlipec.
+  Copyright (C) 1990-1998,1999 Mark Podlipec.
+  All rights reserved.
+
+  podlipec@ici.net
+  ---
+  http://xanim.va.pubnix.com/home.html
+  http://smurfland.cit.buffalo.edu/xanim/home.html
+  http://www.tm.informatik.uni-frankfurt.de/xanim/
+  http://xanim.resnet.gatech.edu
+
+-------------------------------------------------------------------------------
+
+NOTE: XAnim 2.70.6 OR GREATER IS REQUIRED FOR Creative CYUV SUPPORT!!!
+
+These modules will add AVI support for the following Video Codecs:
+
+            + Creative CYUV     (CYUV)      depth 16
+
+CYUV support for XAnim is being provided as an optional machine
+specific object module that is linked into XAnim at compile time.
+
+ 1) The first step is figuring out which XAnim CYUV decompression
+    library module you need to obtain for your machine.
+
+    Below is a table that matches your machine/OS to which library
+    you need to download(ok, they're really object files). 
+
+      Machine/OS                        Library Name(LIB_NAME)  Size(bytes)
+    ------------                        ----------------------------------
+     Sun 3's(SunOS 4.x)			xa1.0_cyuv_sun3.o	 1231  
+	cross-compiler provided to me
+	by Sebastien C. Roy (Sebastien.Roy@unh.edu)
+    ------------                        ----------------------------------
+     Sun Sparcs(SunOS 4.x)		xa1.0_cyuv_sparcAOUT.o   1408 
+    ------------                        ----------------------------------
+     Sun Sparcs(SunOS 5.x)		xa1.0_cyuv_sparcELF.o    1936
+     Sun Sparcs(Solaris  )		xa1.0_cyuv_sparcELF.o    1936
+    ------------                        ----------------------------------
+     Sun x86(Solaris)			xa1.0_cyuv_sol86.o       1988
+         cross-compiler provided to me
+         by Daniel Rock (rock@wurzelausix.CS.Uni-SB.DE)
+    ------------                        ----------------------------------
+     HP 9000/7xx            		xa1.0_cyuv_parisc.o      1952 
+    ------------                        ----------------------------------
+     HP 68k                 		xa1.0_cyuv_68k.o	 1263 
+	cross-compiler provided to me
+	by Stan Brown
+    ------------                        ----------------------------------
+     DEC Alpha OSF/1			xa1.0_cyuv_alphaOSF1.o   3536 
+    ------------                        ----------------------------------
+     x86 Esix 4.03a			xa1.0_cyuv_sol86.o       1988
+     x86 Unixware 2.1			xa1.0_cyuv_sol86.o       1988
+    ------------                        ----------------------------------
+     x86 386/NetBSD			xa1.0_cyuv_netbsd386.o   1275
+	cross-compiler provided to me
+	by Roland C Dowdeswell(roland@imrryr.org)
+    ------------                        ----------------------------------
+     x86 BSDI 2 			xa1.0_cyuv_netbsd386.o   1275
+    ------------                        ----------------------------------
+     x86 FreeBSD 2.1.0			xa1.0_cyuv_netbsd386.o   1275
+    ------------                        ----------------------------------
+     x86 Linux AOUT       		xa1.0_cyuv_linuxAOUT.o   1351
+     x86 Linux ELF			xa1.0_cyuv_linuxELF.o    2072
+	both cross-compilers provided to me 
+	by Mark Nordberg(mpn@mindspring.com) 
+    ------------                        ----------------------------------
+     PowerPC Linux        		xa1.0_cyuv_linuxPPC.o    2256
+	cross-compiler provided to me
+	by Tom Rini
+    ------------                        ----------------------------------
+     NetBSD 68K				xa2.0_cyuv_netbsd68k.o	 1231
+        cross-compiler provided to me
+        by Ingolf Koch(ingolf@mipool.uni-jena.de)
+    ------------                        ----------------------------------
+     SGI Irix 5.x and 6.x		xa1.0_cyuv_sgi.o         3764
+	cross-compiler provided to me 
+	by Paul Close
+    ------------                        ----------------------------------
+     Pyramid Nile DC/OSx d087		xa1.0_cyuv_sgi.o         3764
+        There are some warnings that you can ignore.
+        Might also work with MIS series DC/OSx c087.
+    ------------                        ----------------------------------
+     Amiga(gcc compiler?)               xa1.0_cyuv_amiga.lha     1231
+        Thanks to Adrian (Sauron) Siemieniak for creating
+        and providing this object file derived from the
+        Sun 3x object module.
+    ------------                        ----------------------------------
+
+    NOTE: SunOS 4.1.3 uses AOUT and Sun Solaris used ELF. They're not
+    compatible.
+
+    NOTE: If your machine is not supported, it's because I don't have 
+    physical access to that type of machine. There are a handful of options
+    available to you(not all of them may be feasible)
+
+        a) Permanently loan me that type of machine so that I may
+           compile a library module for that machine type. Please
+           contact me first and yes, I'd be surprised if someone
+           chose this option. :^) 
+
+        b) Send me a cross-compiler for your machine type. Must
+           be a Sparc SunOS 4.1.x executable or more specifically
+           it must run on my machine.  I'll do the compile and then
+           you'll need to verify that the resulting library module
+           works on your machine.
+
+	   Yes, I know gcc can be a cross-compiler. No, I don't currently
+	   have the time to setup it up for all the various platforms.
+           
+     Since I'm not allowed to distribute the source code I can't login
+     to an account on a remote machine in order to do the compile.
+
+     Also, I personally can't give you a non-disclosure. You need
+     to contact Creative about licensing CYUV.
+
+ 2) Obtaining the object files. Follow the steps below:
+
+        EITHER
+
+/* NOT YET AVAILABLE VIA HTTP - HOPEFULLY SOON - USE FTP INSTEAD
+        1) Download the modules from one of the XAnim Web Pages
+
+                http://xanim.va.pubnix.com/home.html
+                http://smurfland.cit.buffalo.edu/xanim/home.html
+		http://www.tm.informatik.uni-frankfurt.de/xanim/
+		http://xanim.resnet.gatech.edu
+*/
+
+        OR
+
+	1) cd into the XAnim directory on your machine
+	2) ftp xanim.va.pubnix.com     OR  ftp 199.170.0.28
+	3) user is "anonymous"
+	4) passwd is your email address
+	5) "type binary"			VERY IMPORTANT
+	6) "cd modules"
+	7) "get LIB_NAME.Z"			NOTE: the .Z at the end
+	8) "quit"
+
+    NOTE: LIB_NAME is obtained from the table in section 1 based
+     on the type of machine and OS you are running. If you don't
+     know, contact your system administrator or a coworker who
+     does know. 
+
+ 3) "uncompress LIB_NAME.Z"
+
+     This will create LIB_NAME from LIB_NAME.Z
+
+ 3a) Put LIB_NAME into a directory called "mods" inside the xanim directory.
+
+ 4) Edit Section III of either your Imakefile or Makefile(derived
+    from Makefile.unx).  If you are not sure which one to
+    use then read the compile.help that came with xanim.
+      
+    a) In Section III of either the Imakefile or Makefile
+
+       Uncomment out the following define:
+
+         XA_CYUV_DEF = -DXA_CYUV
+
+      and add LIB_NAME to the XA_CYUV_LIB define. For example
+      if you have Sun Sparc running SunOS 4.1.3 then you would
+      use the following:
+
+        XA_CYUV_LIB = mods/xa1.0_cyuv_sparcCOFF.o
+
+      For other machine/OS types, use the approriate xa1.0_cyuv_*.o file
+      listed in the table at the top of this readme.
+
+      NOTE:  There is no "-" or anything other prefix. Just the object 
+             file name.
+
+    b) If and ONLY if you are using the Imakefile(in other
+       words DON'T do this if you are using the Makefile(derived
+       from Makefile.unx)) then do the following:
+
+	  "xmkmf" 
+   
+    c) Now(regardless of which makefile)
+
+	  "touch xanim.h" 
+	  "make xanim"
+ 
+      NOTE: make sure you see -DXA_CYUV on the compile command lines
+      and make sure both xa_avi.c and xa_qt.c get recompiled.
+
+    d) You should use "make xaclean" instead of "make clean" if you
+       want to preserve the decompression modules.
+   
+ 5)  Have fun. :^)
+
+-------------------------------------------------------------------------
+NOTES on how XAnim options affect CYUV on 8 bit Color displays/visuals.
+
+None of these options matter on monochrome/TrueColor/DirectColor displays
+and visuals.
+
+  With no options, XAnim will create a 256 entry RGB332 colormap
+  and dither to that. 
+
+     xanim  free_fall.avi
+
+  -F will turn off this dithering and XAnim will instead truncate
+  the 24bit RGB values down to the RGB332 colormap.(I see no real
+  advantage to this, which is why +F is on by default)
+
+     xanim  -F free_fall.avi
+
+  The +CF4 option will TURN OFF the dithering by default. +CF4 causes
+   XAnim to scan the animation ahead of time and the select the
+   "best" 256 colors from the possible thousands sampled. These colors
+   may be further reduced depending on how many colors are still 
+   available(ie not in use by other X11 applications).
+
+     xanim +CF4 free_fall.avi
+
+  If you specify +F AFTER the +CF4 option, dithering will be used
+  with the +CF4 option.
+
+     xanim +CF4 +F free_fall.avi
+ 
+
+  The -Cn option may be used with all of the above examples. -Cn tells
+   XAnim to create it's own colormap, giving it FULL USE of those
+   256 colors. Please note that it is up to your X11 Window Manager(NOT
+   XAnim) to install this colormap based on which window the Color Focus
+   is on. Normally, Color Focus follows the mouse pointer, but not
+   always.
+
+
+      xanim -Cn free_fall.avi
+
+      xanim -Cn +CF4 free_fall.avi
+
+
+
+Mark Podlipec
+podlipec@ici.net
+
+

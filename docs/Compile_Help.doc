@@ -1,0 +1,163 @@
+
+--------------------------------------------------------------------------
+
+         Compiling the Audio Revisions of XAnim(2.70.* and up)
+
+In the following help section,  the "2800" part is variable and
+depends on the revision(in this case Rev 2.80.0). 
+Another example: Rev 2.88.3 would be "2883".
+
+--------------------------------------------------------------------------
+Section I    Obtaining XAnim
+--------------------------------------------------------------------------
+
+Obtaining the XAnim archive through ftp:
+	1) ftp xanim.va.pubnix.com     OR  ftp 208.240.89.238
+	2) Enter "anonymous" as user(don't include quotes)
+	3) Enter your full email address as the password.
+	4) "type binary"
+        6a) "get xanim2800.tar.Z"     For the unix compressed version
+                OR
+        6b) "get xanim2800.tar.gz"    For the gnu zipped version
+	7) bye
+
+Obtaining XAnim through mosaic or a browser:
+  If you obtained the xanim archive through mosaic or another www browser,
+  then you need to be aware of whether or not it was automatically
+  uncompressed as it was transferred. Different browsers do different things.
+
+	A) If your browser uncompressed XAnim then save the file
+	   as "xanim2800.tar" and skip the uncompress steps in
+	   sections I) or II).
+	B) If your browers didn't uncompress XAnim then save the file
+	   as "xanim2800.tar.Z".
+        C) If you're not sure then: 
+	     1) save the file as "xanim2800"
+             2) "ls -l xanim2800"
+                 a) if the size is < 600K, then it's compressed and you
+		    should "mv xanim2800 xanim2800.tar.Z".
+	         b) else it's not compressed and you should
+		    "mv xanim2800 xanim2800.tar". NOTE: skip the
+		    uncompress steps below.
+		 c) You can also compare the size to the sizes listed 
+                    on the XAnim WWW page in order to determine what
+                    you browser did.
+		    
+
+--------------------------------------------------------------------------
+Section II    Unarchiving
+--------------------------------------------------------------------------
+
+    1a) uncompress xanim2800.tar.Z    For the unix compressed version
+               OR
+    1b) gunzip xanim2800.tar.gz       For the gnu zipped version
+    2) tar xvof xanim2800.tar
+    3) cd xanim2800
+
+--------------------------------------------------------------------------
+Section III   Compiling
+--------------------------------------------------------------------------
+
+Now that you've got it, what do you do?  
+
+Part A) 
+   If you are using OpenWindows(with SunOS 4.1.3) goto Part B.
+   OpenWindows with SunOS 5.x should be okay here, but not positive.
+   If you know that Imake is NOT setup on your system, goto Part B.
+   If you're not sure about Imake, try it anyways and on any failure
+   goto Part B and skip any initial steps you've already done.
+   Imake for a lot of linux releases is broken. See 2nd entry of
+   "Compile_Errs.doc" for details on how to fix.
+
+    1) Read the following files:
+           README.dll
+           README.zlib
+    2) If you aren't using XA_DLL then also read the following:
+           <a href="ZZfiledirZZ_cinepak.readme">cinepak.readme</a>
+           <a href="ZZfiledirZZ_indeo.readme">indeo.readme</a>
+           <a href="ZZfiledirZZ_creative.readme">creative.readme</a>
+    3) Read and edit the Imakefile. Visit each section and
+          a) Modify section IIIa based on info in the file "README.dll".
+          b) Modify section IIIb based on info in the file "README.zlib".
+          c) Modify section IIIc based on info in the "cinepak.readme",
+             "indeo.readme" and "creative.readme"  files. NOTE: ONLY IF
+             YOU ARE NOT USING THE DLLs(see step a above).
+          d) In Section IV.a, indicate where the X11 includes and libs
+             are located on your machine.
+          e) Modify Section IV.b based on which rev of X11 you are running.
+          f) In Section VI indicate which XA_AUDIO_DEFS/LIBS/etc is correct
+             for your particular machine/OS combination.
+          g) Check Section VII for any machine or OS specific notes, etc.
+    4) xmkmf
+    5) make xanim
+    6) NOTE: you should use "make xaclean" instead of "make clean" if you
+       wanted to preserve the cinepak/indeo decompression modules.
+       I haven't found a way to override Imake's clean yet.
+
+    If steps 2) or 3) failed, then your system most likely isn't setup up
+    properly for Imake(xmkmf). Either talk to your System Administrator
+    or goto Part B.
+
+
+Part B)
+    IF  Part A ABOVE FAILED, OR Imake ISN'T PROPERLY SETUP OR YOU'RE USING
+    Sun OpenWindows INSTEAD OF X11
+
+    1) Read the "cinepak.readme" and "indeo.readme" files.
+    2) cp Makefile.unx Makefile
+    3) Edit the Makefile and:
+          a) Read and possibly modify Section IIa and IIb.
+          b) Modify section IIIa based on info in the file "README.dll".
+          c) Modify section IIIb based on info in the file "README.zlib".
+          d) Modify section IIIc based on info in the "cinepak.readme",
+             "indeo.readme" and "creative.readme"  files. NOTE: ONLY IF
+             YOU ARE NOT USING THE DLLs(see "b)" above).
+          f) In Section IV.a, indicate where the X11 includes and libs
+             are located on your machine.
+          g) Modify Section IV.b based on which rev of X11 you are running.
+          h) In Section VI indicate which XA_AUDIO_DEFS/LIBS/etc is correct
+             for your particular machine/OS combination.
+          i) Check Section VII for any machine or OS specific notes, etc.
+
+
+    3) On Suns you need to have your LD_LIBRARY_PATH match the XLIBDIR
+       define inside the Makefile. If it doesn't, you might end up mismatching
+       different revs of X11 includes and libraries, causing all sorts of
+       failures(usually undefined symbols). NOTE: This also has to match
+       when you try executing XAnim, or it may not be able to find the 
+       proper libraries.
+
+	To find out what you LD_LIBRARY_PATH is set to: 
+
+        	"env | grep LD"
+
+	The following examples are for OpenWindows(XLIBDIR = /usr/openwin/lib) 
+	To set it up properly for OpenWindows in the (C shell):
+
+        	"setenv LD_LIBRARY_PATH /usr/lib:/usr/openwin/lib"
+
+	To set it up properly for OpenWindows in the (Korn, Bourne and 
+	POSIX shells):
+
+        	"LD_LIBRARY_PATH=/usr/lib:/usr/openwin/lib"
+        	"export LD_LIBRARY_PATH"
+
+	NOTE: No spaces around "=" sign.
+
+    7) make xanim
+
+    If your not sure where your X11 libs or includes are, your SysAdm should
+    know or I can help as well. Also the Makefile.unx file has example places
+    on where to look.
+
+
+Please see the file "Compile_Errs.doc" for a list of common compilation
+problems and their solutions.
+
+Please see the file "Problems.doc" for a list of common runtime
+problems and their solutions.
+
+Thanks,
+
+Mark Podlipec
+podlipec@ici.net

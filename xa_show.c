@@ -2,15 +2,15 @@
 /*
  * xa_show.c
  *
- * Copyright (C) 1990,1991,1992,1993,1994,1995 by Mark Podlipec.
+ * Copyright (C) 1990-1998,1999 by Mark Podlipec.
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  *
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
@@ -18,6 +18,9 @@
 
 /* Revisions:
  * 13Nov94:  wasn't properly skipping video frames in certain instances.
+ * 09Sep97:  Eric Shaw sent mods to tile video to root display. Very Cool.
+ * 14Dec97:  Adam Moss: XA_SHOW_IMAGE routine wasn't freeing PixMap when
+ *           scaling images with clip masks.
  */
 
 #include "xanim.h"
@@ -38,16 +41,13 @@ extern Visual        *theVisual;  /* POD NOTE: needed for XMBUF?? */
 
 #include "xa_x11.h"
 
-#ifdef XA_FORK
 #define AUD_SYNC_CHECK() { XSync(theDisp,False); }
-#else
-#define AUD_SYNC_CHECK() { if (xa_audio_enable != xaTRUE) XSync(theDisp,False); }
-#endif
 
 void XA_SHOW_IMAGE();
 void XA_SHOW_PIXMAP();
 void XA_SHOW_IMAGES();
 void XA_SHOW_PIXMAPS();
+void XA_SHOW_DELTA();
 
 xaUBYTE *UTIL_Scale_Bitmap();
 xaUBYTE *UTIL_Scale_Mapped();
@@ -63,6 +63,7 @@ void IFF_Init_DLTA_HDR();
 void IFF_Update_DLTA_HDR();
 void IFF_Buffer_HAM6();
 void IFF_Buffer_HAM8();
+extern xaULONG XA_Get_Image_Type();
 
 
 extern xaLONG  xa_frames_skipd, xa_frames_Sskipd;
@@ -89,6 +90,9 @@ extern xaULONG x11_expose_flag;
 extern xaLONG xa_anim_flags;
 extern xaLONG xa_no_disp;
 
+extern xaLONG xa_cycle_cnt;
+extern xaLONG xa_now_cycling;
+extern void XA_Cycle_It();
 
 extern xaULONG shm;
 #ifdef XSHM
@@ -103,6 +107,291 @@ extern XImage *sh_Image;
 
 extern xaULONG mbuf;
 
+/* SMR 13 */
+extern xaLONG xa_window_x;
+extern xaLONG xa_window_y;
+extern xaLONG xa_window_center_flag;
+extern xaLONG xa_max_imagex;
+extern xaLONG xa_max_imagey;
+extern float xa_scalex;
+extern float xa_scaley;
+
+/* override XPutImage call to support playing at a particular
+   position in a window.  Uses #define kludge to avoid changing
+   lots of code */
+void xa_putimage(dpy, d, gc, im, sx, sy, dx, dy, w, h)
+Display *dpy;
+Drawable d;
+GC gc;
+XImage *im;
+int sx, sy, dx, dy;
+unsigned int w;
+unsigned int h;
+{ 
+  /* variables used for tiling */
+  XWindowAttributes	rootwindowattributes;
+  Window	root_return;
+  int		x_return,y_return;
+  unsigned int	width_return,height_return, border_width_return,depth_return;
+  int rowcount;
+  int colcount;
+  int rowindex;
+  int colindex;
+
+  if (d == mainW) 
+  { dx += xa_window_x;
+    dy += xa_window_y;
+    if (xa_window_center_flag == xaTRUE)
+    { dx -= (int)((double)xa_max_imagex * xa_scalex / 2.0);
+      dy -= (int)((double)xa_max_imagey * xa_scaley / 2.0);
+    }
+  }
+  XPutImage(dpy, d, gc, im, sx, sy, dx, dy, w, h);
+
+  /* stuff for tiling starts here */
+  if(xa_root == xaTRUE)
+  {
+    XGetGeometry(dpy,d,&root_return,&x_return,&y_return,&width_return,
+                     &height_return,&border_width_return,&depth_return);
+    XGetWindowAttributes(theDisp,root_return,&rootwindowattributes);
+    w += 2*dx;
+    h += 2*dy;
+    colcount=rootwindowattributes.width/w + 1;
+    rowcount=rootwindowattributes.height/h + 1;
+    for(rowindex=0;rowindex<rowcount;rowindex++)
+      for(colindex=0;colindex<colcount;colindex++)
+        XPutImage(theDisp,root_return,theGC,im,sx,sy,
+           w*colindex+dx,h*rowindex+dy,w-2*dx,h-2*dy);
+  }
+}
+#define XPutImage xa_putimage
+
+#ifdef XSHM
+void xa_shmputimage(dpy, d, gc, im, sx, sy, dx, dy, w, h, event)
+Display *dpy;
+Drawable d;
+GC gc;
+XImage *im;
+int sx, sy, dx, dy;
+unsigned int w, h;
+int event;
+{ 
+  /* variables used for tiling */
+  XWindowAttributes rootwindowattributes;
+  Window root_return;
+  int x_return,y_return;
+  unsigned int width_return,height_return,
+     border_width_return,depth_return;
+  int rowcount;
+  int colcount;
+  int rowindex;
+  int colindex;
+
+  if (d == mainW) 
+  { dx += xa_window_x;
+    dy += xa_window_y;
+    if (xa_window_center_flag == xaTRUE)
+    { dx -= (int)((double)xa_max_imagex * xa_scalex / 2.0);
+      dy -= (int)((double)xa_max_imagey * xa_scaley / 2.0);
+    }
+  }
+  XShmPutImage(dpy, d, gc, im, sx, sy, dx, dy, w, h, False);
+
+  /* stuff for tiling starts here */
+  if (xa_root == xaTRUE)
+  {
+    XGetGeometry(dpy,d,&root_return,&x_return,&y_return,&width_return,
+                     &height_return,&border_width_return,&depth_return);
+    XGetWindowAttributes(theDisp,root_return,&rootwindowattributes);
+    w += 2*dx; h+= 2*dy;
+    colcount=rootwindowattributes.width/w + 1;
+    rowcount=rootwindowattributes.height/h + 1;
+    for(rowindex=0;rowindex<rowcount;rowindex++)
+      for(colindex=0;colindex<colcount;colindex++)
+        XShmPutImage(theDisp,root_return,theGC,im,sx,sy,
+           w*colindex+dx,h*rowindex+dy,w-2*dx,h-2*dy,False);
+  }
+}
+#define XShmPutImage xa_shmputimage
+#endif
+/* end SMR 13 */
+
+
+XA_DEC_INFO  xa_dec_info;
+XA_DEC2_INFO xa_dec2_info;
+
+
+/*POD clean this up */
+void XA_Show_Action(act)
+XA_ACTION *act;
+{
+ switch(act->type)
+ {
+       /* 
+        * NOP and DELAY don't change anything but can have timing info
+        * that might prove useful. ie dramatic pauses :^)
+        */
+    case ACT_NOP:      
+	DEBUG_LEVEL2 fprintf(stderr,"ACT_NOP:\n");
+	break;
+    case ACT_DELAY:    
+	DEBUG_LEVEL2 fprintf(stderr,"ACT_DELAY:\n");
+	break;
+       /* 
+        * Change Color Map.
+        */
+     case ACT_CMAP:     
+	if (   (cmap_play_nice == xaFALSE) 
+	    && (!(x11_display_type & XA_X11_STATIC)) )
+	{ ColorReg *tcmap;
+	  xaLONG j;
+	  ACT_CMAP_HDR *cmap_hdr;
+
+	  cmap_hdr	= (ACT_CMAP_HDR *)act->data;
+	  xa_cmap_size	= cmap_hdr->csize;
+	  if (xa_cmap_size > x11_cmap_size) xa_cmap_size = x11_cmap_size;
+	  xa_cmap_off	= cmap_hdr->coff;
+	  tcmap		= (ColorReg *)cmap_hdr->data;
+          for(j=0; j<xa_cmap_size;j++)
+	  {
+		xa_cmap[j].red   = tcmap[j].red;
+		xa_cmap[j].green = tcmap[j].green;
+		xa_cmap[j].blue  = tcmap[j].blue;
+		xa_cmap[j].gray  = tcmap[j].gray;
+	  }
+		/* POD TEMP share routine whith CHDR install */
+	  if (x11_cmap_flag == xaTRUE)
+	  {
+	    DEBUG_LEVEL2 fprintf(stderr,"CMAP: size=%d off=%d\n",
+                	xa_cmap_size,xa_cmap_off);
+	    if (x11_display_type & XA_X11_GRAY)
+	    {
+	      for(j=0;j<xa_cmap_size;j++)
+	      {
+	        defs[j].pixel = xa_cmap_off + j;
+	        defs[j].red   = xa_cmap[j].gray;
+	        defs[j].green = xa_cmap[j].gray;
+	        defs[j].blue  = xa_cmap[j].gray;
+	        defs[j].flags = DoRed | DoGreen | DoBlue;
+	      }
+	    }
+	    else
+	    {
+	      for(j=0; j<xa_cmap_size;j++)
+	      {
+	        defs[j].pixel = xa_cmap_off + j;
+	        defs[j].red   = xa_cmap[j].red;
+	        defs[j].green = xa_cmap[j].green;
+	        defs[j].blue  = xa_cmap[j].blue;
+	        defs[j].flags = DoRed | DoGreen | DoBlue;
+	        DEBUG_LEVEL3 fprintf(stderr," %d) %x %x %x <%d>\n",
+				j,xa_cmap[j].red,xa_cmap[j].green,
+				xa_cmap[j].blue,xa_cmap[j].gray);
+	      }
+	    }
+	    XStoreColors(theDisp,theCmap,defs,xa_cmap_size);
+	  }
+	}
+	break;
+       /* 
+        * Lower Color Intensity by 1/16.
+        */
+     case ACT_FADE:     
+	{ xaLONG j;
+	  DEBUG_LEVEL2 fprintf(stderr,"ACT_FADE:\n");
+	  if ( (x11_display_type & XA_X11_CMAP) && (x11_cmap_flag == xaTRUE) )
+	  {
+	    for(j=0;j<xa_cmap_size;j++)
+	    {
+	      if (xa_cmap[j].red   <= 16) xa_cmap[j].red   = 0;
+	      else xa_cmap[j].red   -= 16;
+	      if (xa_cmap[j].green <= 16) xa_cmap[j].green = 0;
+	      else xa_cmap[j].green -= 16;
+	      if (xa_cmap[j].blue  <= 16) xa_cmap[j].blue  = 0;
+	      else xa_cmap[j].blue  -= 16;
+
+	      defs[j].pixel = j;
+	      defs[j].red   = xa_cmap[j].red   << 8;
+	      defs[j].green = xa_cmap[j].green << 8;
+	      defs[j].blue  = xa_cmap[j].blue  << 8;
+	      defs[j].flags = DoRed | DoGreen | DoBlue;
+	    }
+	    XStoreColors(theDisp,theCmap,defs,xa_cmap_size);
+	    XFlush(theDisp);
+	  }
+	}
+	break;
+
+     case ACT_APTR:   
+	{ ACT_APTR_HDR *aptr_hdr = (ACT_APTR_HDR *)act->data;
+    	  if (aptr_hdr->act->type == ACT_IMAGE)
+		XA_SHOW_IMAGE(aptr_hdr->act,aptr_hdr->xpos,aptr_hdr->ypos,
+				aptr_hdr->xsize,aptr_hdr->ysize,1);
+    	  else if (aptr_hdr->act->type == ACT_PIXMAP)
+		XA_SHOW_PIXMAP(aptr_hdr->act,aptr_hdr->xpos,aptr_hdr->ypos,
+				aptr_hdr->xsize,aptr_hdr->ysize,1);
+	  else
+	  {
+  	    fprintf(stderr,"ACT_APTR: error invalid action %x\n",act->type);
+	  }
+	}
+	break;
+
+     case ACT_IMAGE:   
+	XA_SHOW_IMAGE(act,0,0,0,0,0);
+	break;
+
+     case ACT_PIXMAP:   
+	XA_SHOW_PIXMAP(act,0,0,0,0,0);
+	break;
+
+     case ACT_IMAGES:
+	XA_SHOW_IMAGES(act);
+	break;
+
+     case ACT_PIXMAPS:
+	XA_SHOW_PIXMAPS(act);
+	break;
+
+       /* Act upon IFF Color Cycling chunk.  */
+     case ACT_CYCLE:
+	{
+	  /* if there is a new_chdr, install it, not the old one */
+	  /*
+ 	   * XA_CHDR *the_chdr;
+	   * if (act->chdr->new_chdr) the_chdr = act->chdr->new_chdr;
+	   * else the_chdr = act->chdr;
+	   */
+
+	  if (   (cmap_play_nice == xaFALSE) 
+	     && (x11_display_type & XA_X11_CMAP)
+	     && (xa_anim_flags & ANIM_CYCLE) )
+	  {
+	    ACT_CYCLE_HDR *act_cycle;
+	    act_cycle = (ACT_CYCLE_HDR *)act->data;
+
+	    DEBUG_LEVEL2 fprintf(stderr,"ACT_CYCLE:\n");
+	    if ( !(act_cycle->flags & ACT_CYCLE_STARTED) )
+	    {
+	      if ( (act->chdr != 0) && (act->chdr != xa_chdr_now) )
+			XA_Install_CMAP(act->chdr);
+	      xa_cycle_cnt++;
+	      act_cycle->flags |= ACT_CYCLE_STARTED;
+	      xa_now_cycling = xaTRUE;
+	      XtAppAddTimeOut(theContext,(int)(act_cycle->rate), 
+		(XtTimerCallbackProc)XA_Cycle_It, (XtPointer)(act_cycle));
+	    }
+	  }
+	} /*POD*/
+	break;
+
+     case ACT_DELTA:        
+	XA_SHOW_DELTA(act);
+	break;
+
+     default:	fprintf(stderr,"Unknown not supported %x\n",act->type);
+  } /* end of switch of action type */
+}
 
 
 /***************************************************** 
@@ -138,7 +427,8 @@ xaULONG flag;		/* override flag 0 normal 1 use pos/size */
       xp = im_xpos;	yp = im_ypos;
       tmp_pic = UTIL_Scale_Bitmap(0,act_im_hdr->clip,im_xsize,im_ysize,
 		(X11_Get_Bitmap_Width(xsize)/8),xa_buff_x,xa_buff_y,
-		xa_disp_x,xa_disp_y,&xp,&yp,&xsize,&ysize,X11_LSB,X11_LSB);
+		xa_disp_x,xa_disp_y,&xp,&yp,&xsize,&ysize,
+		XA_LSBIT_1ST,XA_LSBIT_1ST);
       if (tmp_pic)
       {
         pix_map = XCreatePixmapFromBitmapData(theDisp,mainW,(char *)tmp_pic,
@@ -168,7 +458,10 @@ xaULONG flag;		/* override flag 0 normal 1 use pos/size */
 		XA_Install_CMAP(act->chdr);
       XPutImage(theDisp,mainW,theGC,theImage,0,0,xp,yp,xsize,ysize);
     }
-    if(act_im_hdr->clip) XSetClipMask(theDisp,theGC,None);
+    if(act_im_hdr->clip)
+    { XSetClipMask(theDisp,theGC,None);
+      if (pix_map) XFreePixmap(theDisp,pix_map);
+    }
   }
   else /* Not scaling Image */
   {
@@ -229,7 +522,7 @@ xaULONG flag;		/* 0 normal 1 use pos/size */
       tmp_pic = UTIL_Scale_Bitmap(0,p_image->data, xsize,ysize,
 		p_image->bytes_per_line,xa_buff_x,xa_buff_y,
                 xa_disp_x,xa_disp_y,&xp,&yp,&xsize,&ysize,
-					x11_bit_order,X11_LSB);
+					x11_bit_order,XA_LSBIT_1ST);
       if (tmp_pic)
       {
         pix_map = XCreatePixmapFromBitmapData(theDisp,mainW,
@@ -595,25 +888,31 @@ XA_ACTION *act;
  * XA_SHOW_DELTA
  *
  *****************************************************/
-void XA_SHOW_DELTA(act,dec_info)
+void XA_SHOW_DELTA(act)
 XA_ACTION *act;
-XA_DEC_INFO *dec_info;
-{
+{ 
   ACT_DLTA_HDR *dlta_hdr = (ACT_DLTA_HDR *)act->data;
   xaULONG xsrc,ysrc,xdst,ydst,xsize,ysize,*remap_map;
   xaULONG xbuff,ybuff,map_flag,dith_flag,dlta_flag;
   XA_CHDR *the_chdr;
   char *the_pic;
   xaULONG no_shared;
+  XA_DEC_INFO  *dec_info  = &xa_dec_info;
+  XA_DEC2_INFO *dec2_info = &xa_dec2_info;
 
   no_shared = 0;
   if (cmap_dither_type == CMAP_DITHER_FLOYD) dith_flag = xaTRUE;
   else dith_flag = xaFALSE; 
+
+  if (act->chdr == 0)	/* NOP */ return;
   /* if there is a new_chdr, install it, not the old one */
-  if (act->chdr->new_chdr) 
+  else if (act->chdr->new_chdr) 
   {
+    if (   (x11_display_type & XA_X11_TRUE)
+	|| (x11_kludge_1 == xaTRUE)
+	|| (x11_bytes_pixel != 1)	  ) map_flag = xaTRUE;
     /* if dithering and new_chdr then don't remap while decoding */
-    if (dith_flag)  map_flag = xaFALSE;
+    else if (dith_flag)  map_flag = xaFALSE;
     else map_flag = xaTRUE;
     the_chdr = act->chdr->new_chdr;
   }
@@ -630,13 +929,12 @@ XA_DEC_INFO *dec_info;
   remap_map = act->chdr->map;
 
   if (dlta_hdr->xapi_rev == 0x0001)
-  {
-    dec_info->imagex	= xa_imagex;
+  { dec_info->imagex	= xa_imagex;
     dec_info->imagey	= xa_imagey;
     dec_info->imaged	= xa_imaged;
     dec_info->chdr	= act->chdr;
     dec_info->map_flag	= map_flag;
-    dec_info->map		= remap_map;
+    dec_info->map	= remap_map;
     dec_info->special	= dlta_hdr->special;
     dec_info->extra	= dlta_hdr->extra;
 
@@ -657,9 +955,45 @@ XA_DEC_INFO *dec_info;
     { dlta_flag = dlta_hdr->delta(the_pic,dlta_hdr->data,
 					dlta_hdr->fsize,dec_info);
     }
-    if (dlta_flag == ACT_DLTA_DROP)
+    if ( (dlta_flag == ACT_DLTA_DROP) || (dec_info->skip_flag > 0) )
 	{ xa_skip_cnt++; xa_frames_skipd++; return; }
+  } /* End of XAPI_REV 0x0001 */
+  else if (dlta_hdr->xapi_rev == 0x0002)
+  { dec2_info->imagex	= xa_imagex;
+    dec2_info->imagey	= xa_imagey;
+    dec2_info->imaged	= xa_imaged;
+    dec2_info->chdr	= act->chdr;
+    dec2_info->map_flag	= map_flag;
+    dec2_info->map	= remap_map;
+    dec2_info->special	= dlta_hdr->special;
+    dec2_info->extra	= dlta_hdr->extra;
+    dec2_info->tmp1 = dec2_info->tmp2 = dec2_info->tmp3 = dec2_info->tmp4 = 0;
+    dec2_info->bytes_pixel	= x11_bytes_pixel;
+    dec2_info->image_type = XA_Get_Image_Type( dlta_hdr->special,
+							act->chdr,map_flag);
+/* POD or in dither and cf4 into special */
+    if (xa_dither_flag)	dec2_info->special |= XA_DEC_SPEC_DITH;
+/* XA_DEC_SPEC_CF4 */
 
+    if (xa_skip_video == 0) { xa_skip_cnt = 0; dec2_info->skip_flag = 0; }
+    else { if (xa_skip_cnt < XA_SKIP_MAX) dec2_info->skip_flag= xa_skip_video;
+	   else { xa_skip_cnt = 0; dec2_info->skip_flag = 0; } }
+
+    the_pic = xa_pic; xbuff = xa_imagex; ybuff = xa_imagey;
+    if ((xa_vid_fd >= 0) && (!(dlta_hdr->flags & DLTA_DATA)) )
+    { int ret = XA_Read_Delta(xa_vidcodec_buf, xa_vid_fd,
+					dlta_hdr->fpos, dlta_hdr->fsize);
+      /* if read fails */
+      if (ret == xaFALSE) dlta_flag = ACT_DLTA_NOP;
+      else dlta_flag = dlta_hdr->delta(the_pic,xa_vidcodec_buf,
+					dlta_hdr->fsize,dec2_info);
+    }
+    else
+    { dlta_flag = dlta_hdr->delta(the_pic,dlta_hdr->data,
+					dlta_hdr->fsize,dec2_info);
+    }
+    if ( (dlta_flag == ACT_DLTA_DROP) || (dec2_info->skip_flag > 0) )
+	{ xa_skip_cnt++; xa_frames_skipd++; return; }
   } /* End of XAPI_REV 0x0001 */
   else /* Start of XAPI_REV 0x0000 */
   {
@@ -674,6 +1008,10 @@ fprintf(stderr,"WHO USES THIS???\n");
   else if (dlta_hdr->xapi_rev == 0x0001)
   { xsrc = dec_info->xs;	ysrc = dec_info->ys; 
     xsize = dec_info->xe;	ysize = dec_info->ye;
+  }
+  else if (dlta_hdr->xapi_rev == 0x0002)
+  { xsrc = dec2_info->xs;	ysrc = dec2_info->ys; 
+    xsize = dec2_info->xe;	ysize = dec2_info->ye;
   }
 
   if (dlta_flag & ACT_DLTA_BODY)
@@ -690,12 +1028,13 @@ fprintf(stderr,"WHO USES THIS???\n");
   {
     IFF_Update_DLTA_HDR(&xsrc,&ysrc,&xsize,&ysize);
     xa_pic = (xa_pic==im_buff0)?im_buff1:im_buff0;
+    /* With Double Buffering we don't want any NOP's generated */
+    if (xsize == xsrc) { xsrc = ysrc = 0; xsize = 8; ysize = 1; }
   } 
 
   /* convert min/max to pos/size */
   xsize -= xsrc;	ysize -= ysrc;
   xdst = xsrc; ydst = ysrc;
-  if (xsize == 0) {act->type = ACT_NOP; fprintf(stderr,"QQ\n"); return;}
 
   if (xa_anim_flags & ANIM_HAM)
   {
@@ -861,7 +1200,7 @@ XA_ACTION *act;
   if (act->type == ACT_NOP) return(0);
   if (act->type != ACT_IMAGE) 
   { 
-    fprintf(stderr,"XA_Image_To_Pixmap: not Image err %lx\n",act->type);
+    fprintf(stderr,"XA_Image_To_Pixmap: not Image err %x\n",act->type);
     TheEnd();
   }
   act_im_hdr = (ACT_IMAGE_HDR *)(act->data);
@@ -895,7 +1234,7 @@ XA_ACTION *act;
                 line_size, act_pm_hdr->ysize, x11_depth);
   XSync(theDisp,False);
   DEBUG_LEVEL2 fprintf(stderr,
-	"XA_Image_To_Pixmap: pixmap = %lx\n", act_pm_hdr->pixmap);
+	"XA_Image_To_Pixmap: pixmap = %x\n", (xaULONG)act_pm_hdr->pixmap);
   XSetClipMask(theDisp,theGC,None);
   XPutImage(theDisp, act_pm_hdr->pixmap, theGC, act_im_hdr->image,
       0,0,0,0,act_pm_hdr->xsize,act_pm_hdr->ysize);
@@ -920,6 +1259,9 @@ xaULONG fpos;	/* pos within file */
 xaULONG fsize;	/* size of delta */
 {
   xaLONG ret;
+
+  if (fsize == 0) return(xaTRUE); /* nothing to read - NOP frame */
+
   ret = lseek(fd,fpos,SEEK_SET);
   if (ret != fpos) 
   { fprintf(stderr,"XA_Read_Delta: Can't seek vid fpos");
@@ -927,10 +1269,11 @@ xaULONG fsize;	/* size of delta */
   }
   ret = read(fd,dptr,fsize);
   if (ret != fsize) 
-  { fprintf(stderr,"XA_Read_Delta: Can't read vid data ret %08lx fsz %08lx\n",
+  { fprintf(stderr,"XA_Read_Delta: Can't read vid data ret %08x fsz %08x\n",
 								ret,fsize);
     return(xaFALSE);
   }
   return(xaTRUE);
 }
+
 

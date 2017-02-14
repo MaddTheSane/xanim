@@ -1,0 +1,86 @@
+
+This file contains instructions on how to setup your WWW browser
+so that it calls up XAnim for the various animation/audio/video
+files that you download.
+
+NOTE: You can use the +q option to suppress the startup message
+from XAnim. This is useful if your browser pops up a separate
+window for such output. The +q option would be added to the
+options in the .mailcap. See section 2 below.
+
+ 
+*-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-*
+
+There's three things you need to do in order to get your WWW browser
+to properly call up XAnim for the files that XAnim can support.
+
+1) Setup your ".mime.types" file.  This maps file extensions into
+   MIME types and subtypes. It's not real important what you
+   call these types, although there are a few that have already
+   been defined.
+
+   Here's mine  ".mime.types" file as an example:
+
+video/mpeg      mpg mpeg
+video/quicktime mov qt moov MooV hqx qtvr
+video/fli       fli flc
+video/avi       avi
+video/dl        dl
+video/sgi       mv movi
+video/anim      anim iff anim5 anim3 anim7
+audio/x-mpeg    mp mp2
+audio/wav       wav
+audio/au        au
+image/jpg       jpg jpeg
+
+
+
+2) Setup your ".mailcap" file.  This file indicates what applications,
+   like xanim, xv, etc, to call up when presented with a certain
+   Mime type/subtype(same ones defined in the .mime.types above.
+
+   Here's mine:
+
+image/jpg;      xv -owncmap %s ;
+video/*;        /usr/podlipec/bin/xanim +v -Cn %s ;
+audio/x-mpeg;   /usr/podlipec/bin/maplay_sunos4_1_3 %s ;
+audio/*;        /usr/podlipec/bin/xanim +v %s ;
+
+
+3) Tell your brower(s) to use the .mime.types and .mailcap files you
+   just created/modified. This is dependent upon whatever browser 
+   you have.
+
+   a) Mosaic:  Mosaic looks in your home directory(as defined
+      by your HOME env variable for the .mailcap and .mime.types
+      files.  You might need to restart Mosaic after changing
+      these files in order to have them take affect.
+
+   b) Netscape 1.1:
+
+	Go into the Options:Preferences:Helper Applications Menu.
+
+        You'll see a form to indicate the locations of the Mailcap
+        and Types files. Enter in the full path to the .mailcap
+        and the .mime.types file here.  Then go back and use
+        the  Options:Save_Options  menu.
+
+   c) Netscape 2.0:
+
+	Go into the Options:General Preferences:Helpers Menu.
+      
+        You'll see a form to indicate the locations of the Mailcap
+        and Types files. Enter in the full path to the .mailcap
+        and the .mime.types file here.  Then go back and use
+        the  Options:Save_Options  menu.
+       
+
+For more info on these or other WWW browers, read the  documentation 
+that came with them.
+
+You can also visit:
+
+       http://sunsite.unc.edu/louvre/about/tech.html
+                WebMuseum: Technical: Setting Properly your Web reader
+
+*-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-*

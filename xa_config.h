@@ -2,15 +2,15 @@
 /*
  * xa_config.h
  *
- * Copyright (C) 1990,1991,1992,1993,1994,1995 by Mark Podlipec.
+ * Copyright (C) 1990-1998,1999 by Mark Podlipec.
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  *
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
@@ -36,7 +36,7 @@
 /* If xaTRUE then animations will be read from disk. This and BUFF_FLAG are
  * mutually exclusive with BUFF_FLAG having priority.
  */
-#define DEFAULT_FILE_FLAG	xaFALSE
+#define DEFAULT_FILE_FLAG	xaTRUE
 
 /* If xaTRUE then iff animations will always loop back to 1st frame instead
  * of to the 2nd delta. There is no easy way of knowing this ahead of time
@@ -251,7 +251,7 @@
 
 /* 
  * At the end of displaying the command line, xanim will either loop
- * through again(xaFALSE), exit(xaTRUE), or pause and wait user input(PAUSE).
+ * through again(xaFALSE), exit(xaTRUE), or pause and wait user input(xaPAUSE).
  */
 #define DEFAULT_XA_EXIT_FLAG  xaFALSE
 
@@ -270,10 +270,18 @@
 
 /* This is the default Audio Port that is enabled.
  * This value may be overridden by the env SPEAKER variable if defined. 
- * XA_AUDIO_PORT_INT      Internal speaker
- * XA_AUDIO_PORT_HEAD     Headphones
- * XA_AUDIO_PORT_EXT      Line Out
- * XA_AUDIO_PORT_NONE	  None - no sound OR no change from before(SPARC)
+ * NOTE: on some machines EXTERNAL and HEADPHONES are the same.
+ *
+ * DEFAULT_XA_AUDIO_PORT settings:
+ *   XA_AUDIO_PORT_INT      Internal speaker
+ *   XA_AUDIO_PORT_HEAD     Headphones
+ *   XA_AUDIO_PORT_EXT      Line Out
+ *   XA_AUDIO_PORT_NONE	  None - no sound OR no change from before(SPARC)
+ *
+ * SPEAKER environment variable settings:
+ *   INTERNAL		Internal speaker(also speaker box on Sparcs)
+ *   HEADPHONES		Headphones
+ *   EXTERNAL		LineOut/External speakers
  */
 
 #define DEFAULT_XA_AUDIO_PORT   XA_AUDIO_PORT_INT

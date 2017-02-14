@@ -2,22 +2,22 @@
 /*
  * xa_fli.c
  *
- * Copyright (C) 1990,1991,1992,1993,1994,1995 by Mark Podlipec. 
+ * Copyright (C) 1990-1998,1999 by Mark Podlipec. 
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  * 
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
  */
 #include "xa_fli.h" 
 
-extern xaULONG fli_pad_kludge;
+extern xaULONG xa_kludge1_fli;
 
 xaLONG Is_FLI_File();
 xaULONG Fli_Read_File();
@@ -35,15 +35,12 @@ static void FLI_Read_COLOR();
 extern XA_ACTION *ACT_Get_Action();
 extern XA_CHDR *ACT_Get_CMAP();
 extern void ACT_Add_CHDR_To_Action();
-extern void ACT_Setup_Mapped();
 extern void ACT_Get_CCMAP();
 extern XA_ANIM_SETUP *XA_Get_Anim_Setup();
 extern void XA_Free_Anim_Setup();
 extern void ACT_Setup_Delta();
 
 extern void UTIL_Sub_Image();
-extern xaULONG UTIL_Get_LSB_Long();
-extern xaULONG UTIL_Get_LSB_Short();
 
 static Fli_Header fli_hdr;
 static Fli_Frame_Header frame_hdr;
@@ -85,79 +82,63 @@ FLI_FRAME *fframes;
   }
 }
 
-/*
- *
- */
-xaLONG Is_FLI_File(filename)
-char *filename;
-{
-  FILE *fin;
-  xaULONG data;
 
-  if ( (fin=fopen(filename,XA_OPEN_MODE)) == 0) return(xaNOFILE);
-
-  data = UTIL_Get_LSB_Long(fin);  /* read past size */
-  data = UTIL_Get_LSB_Short(fin); /* read magic */
-  fclose(fin);
-  if ( (data == 0xaf11) || (data == 0xaf12) ) return(xaTRUE);
-  return(xaFALSE);
-}
-
-
-static void FLI_Read_Header(fli,fin,fli_hdr)
+static void FLI_Read_Header(fli,xin,fli_hdr)
 XA_ANIM_SETUP *fli;
-FILE *fin;
+XA_INPUT *xin;
 Fli_Header *fli_hdr;
 {
   xaLONG i;
 
-  fli_hdr->size   = UTIL_Get_LSB_Long(fin);
-  fli_hdr->magic  = UTIL_Get_LSB_Short(fin);
-  fli_hdr->frames = UTIL_Get_LSB_Short(fin);
-  fli_hdr->width  = UTIL_Get_LSB_Short(fin);
-  fli_hdr->height = UTIL_Get_LSB_Short(fin);
-  fli_hdr->res1   = UTIL_Get_LSB_Short(fin);
-  fli_hdr->flags  = UTIL_Get_LSB_Short(fin);
-  fli_hdr->speed  = UTIL_Get_LSB_Short(fin);
+  fli_hdr->size   = xin->Read_LSB_U32(xin);
+  fli_hdr->magic  = xin->Read_LSB_U16(xin);
+  fli_hdr->frames = xin->Read_LSB_U16(xin);
+  fli_hdr->width  = xin->Read_LSB_U16(xin);
+  fli_hdr->height = xin->Read_LSB_U16(xin);
+  fli_hdr->res1   = xin->Read_LSB_U16(xin);
+  fli_hdr->flags  = xin->Read_LSB_U16(xin);
+  fli_hdr->speed  = xin->Read_LSB_U16(xin);
   if (fli_hdr->speed <= 0) fli_hdr->speed = 1;
-  fli_hdr->next   = UTIL_Get_LSB_Long(fin);
-  fli_hdr->frit   = UTIL_Get_LSB_Long(fin);
-  for(i=0;i<102;i++) fgetc(fin);   /* ignore unused part of Fli_Header */
+  fli_hdr->next   = xin->Read_LSB_U32(xin);
+  fli_hdr->frit   = xin->Read_LSB_U32(xin);
+  for(i=0;i<102;i++) xin->Read_U8(xin);   /* ignore unused part of Fli_Header */
 
+  xin->Set_EOF(xin,fli_hdr->size);
   fli->imagex=fli_hdr->width;
   fli->imagey=fli_hdr->height;
-  if ( (fli_hdr->magic != 0xaf11) && (fli_hdr->magic != 0xaf12) )
+  if ((fli_hdr->magic != 0xaf11) && (fli_hdr->magic != 0xaf12))
   {
-   fprintf(stderr,"imagex=%lx imagey=%lx\n",fli->imagex,fli->imagey);
-   fprintf(stderr,"Fli Header Error magic %lx not = 0xaf11\n",fli_hdr->magic);
+   fprintf(stderr,"imagex=%x imagey=%x\n",fli->imagex,fli->imagey);
+   fprintf(stderr,"Fli Header Error magic %x not = 0xaf11\n",fli_hdr->magic);
    TheEnd();
   }
 }
 
-xaULONG FLI_Read_Frame_Header(fp,frame_hdr)
-FILE *fp;
+xaULONG FLI_Read_Frame_Header(xin,frame_hdr)
+XA_INPUT *xin;
 Fli_Frame_Header *frame_hdr;
-{
-  xaULONG i;
+{ xaULONG i;
   xaUBYTE tmp[6];
 
-  for(i=0;i<6;i++) tmp[i] = (xaUBYTE)fgetc(fp);
+  if (xin->At_EOF(xin,16))	return(0);
+  for(i=0;i<6;i++) tmp[i] = (xaUBYTE)xin->Read_U8(xin);
 
-  DEBUG_LEVEL1 fprintf(stderr,"  magic = %02lx%02lx\n",tmp[5],tmp[4]);
+  DEBUG_LEVEL1 fprintf(stderr,"  magic = %02x%02x\n",(int)tmp[5],(int)tmp[4]);
   while( !( (tmp[5]==0xf1) && ((tmp[4]==0xfa) || (tmp[4] == 0x00)) ) )
   {
     for(i=0;i<6;i++) tmp[i] = tmp[i+1];
-    tmp[5] = (xaUBYTE)fgetc(fp);
-    if (feof(fp)) return(0);
+    tmp[5] = (xaUBYTE)xin->Read_U8(xin);
+    if (xin->At_EOF(xin,10)) return(0);
   }
 
   frame_hdr->size = (tmp[0])|(tmp[1] << 8)|(tmp[2] << 16)|(tmp[3] << 24);
   frame_hdr->magic = (tmp[4])|(tmp[5] << 8);
-  frame_hdr->chunks = UTIL_Get_LSB_Short(fp);
-  for(i=0;i<8;i++) fgetc(fp);	/* ignore unused part of Fli_Frame_Header */
+  frame_hdr->chunks = xin->Read_LSB_U16(xin);
+	/* ignore unused part of Fli_Frame_Header */
+  for(i=0;i<8;i++) xin->Read_U8(xin); 
 
   DEBUG_LEVEL1 
-	fprintf(stderr,"Frame Header size %lx  magic %lx  chunks %ld\n",
+	fprintf(stderr,"Frame Header size %x  magic %x  chunks %d\n",
 		frame_hdr->size,frame_hdr->magic,frame_hdr->chunks);
 
   return(1);
@@ -167,19 +148,13 @@ xaULONG Fli_Read_File(fname,anim_hdr)
 char *fname;
 XA_ANIM_HDR *anim_hdr;
 {
-  FILE *fin;
+  XA_INPUT *xin = anim_hdr->xin;
   xaLONG j,ret;
   XA_ACTION *act;
   xaULONG tmp_frame_cnt,file_pos,frame_i;
   xaULONG t_time,t_timelo;
- XA_ANIM_SETUP *fli;
+  XA_ANIM_SETUP *fli;
 
-  if ( (fin=fopen(fname,XA_OPEN_MODE)) == 0)
-  { 
-    fprintf(stderr,"can't open Fli File %s for reading\n",fname); 
-    return(xaFALSE);
-  }
- 
   fli = XA_Get_Anim_Setup();
   fli->depth = 8;
 
@@ -187,9 +162,9 @@ XA_ANIM_HDR *anim_hdr;
   fli_frame_cur = 0;
   fli_frame_cnt = 0;
 
-  FLI_Read_Header(fli,fin,&fli_hdr);
+  FLI_Read_Header(fli,xin,&fli_hdr);
 
-  if (xa_verbose) fprintf(stderr,"   Size %ldx%ld Frames= %ld Magic= %lx\n",
+  if (xa_verbose) fprintf(stdout,"  Size %dx%d Frames=%d Magic=%x\n",
 	fli_hdr.width, fli_hdr.height,fli_hdr.frames,fli_hdr.magic);
 
     /* Allocate image buffer so deltas may be applied if buffering */
@@ -204,11 +179,17 @@ XA_ANIM_HDR *anim_hdr;
   tmp_frame_cnt = 0;
   file_pos= 0x80;  /* need to do this because chunk sizes don't always
 		    * add up to the frame size. */
-  while( FLI_Read_Frame_Header(fin, &frame_hdr) != 0)
+  while( FLI_Read_Frame_Header(xin, &frame_hdr) != 0)
   {
     xaULONG frame_read_size;
 
+    if (frame_hdr.size == 0) break;
+
     file_pos += frame_hdr.size;
+
+DEBUG_LEVEL1 fprintf(stderr,"FLI %d) size %x fpos %x xinpos %x\n",
+		 tmp_frame_cnt,file_pos, frame_hdr.size, xin->fpos);
+
     tmp_frame_cnt++;
     FLI_Set_Time(fli,fli_hdr.speed);
     
@@ -216,13 +197,13 @@ XA_ANIM_HDR *anim_hdr;
     {
       xaLONG i;
       DEBUG_LEVEL1 
-	 fprintf(stderr,"FLI 0xf100 Frame: size = %lx\n",frame_hdr.size);
-      for(i=0;i<(frame_hdr.size - 16);i++) fgetc(fin);
-      if (frame_hdr.size & 0x01) fgetc(fin);
+	 fprintf(stderr,"FLI 0xf100 Frame: size = %x\n",frame_hdr.size);
+      for(i=0;i<(frame_hdr.size - 16);i++) xin->Read_U8(xin);
+      if (frame_hdr.size & 0x01) xin->Read_U8(xin);
     }
     else if (frame_hdr.chunks==0)  /* this frame is for timing purposes */
     {
-      DEBUG_LEVEL1 fprintf(stderr," FLI DELAY %ld\n",fli_hdr.speed);
+      DEBUG_LEVEL1 fprintf(stderr," FLI DELAY %d\n",fli_hdr.speed);
       act = ACT_Get_Action(anim_hdr,ACT_DELAY);
       act->data = 0;
       FLI_Add_Frame(fli->vid_time,fli->vid_timelo,act);
@@ -240,21 +221,21 @@ XA_ANIM_HDR *anim_hdr;
 	/* only last chunk in frame should have full time(j must stay signed)*/
         if (j < (frame_hdr.chunks - 1) ) { fli->vid_time = fli->vid_timelo = 0; }
 	else FLI_Set_Time(fli,fli_hdr.speed);
-        chunk_size = UTIL_Get_LSB_Long(fin) & 0xffffff;
-        chunk_type = UTIL_Get_LSB_Short(fin);
+        chunk_size = xin->Read_LSB_U32(xin) & 0xffffff;
+        chunk_type = xin->Read_LSB_U16(xin);
 	frame_read_size += 6 + chunk_size;
-	if ( (chunk_size & 0x01)&&(fli_pad_kludge==xaFALSE)) frame_read_size++;
-        DEBUG_LEVEL1 fprintf(stderr,"  chunk %ld) size %lx  type %lx tot %lx\n",
+	if ( (chunk_size & 0x01)&&(xa_kludge1_fli==xaFALSE)) frame_read_size++;
+        DEBUG_LEVEL1 fprintf(stderr,"  chunk %d) size %x  type %x tot %x\n",
 		j,chunk_size,chunk_type,frame_read_size);
         switch(chunk_type)
         {
           case CHUNK_4:     /* FLI Color with 8 bits RGB */
 		DEBUG_LEVEL1 fprintf(stderr," FLI COLOR(4)\n");
-		FLI_Read_COLOR(fli,anim_hdr,fin,8,frame_hdr.chunks);
+		FLI_Read_COLOR(fli,anim_hdr,xin,8,frame_hdr.chunks);
 		break;
           case FLI_COLOR:     /* FLI Color with 6 bits RGB */
 		DEBUG_LEVEL1 fprintf(stderr," FLI COLOR(11)\n");
-		FLI_Read_COLOR(fli,anim_hdr,fin,6,frame_hdr.chunks);
+		FLI_Read_COLOR(fli,anim_hdr,xin,6,frame_hdr.chunks);
 		break;
           case FLI_LC:
           case FLI_LC7:
@@ -290,9 +271,9 @@ XA_ANIM_HDR *anim_hdr;
  		      if (dlta_hdr == 0) TheEnd1("FLI CHUNK: malloc failed");
 		      act->data = (xaUBYTE *)dlta_hdr;
 		      dlta_hdr->flags = ACT_SNGL_BUF;
-		      dlta_hdr->fpos  = ftell(fin);
+		      dlta_hdr->fpos  = xin->Get_FPos(xin);
 		      dlta_hdr->fsize = chunk_size;
- 		      fseek(fin,chunk_size,1); /* move past this chunk */
+ 		      xin->Seek_FPos(xin,chunk_size,1); /* move past chunk */
 		      if (chunk_size > fli->max_fvid_size) 
 					fli->max_fvid_size = chunk_size;
 		    }
@@ -305,8 +286,8 @@ XA_ANIM_HDR *anim_hdr;
 		      dlta_hdr->flags = 
 				ACT_SNGL_BUF | DLTA_DATA;
 		      dlta_hdr->fpos = 0; dlta_hdr->fsize = chunk_size;
- 		      ret = fread( dlta_hdr->data, chunk_size, 1, fin);
- 		      if (ret != 1) TheEnd1("FLI DLTA: read failed");
+		      ret = xin->Read_Block(xin,dlta_hdr->data, chunk_size);
+ 		      if (ret < chunk_size) TheEnd1("FLI: read dlta err");
 		    }
 		  }
 		  else TheEnd1("FLI DLTA: invalid size");
@@ -340,7 +321,7 @@ XA_ANIM_HDR *anim_hdr;
 			dlta_hdr->delta = FLI_Decode_COPY;
 			break;
 		 }
-		 ACT_Setup_Delta(fli,act,dlta_hdr,fin);
+		 ACT_Setup_Delta(fli,act,dlta_hdr,xin);
 		}
 		break;
  
@@ -348,18 +329,18 @@ XA_ANIM_HDR *anim_hdr;
 		{
 		  xaLONG i;
 		  DEBUG_LEVEL1 fprintf(stderr," FLI MINI(18) ignored.\n");
-		  for(i=0;i<(chunk_size-6);i++) fgetc(fin);
-		  if ((fli_pad_kludge==xaFALSE)&&(chunk_size & 0x01)) fgetc(fin);
+		  for(i=0;i<(chunk_size-6);i++) xin->Read_U8(xin);
+		  if ((xa_kludge1_fli==xaFALSE)&&(chunk_size & 0x01)) xin->Read_U8(xin);
 		}
 		break;
 
            default: 
              {
                xaLONG i;
-	       fprintf(stderr,"FLI Unsupported Chunk: type = %lx size=%lx\n",
+	       fprintf(stderr,"FLI Unsupported Chunk: type = %x size=%x\n",
 					chunk_type,chunk_size);
-               for(i=0;i<(chunk_size-6);i++) fgetc(fin);
-	       if ((fli_pad_kludge==xaFALSE)&&(chunk_size & 0x01)) fgetc(fin);
+               for(i=0;i<(chunk_size-6);i++) xin->Read_U8(xin);
+	       if ((xa_kludge1_fli==xaFALSE)&&(chunk_size & 0x01)) xin->Read_U8(xin);
              }
 	         
 		 break;
@@ -367,10 +348,10 @@ XA_ANIM_HDR *anim_hdr;
       } /* end of chunks is frame */
     } /* end of not Timing Frame */
     /* More robust way of reading FLI's. */
-    fseek(fin,file_pos,0);
+    xin->Seek_FPos(xin,file_pos,0);
   } /* end of frames in file */
   if (fli->pic != 0) { FREE(fli->pic,0x2000); fli->pic=0;}
-  fclose(fin);
+  xin->Close_File(xin);
 
   /* extra for end and JMP2END */
   anim_hdr->frame_lst = (XA_FRAME *)
@@ -384,7 +365,7 @@ XA_ANIM_HDR *anim_hdr;
   {
     if (frame_i > fli_frame_cnt)
     {
-      fprintf(stderr,"FLI_Read_Anim: frame inconsistency %ld %ld\n",
+      fprintf(stderr,"FLI_Read_Anim: frame inconsistency %d %d\n",
                 frame_i,fli_frame_cnt);
       break;
     }
@@ -434,8 +415,8 @@ XA_ANIM_HDR *anim_hdr;
   anim_hdr->imaged = fli->depth;
   anim_hdr->max_fvid_size = fli->max_fvid_size;
   FLI_Free_Frame_List(fli_frame_start);
-  if (xa_buffer_flag == xaFALSE) anim_hdr->anim_flags |= ANIM_SNG_BUF;
-  if (xa_file_flag == xaTRUE) anim_hdr->anim_flags |= ANIM_USE_FILE;
+  if (!(xin->load_flag & XA_IN_LOAD_BUF)) anim_hdr->anim_flags |= ANIM_SNG_BUF;
+  if (xin->load_flag & XA_IN_LOAD_FILE) anim_hdr->anim_flags |= ANIM_USE_FILE;
   anim_hdr->fname = anim_hdr->name; /* data file is same as name */
   XA_Free_Anim_Setup(fli);
   return(xaTRUE);
@@ -453,15 +434,12 @@ xaULONG dsize;          /* delta size */
 XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 { xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
   xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
   xaULONG i,k,packets,size,x,offset,pix_size;
 
   dec_info->xs = dec_info->ys = 0; dec_info->xe = imagex; dec_info->ye = imagey;
   pix_size = (map_flag==xaTRUE)?x11_bytes_pixel:1;
   for(i=0; i < imagey; i++)
-  {
-    offset = i * imagex;
+  { offset = i * imagex;
     packets = *delta++;
 
     x=0;
@@ -535,8 +513,6 @@ xaULONG dsize;          /* delta size */
 XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 { xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
   xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
   xaULONG i,j,k,packets,size,x,offset;
   xaULONG start,lines,skip,minx,maxx,pix_size;
 
@@ -637,8 +613,6 @@ xaULONG dsize;          /* delta size */
 XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 { xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
   xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
   xaULONG image_size = imagex * imagey;
   dec_info->xs = dec_info->ys = 0;
   dec_info->xe = imagex; dec_info->ye = imagey;
@@ -670,8 +644,6 @@ xaULONG dsize;          /* delta size */
 XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 { xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
   xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
   xaULONG image_size = imagex * imagey;
   dec_info->xs = dec_info->ys = 0;
   dec_info->xe = imagex; dec_info->ye = imagey;
@@ -700,10 +672,10 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 /*
  * Routine to read an Fli COLOR chunk
  */
-static void FLI_Read_COLOR(fli,anim_hdr,fin,cbits,num_of_chunks)
+static void FLI_Read_COLOR(fli,anim_hdr,xin,cbits,num_of_chunks)
 XA_ANIM_SETUP *fli;
 XA_ANIM_HDR *anim_hdr;
-FILE *fin;
+XA_INPUT *xin;
 xaULONG cbits;
 xaULONG num_of_chunks;
 {
@@ -712,32 +684,32 @@ xaULONG num_of_chunks;
  xaULONG mask;
 
  mask = (0x01 << cbits) - 1;
- packets = UTIL_Get_LSB_Short(fin);
+ packets = xin->Read_LSB_U16(xin);
  c_index = 0;
 
- DEBUG_LEVEL1 fprintf(stderr,"   packets = %ld\n",packets);
+ DEBUG_LEVEL1 fprintf(stderr,"   packets = %d\n",packets);
  cnt=2;
  for(k=0;k<packets;k++)
  {
-  skip = fgetc(fin);
-  colors=fgetc(fin);
-  DEBUG_LEVEL1 fprintf(stderr,"      skip %ld colors %ld\n",skip,colors);
+  skip = xin->Read_U8(xin);
+  colors=xin->Read_U8(xin);
+  DEBUG_LEVEL1 fprintf(stderr,"      skip %d colors %d\n",skip,colors);
   cnt+=2;
   if (colors==0) colors=FLI_MAX_COLORS;
   c_index += skip;
   for(l = 0; l < colors; l++)
   {
-   fli->cmap[c_index].red   = fgetc(fin) & mask;
-   fli->cmap[c_index].green = fgetc(fin) & mask;
-   fli->cmap[c_index].blue  = fgetc(fin) & mask;
-   DEBUG_LEVEL5 fprintf(stderr,"         %ld)  <%lx %lx %lx>\n", 
+   fli->cmap[c_index].red   = xin->Read_U8(xin) & mask;
+   fli->cmap[c_index].green = xin->Read_U8(xin) & mask;
+   fli->cmap[c_index].blue  = xin->Read_U8(xin) & mask;
+   DEBUG_LEVEL5 fprintf(stderr,"         %d)  <%x %x %x>\n", 
 		  l,fli->cmap[l].red, fli->cmap[l].green,fli->cmap[l].blue);
    c_index++;
   } /* end of colors */
   cnt+= 3 * colors;
  } /* end of packets */
 			/* read pad byte if needed */
- if ((fli_pad_kludge==xaFALSE)&&(cnt&0x01)) fgetc(fin);
+ if ((xa_kludge1_fli==xaFALSE)&&(cnt&0x01)) xin->Read_U8(xin);
 
  /* if only one chunk in frame this is a cmap change only */
  if ( (num_of_chunks==1) && (fli->chdr != 0) )
@@ -763,8 +735,6 @@ xaULONG dsize;          /* delta size */
 XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 { xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
   xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
   xaULONG i,j,x,y;
   xaULONG lines,blocks,xoff,cnt,tmp_data0,tmp_data1;
   xaULONG minx,maxx,miny,pix_size,last_pixel,last_pix_flag;
@@ -779,7 +749,7 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
   y = 0;
   lines = *delta++; lines |= *delta++ << 8;  /* # of lines encoded */
 
-  DEBUG_LEVEL5 fprintf(stderr,"lines=%ld\n",lines);
+  DEBUG_LEVEL5 fprintf(stderr,"lines=%d\n",lines);
 
   last_pix_flag = last_pixel = 0;
   for(i=0; i < lines; i++)
@@ -787,7 +757,7 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
    
     blocks = *delta++; blocks |= *delta++ << 8; 
 
-    DEBUG_LEVEL5 fprintf(stderr,"     %ld) ",i);
+    DEBUG_LEVEL5 fprintf(stderr,"     %d) ",i);
 
     while(blocks & 0x8000)
     {
@@ -796,18 +766,18 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
       {
         blocks = 0x10000 - blocks;
         y += blocks;
-        DEBUG_LEVEL5 fprintf(stderr,"     yskip %ld",blocks);
+        DEBUG_LEVEL5 fprintf(stderr,"     yskip %d",blocks);
       }
       else /* Upper bits 10 - Last Pixel Encoding */
       {
-        DEBUG_LEVEL5 fprintf(stderr,"     lastpixel %ld",blocks);
+        DEBUG_LEVEL5 fprintf(stderr,"     lastpixel %d",blocks);
         last_pix_flag = 1;
         last_pixel = blocks & 0xff;
       }
       blocks = *delta++; blocks |= *delta++ << 8;
     }
 
-    DEBUG_LEVEL5 fprintf(stderr,"     blocks = %ld\n",blocks);
+    DEBUG_LEVEL5 fprintf(stderr,"     blocks = %d\n",blocks);
 
     if (xa_optimize_flag == xaTRUE) if (y < miny) miny = y;
 
@@ -822,12 +792,12 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
       x += xoff;
 
       DEBUG_LEVEL5 
-        fprintf(stderr,"          %ld) xoff %lx  cnt = %lx",j,xoff,cnt);
+        fprintf(stderr,"          %d) xoff %x  cnt = %x",j,xoff,cnt);
 
       if (cnt & 0x80)
       {
         cnt = 256 - cnt;
-        DEBUG_LEVEL5 fprintf(stderr,"               NEG %ld\n",cnt);
+        DEBUG_LEVEL5 fprintf(stderr,"               NEG %d\n",cnt);
         if (xa_optimize_flag == xaTRUE)
         {  
           if (x < minx) minx = x;
@@ -868,7 +838,7 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
       }
       else
       {   /* cnt is number of unique pairs of bytes */
-        DEBUG_LEVEL5 fprintf(stderr,"               POS %ld\n",cnt);
+        DEBUG_LEVEL5 fprintf(stderr,"               POS %d\n",cnt);
         if (xa_optimize_flag == xaTRUE)
         {
           if (cnt == 1)  /* potential NOPs just to move x */
@@ -944,7 +914,7 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
   }
   else { dec_info->xs = 0; dec_info->ys = 0;
 	 dec_info->xe = imagex; dec_info->ye = imagey; }
-  DEBUG_LEVEL1 fprintf(stderr,"      LC7: xypos=<%ld %ld> xysize=<%ld %ld>\n",
+  DEBUG_LEVEL1 fprintf(stderr,"      LC7: xypos=<%d %d> xysize=<%d %d>\n",
 		 dec_info->xs,dec_info->ys,dec_info->xe,dec_info->ye);
   if (map_flag) return(ACT_DLTA_MAPD);
   else return(ACT_DLTA_NORM);

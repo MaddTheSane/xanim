@@ -1,0 +1,29 @@
+
+Quicktime 3.0 has an new feature that allows the quicktime movie headers
+to be compressed in the file.   
+
+You can compile XAnim 2.80.0 to support this QT3.0 feature provided
+you have the zlib library installed on your system.
+
+Most linux machines already have this library installed in "/usr/lib".
+This may be true for other OS's as well.
+
+In any case, if your machine does not have zlib installed, then you
+may wish to download and install zlib yourself.
+
+The zlib home page is:
+
+	http://www.cdrom.com/pub/infozip/zlib/
+
+The official zlib ftp site is:
+
+	ftp://ftp.cdrom.com/pub/infozip/zlib/
+	
+
+After you have installed zlib, then you'll want to edit the xanim 
+Makefile(or Imakefile) and read/modify  section IIIb.
+
+NOTE: I am not involved with zlib in any mannger. Any problems 
+installing zlib should be directed to the zlib maintainers.
+
+Mark

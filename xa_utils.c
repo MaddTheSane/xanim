@@ -2,15 +2,15 @@
 /*
  * xa_utils.c
  *
- * Copyright (C) 1991,1992,1993,1994,1995 by Mark Podlipec. 
+ * Copyright (C) 1991-1998,1999 by Mark Podlipec. 
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  * 
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
@@ -18,9 +18,13 @@
 /* revhist
  * 12dec94  +bCdm caused core on Alpha OSF/1 v3.0. 
  *           found and fixed by David Mosberger-Tang.
+ * 14Dec97  Adam Moss:  Optimized scaling routines and found bug
+ *          when allocating memory for scaling the clip mask of
+ *	    an image(used in GIF animations).
  *
  */ 
 #include "xanim.h"
+#include <ctype.h>
 
 void UTIL_Sub_Image();
 void UTIL_Create_Clip();
@@ -33,6 +37,7 @@ xaUBYTE *UTIL_Alloc_Scaled();
 xaUBYTE *UTIL_Scale_Mapped();
 xaUBYTE *UTIL_Scale_Bitmap();
 void UTIL_Pack_Image();
+void UTIL_FPS_2_Time();
 
 xaULONG UTIL_Get_LSB_Long();
 xaULONG UTIL_Get_LSB_Short();
@@ -40,7 +45,7 @@ xaULONG UTIL_Get_MSB_Long();
 xaULONG UTIL_Get_MSB_UShort();
 xaLONG UTIL_Get_MSB_Short();
 void UTIL_Mapped_To_Floyd();
-xaLONG CMAP_Find_Closest();
+xaULONG CMAP_Find_Closest();
 void CMAP_Cache_Init();
 void CMAP_Cache_Clear();
 
@@ -138,7 +143,7 @@ xaULONG pix_mask,xsize,ysize,pix_size,xosize,bit_order;
   register xaULONG data_in,bit_mask,x,y,mask_start,mask_end;
   register xaUBYTE data_out;
 
-  if (bit_order == X11_MSB) { mask_start = 0x80; mask_end = 0x01; }
+  if (bit_order == XA_MSBIT_1ST) { mask_start = 0x80; mask_end = 0x01; }
   else { mask_start = 0x01; mask_end = 0x80; }
 
   for(y=0; y<ysize; y++)
@@ -204,7 +209,7 @@ xaULONG line_size;	/* size if bytes of input buffer */
   else invert = ~0x00;
   threshold = 128;
 
-  if (x11_bit_order == X11_MSB) { mask_start = 0x80; mask_end = 0x01; }
+  if (x11_bit_order == XA_MSBIT_1ST) { mask_start = 0x80; mask_end = 0x01; }
   else { mask_start = 0x01; mask_end = 0x80; }
 
   for(y = 0; y < ysize; y++)
@@ -348,7 +353,7 @@ xaULONG xisize, yisize;	/* input buffer size */
     if (cmap_cache == 0) CMAP_Cache_Init(0);
     if (chdr_out != cmap_cache_chdr)
     {
-      DEBUG_LEVEL2 fprintf(stderr,"CACHE: clear new_chdr %lx\n",(xaULONG)chdr_out);
+      DEBUG_LEVEL2 fprintf(stderr,"CACHE: clear new_chdr %x\n",(xaULONG)chdr_out);
       CMAP_Cache_Clear();
       cmap_cache_chdr = chdr_out;
     }
@@ -423,6 +428,7 @@ xaULONG xisize, yisize;	/* input buffer size */
       {
 	xaULONG tr,tg,tb;
 	pix_out = X11_Get_True_Color(r,g,b,8);
+/* TODO: mismatched byte order may break this if on non depth 8 machines */
 	tr = ((pix_out & x11_red_mask)   >> x11_red_shift);
 	tg = ((pix_out & x11_green_mask) >> x11_green_shift);
 	tb = ((pix_out & x11_blue_mask)  >> x11_blue_shift);
@@ -613,11 +619,11 @@ xaULONG bitmap_flag;	 /* if true, then alloc for a bitmap */
 
   if ( (xsize==0) || (ysize==0) )
   {
-    DEBUG_LEVEL1 fprintf(stderr,"SCALE: zero size %ld %ld\n",xsize,ysize);
+    DEBUG_LEVEL1 fprintf(stderr,"SCALE: zero size %d %d\n",xsize,ysize);
     return(0);
   }
 
-DEBUG_LEVEL1 fprintf(stderr,"AllocScaled: xy %ld %ld  t %ld\n",
+DEBUG_LEVEL1 fprintf(stderr,"AllocScaled: xy %d %d  t %d\n",
   xsize,ysize,(xsize * ysize * pix_size));
 
   if (bitmap_flag==xaTRUE)
@@ -668,7 +674,7 @@ XA_CHDR *chdr;
   xoff = xvp - xi_pos;
   if ( (xsize==0) || (ysize==0) ) 
   {
-    DEBUG_LEVEL1 fprintf(stderr,"SCALE: zero size %ld %ld\n",xsize,ysize);
+    DEBUG_LEVEL1 fprintf(stderr,"SCALE: zero size %d %d\n",xsize,ysize);
     *xo_pos = *yo_pos = *xo_size = *yo_size = 0;
     return(0);
   }
@@ -806,14 +812,14 @@ xaULONG obit_order;	 /* output bit_order */
   ysize = (((yvp + yi_size) * yo_scale) / yi_scale) + 1 - sy;
   if ( (((sy+ysize-1) * yi_scale) / yo_scale) >= (yvp+yi_size) ) ysize--;
 
-DEBUG_LEVEL1 fprintf(stderr,"SCALE BITMAP: siz %ldx%ld -> %ldx%ld\n",
+DEBUG_LEVEL1 fprintf(stderr,"SCALE BITMAP: siz %dx%d -> %dx%d\n",
 	xi_size,yi_size,xsize,ysize);
-DEBUG_LEVEL1 fprintf(stderr,"SCALE BITMAP: pos %ldx%ld -> %ldx%ld\n",
+DEBUG_LEVEL1 fprintf(stderr,"SCALE BITMAP: pos %dx%d -> %dx%d\n",
 	xvp,yvp,sx,sy);
 
   if ( (xsize==0) || (ysize==0) ) 
   {
-    DEBUG_LEVEL1 fprintf(stderr,"SCALE: zero size %ld %ld\n",xsize,ysize);
+    DEBUG_LEVEL1 fprintf(stderr,"SCALE: zero size %d %d\n",xsize,ysize);
     *xo_size = *yo_size = 0;
     return(0);
   }
@@ -830,8 +836,10 @@ DEBUG_LEVEL1 fprintf(stderr,"SCALE BITMAP: pos %ldx%ld -> %ldx%ld\n",
   if ( (xsize<<1) > xa_scale_row_size)
   {
     xaULONG *tmp;
-    if (xa_scale_row_buff == 0) tmp = (xaULONG *) malloc(xsize * sizeof(xaULONG) );
-    else tmp = (xaULONG *) realloc(xa_scale_row_buff,(xsize<<1)*sizeof(xaULONG));
+    if (xa_scale_row_buff == 0)
+	tmp = (xaULONG *) malloc((xsize<<1) * sizeof(xaULONG) );
+    else
+	tmp = (xaULONG *) realloc(xa_scale_row_buff,(xsize<<1)*sizeof(xaULONG));
     if (tmp == 0) TheEnd1("UTIL_Scale_Mapped: row malloc err\n");
     xa_scale_row_buff = tmp;    xa_scale_row_size = (xsize<<1);
   }
@@ -843,10 +851,10 @@ DEBUG_LEVEL1 fprintf(stderr,"SCALE BITMAP: pos %ldx%ld -> %ldx%ld\n",
   {
     register xaULONG x = ((y * xi_scale) / xo_scale) - xvp;
     row_b_ptr[i] = x/8;
-    if (ibit_order == X11_LSB) row_msk_ptr[i] = 0x01 << (x%8);
+    if (ibit_order == XA_LSBIT_1ST) row_msk_ptr[i] = 0x01 << (x%8);
     else row_msk_ptr[i] = 0x01 << (7 - (x%8));
   }
-  if (obit_order == X11_MSB) { mask_start = 0x80; mask_end = 0x01; }
+  if (obit_order == XA_MSBIT_1ST) { mask_start = 0x80; mask_end = 0x01; }
   else { mask_start = 0x01; mask_end = 0x80; }
   for(y=sy; y < (sy+ysize);y++)
   {
@@ -894,7 +902,7 @@ xaULONG free_in_flag;
   if (cmap_cache == 0) CMAP_Cache_Init(0);
   if (chdr != cmap_cache_chdr)
   {
-    DEBUG_LEVEL2 fprintf(stderr,"CACHE: clear new_chdr %lx\n",
+    DEBUG_LEVEL2 fprintf(stderr,"CACHE: clear new_chdr %x\n",
                                                         (xaULONG)chdr);
     CMAP_Cache_Clear();
     cmap_cache_chdr = chdr;
@@ -962,7 +970,7 @@ xaULONG free_in_flag;
 
   if (chdr != cmap_cache_chdr)
   {
-    DEBUG_LEVEL2 fprintf(stderr,"CACHE: clear new_chdr %lx\n",(xaULONG)chdr);
+    DEBUG_LEVEL2 fprintf(stderr,"CACHE: clear new_chdr %x\n",(xaULONG)chdr);
     CMAP_Cache_Clear();
     cmap_cache_chdr = chdr;
   }
@@ -1078,17 +1086,19 @@ xaULONG xsize,ysize;
 
   if (x11_bits_per_pixel == 4)
   { shft_msk = 0x0f;
-    if (x11_byte_order == X11_MSB) {shft_start=4; shft_end=0; shft_inc= -4;}
-    else			   {shft_start=0; shft_end=4; shft_inc=  4;}
+    if (x11_byte_order == XA_MSBIT_1ST)
+			{shft_start=4; shft_end=0; shft_inc= -4;}
+    else		{shft_start=0; shft_end=4; shft_inc=  4;}
   }
   else if (x11_bits_per_pixel == 2)
   { shft_msk = 0x03;
-    if (x11_byte_order == X11_MSB) {shft_start=6; shft_end=0; shft_inc= -2;}
-    else			   {shft_start=0; shft_end=6; shft_inc=  2;}
+    if (x11_byte_order == XA_MSBIT_1ST)
+			{shft_start=6; shft_end=0; shft_inc= -2;}
+    else		{shft_start=0; shft_end=6; shft_inc=  2;}
   }
   else /* unsupported depth */
   {
-    fprintf(stderr,"X11 Packing of bits %ld to depth %ld not yet supported\n",
+    fprintf(stderr,"X11 Packing of bits %d to depth %d not yet supported\n",
 	x11_bits_per_pixel,x11_depth);
     return;
   }
@@ -1121,7 +1131,7 @@ xaULONG xsize,ysize;
  *
  * Global Variable: xa_jiffy_flag   non-zero then IS ms to use.
  ***********************/
-UTIL_FPS_2_Time(anim,fps)
+void UTIL_FPS_2_Time(anim,fps)
 XA_ANIM_SETUP *anim;
 double fps;
 {
@@ -1195,4 +1205,45 @@ char *s, *key;
   }
   return(xaFALSE);
 }
+
+/****----------------------------------------------------------------****
+ *
+ ****----------------------------------------------------------------****/
+char *XA_white_out(s)
+char *s;
+{ char *tp;
+  if ((s==0) || (*s==0)) return( (char *)(0) ); 
+
+	/* strip white space off the end */
+  tp = &s[ strlen(s) - 1 ];
+  while((tp != s) && isspace((int)(*tp))) { *tp = 0; tp--; }
+
+	/* strip white space from the front */
+  tp = s;
+  while( *tp && isspace((int)(*tp))) { tp++; }
+  return(tp);
+}
+
+/****----------------------------------------------------------------****
+ * Print out a string, indenting with "indent" if there is an embedded
+ * newline.
+ ****----------------------------------------------------------------****/
+void XA_Indent_Print(fout, indent, s, first)
+FILE	*fout;
+char	*indent;
+char	*s;
+int	first;
+{ char *p = s;
+  int ret = 0;
+  if (first) fprintf(fout,"%s",indent);
+  while( p && *p)
+  { fputc( (int)(*p), fout);
+    ret = (*p =='\n')?(1):(0);
+    p++;
+    if (ret && (p[1] != 0)) fprintf(fout,"%s",indent);
+  }
+  if (ret == 0) fprintf(fout,"\n");
+}
+
+
 

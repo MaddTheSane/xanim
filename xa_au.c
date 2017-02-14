@@ -2,24 +2,28 @@
 /*
  * xa_au.c
  *
- * Copyright (C) 1994,1995 by Mark Podlipec.
+ * Copyright (C) 1994-1998,1999 by Mark Podlipec.
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  *
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
  */
-/* The following copyright applies to all Ultimotion Segments of the Code:
- *
- * "Copyright International Business Machines Corporation 1994, All rights
- *  reserved. This product uses Ultimotion(tm) IBM video technology."
- *
+
+/* NOTE: This code is based on code from Sun */
+
+/*
+ * Copyright 1991, 1992, 1993 Guido van Rossum And Sundry Contributors.
+ * This source code is freely redistributable and may be used for
+ * any purpose.  This copyright notice must be maintained.
+ * Guido van Rossum And Sundry Contributors are not responsible for
+ * the consequences of using this software.
  */
 
 /*******************************
@@ -37,8 +41,6 @@
 #define AU_LIN_8       2
 #define AU_LIN_16      3
 
-
-xaLONG Is_AU_File();
 xaULONG AU_Read_File();
 xaULONG au_max_faud_size;
 extern void  AVI_Print_ID();
@@ -51,22 +53,6 @@ xaULONG UTIL_Get_MSB_Long();
 xaULONG UTIL_Get_LSB_Long();
 xaULONG UTIL_Get_LSB_Short();
 xaULONG XA_Add_Sound();
-
-/*
- *
- */
-xaLONG Is_AU_File(filename)
-char *filename;
-{
-  FILE *fin;
-  xaULONG data1,len,data3;
-
-  if ( (fin=fopen(filename,XA_OPEN_MODE)) == 0) return(xaNOFILE);
-  data1 = UTIL_Get_MSB_Long(fin);  /* read magic */
-  fclose(fin);
-  if (data1 == AU_MAGIC) return(xaTRUE);
-  return(xaFALSE);
-}
 
 xaULONG AU_Read_File(fname,anim_hdr,audio_attempt)
 char *fname;
@@ -104,7 +90,7 @@ xaULONG audio_attempt;    /* xaTRUE if audio is to be attempted */
   { int ret,fpos = ftell(fin);
     ret = fseek(fin,0,2);
     if (ret < 0) return(xaFALSE);
-    au_data_size = ftell(fin);
+    au_data_size = ftell(fin) - au_hdr_size;
     ret = fseek(fin,fpos,0);
     if (ret < 0) return(xaFALSE);
   }
@@ -130,18 +116,24 @@ xaULONG audio_attempt;    /* xaTRUE if audio is to be attempted */
 				| XA_AUDIO_BIGEND_MSK | XA_AUDIO_BPS_2_MSK;
 	break;
     default:
-	fprintf(stderr,"AU: Sound Format %lx not yet supported\n",
+	fprintf(stderr,"AU: Sound Format %x not yet supported\n",
 								au_format);
 	return(xaFALSE);
 	break;
   }
   if ((au_chans < 1) || (au_chans > 2))
   {
-    fprintf(stderr,"AU: Chans %ld not supported.\n",au_chans);
+    fprintf(stderr,"AU: Chans %d not supported.\n",au_chans);
     return(xaFALSE);
   }
   else if (au_chans == 2) au_audio_type |= XA_AUDIO_STEREO_MSK;
  
+  anim_hdr->total_time =  (xaULONG)
+	(((float)au_data_size * 1000.0)
+		/ (float)(au_chans * au_bps) )
+		/ (float)(au_freq);
+
+  fseek(fin,au_hdr_size,0);
   { int ret;
     xaUBYTE *snd = (xaUBYTE *)malloc(au_data_size);
     if (snd==0) TheEnd1("AU: snd malloc err");
@@ -150,7 +142,7 @@ xaULONG audio_attempt;    /* xaTRUE if audio is to be attempted */
     else
     { int rets;
       rets = XA_Add_Sound(anim_hdr,snd,au_audio_type, -1,
-      au_freq, au_data_size, &au_snd_time, &au_snd_timelo);
+      au_freq, au_data_size, &au_snd_time, &au_snd_timelo, 0, 0);
     }
   }
 
@@ -158,7 +150,7 @@ xaULONG audio_attempt;    /* xaTRUE if audio is to be attempted */
   if (xa_verbose)
   {
  /* POD NOTE: put switch here */
-    fprintf(stderr,"   freq=%ld chans=%ld size=%ld\n",au_freq,au_chans,au_bits);
+    fprintf(stderr,"   freq=%d chans=%d size=%d\n",au_freq,au_chans,au_bits);
   }
 
   anim_hdr->max_faud_size = au_max_faud_size;

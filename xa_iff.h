@@ -2,15 +2,15 @@
 /*
  * xa_iff.h
  *
- * Copyright (C) 1990,1991,1992,1993,1994,1995 by Mark Podlipec. 
+ * Copyright (C) 1990-1998,1999 by Mark Podlipec. 
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  * 
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
@@ -23,36 +23,38 @@ typedef struct
 } Chunk_Header;
 
 /* Graphic Stuff */
-#define ANHD 0x414e4844
-#define ANIM 0x414e494d
-#define ANSQ 0x414e5351
-#define BMHD 0x424d4844
-#define BODY 0x424f4459
-#define TINY 0x54494E59
-#define CAMG 0x43414d47
-#define CMAP 0x434d4150
-#define CRNG 0x43524e47
-#define DLTA 0x444c5441
-#define DPAN 0x4450414e
-#define DPPS 0x44505053
-#define DPPV 0x44505056
-#define DRNG 0x44524e47
-#define FORM 0x464f524d
-#define GRAB 0x47524142
-#define ILBM 0x494c424d
-#define IMRT 0x494d5254
-#define DPI  0x44504920
-#define ANFI 0x414e4649
+#define IFF_ANHD 0x414e4844
+#define IFF_ANIM 0x414e494d
+#define IFF_ANSQ 0x414e5351
+#define IFF_BMHD 0x424d4844
+#define IFF_BODY 0x424f4459
+#define IFF_TINY 0x54494E59
+#define IFF_CAMG 0x43414d47
+#define IFF_CMAP 0x434d4150
+#define IFF_CRNG 0x43524e47
+#define IFF_DLTA 0x444c5441
+#define IFF_DPAN 0x4450414e
+#define IFF_DPPS 0x44505053
+#define IFF_DPPV 0x44505056
+#define IFF_DRNG 0x44524e47
+#define IFF_FORM 0x464f524d
+#define IFF_GRAB 0x47524142
+#define IFF_ILBM 0x494c424d
+#define IFF_IMRT 0x494d5254
+#define IFF_DPI  0x44504920
+#define IFF_ANFI 0x414e4649
+#define IFF_NAME 0x4e414d45
 
 /* Grouping Stuff */
-#define LIST 0x4c495354
-#define PROP 0x50524f50
-#define FACE 0x46414345
+#define IFF_LIST 0x4c495354
+#define IFF_PROP 0x50524f50
+#define IFF_FACE 0x46414345
 
 /* Sound stuff */
-#define VHDR 0x56484452
-#define ANNO 0x414e4e4f
-#define CHAN 0x4348414e
+#define IFF_VHDR 0x56484452
+#define IFF_ANNO 0x414e4e4f
+#define IFF_CHAN 0x4348414e
+#define IFF_8SVX 0x38535658
 
 
 typedef struct
@@ -171,7 +173,7 @@ typedef struct
   xaULONG dnum;
   xaULONG time;
   xaULONG frame;
-} IFF_ANSQ;
+} IFF_ANSQ_HDR;
 
 typedef struct IFF_ACT_LST_STRUCT
 {

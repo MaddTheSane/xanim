@@ -2,15 +2,15 @@
 /*
  * xa_iff.c
  *
- * Copyright (C) 1990,1991,1992,1993,1994,1995 by Mark Podlipec. 
+ * Copyright (C) 1990-1998,1999 by Mark Podlipec. 
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  * 
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
@@ -21,7 +21,6 @@
 xaULONG IFF_Read_File();
 void IFF_Adjust_For_EHB();
 void IFF_Read_BODY();
-xaLONG IFF_Read_Garb();
 void IFF_Print_ID();
 xaULONG IFF_Delta_Body();
 xaULONG IFF_Delta_l();
@@ -31,7 +30,6 @@ xaULONG IFF_Delta_7();
 xaULONG IFF_Delta_8();
 xaULONG IFF_Delta_J();
 void IFF_Long_Mod();
-xaLONG Is_IFF_File();
 void IFF_Buffer_Action();
 void IFF_Buffer_HAM6();
 void IFF_Buffer_HAM8();
@@ -59,9 +57,6 @@ XA_ACTION *IFF_Hash_Get();
 xaULONG IFF_Check_Same();
 
 
-xaULONG UTIL_Get_MSB_Long();
-xaLONG UTIL_Get_MSB_Short();
-xaULONG UTIL_Get_MSB_UShort();
 xaULONG CMAP_Get_Or_Mask();
 XA_CHDR *CMAP_Create_332();
 XA_CHDR *CMAP_Create_Gray();
@@ -101,7 +96,7 @@ IFF_HASH *iff_hash_tbl;
 xaULONG iff_hash_cur = 0;
 
 
-static IFF_ANSQ *iff_ansq;
+static IFF_ANSQ_HDR *iff_ansq;
 static xaULONG iff_ansq_cnt;
 static IFF_DLTA_TABLE *iff_dlta_acts;
 
@@ -200,8 +195,7 @@ IFF_Free_Stuff()
 xaULONG IFF_Read_File(fname,anim_hdr)
 xaBYTE *fname;
 XA_ANIM_HDR *anim_hdr;
-{
-  FILE *fin;
+{ XA_INPUT *xin = anim_hdr->xin;
   xaLONG camg_flag,cmap_flag,chdr_flag,ret;
   xaLONG crng_flag,formtype;
   xaLONG ansq_flag;
@@ -210,7 +204,8 @@ XA_ANIM_HDR *anim_hdr;
   Chunk_Header  chunk;
   xaLONG prop_flag;
   xaLONG exit_flag;
-
+  int name_flag = xaFALSE;
+  char NAME_string[128];
 
   iff_allow_cycling = (anim_hdr->anim_flags & ANIM_CYCLE)?(xaTRUE):(xaFALSE);
   iff_act_start	= 0;
@@ -243,21 +238,15 @@ XA_ANIM_HDR *anim_hdr;
   iff_cmap_bits = 4;
   iff_cur_hmap  = 0;
 
-  if ( (fin=fopen(fname,XA_OPEN_MODE)) == 0)
-  { 
-    fprintf(stderr,"can't open %s\n",fname); 
-    return(xaFALSE);
-  }
-
   exit_flag = 0; 
-  while( !feof(fin) && !exit_flag)
+  while( !xin->At_EOF(xin,-1) && !exit_flag)
   {
     /* read Chunk_Header 
     */
-    chunk.id   = UTIL_Get_MSB_Long(fin);
-    chunk.size = UTIL_Get_MSB_Long(fin);
+    chunk.id   = xin->Read_MSB_U32(xin);
+    chunk.size = xin->Read_MSB_U32(xin);
 
-    if ( feof(fin) ) break;    
+    if ( xin->At_EOF(xin,-1) ) break;    
     if (chunk.size == -1) ret = -1;
     else ret = 0;
 
@@ -265,20 +254,33 @@ XA_ANIM_HDR *anim_hdr;
     {
       fprintf(stderr,"Chunk.ID = ");
       IFF_Print_ID(stderr,chunk.id);
-      fprintf(stderr,"  chunksize=%lx\n",chunk.size);
+      fprintf(stderr,"  chunksize=%x\n",chunk.size);
     }
-    if (chunk.size & 1) chunk.size+=1; /* halfword pad it */
+    if (chunk.size & 1) chunk.size += 1; /* halfword pad it */
     if (ret==0)
     {
       switch(chunk.id)
       {
-        case PROP: 
+        case IFF_PROP: 
                 prop_flag=1;
-        case LIST: 
-        case FORM: 
-                formtype = UTIL_Get_MSB_Long(fin);
+        case IFF_LIST: 
+        case IFF_FORM: 
+                formtype = xin->Read_MSB_U32(xin);
 		file_size = chunk.size;
-		file_read = -1;
+		if (file_size & 0x01) file_size++;
+
+		if (   (formtype != IFF_ILBM)
+		    && (formtype != IFF_ANIM)
+		    && (formtype != IFF_8SVX) )
+		{
+		  fprintf(stderr,"IFF: unsupported FORM Type: ");
+		  IFF_Print_ID(stderr,formtype);
+                  fprintf(stderr,"\n");
+		  xin->Seek_FPos(xin,file_size,1);
+		  file_read = 0;
+		}
+		else	file_read = -1;
+
                 DEBUG_LEVEL2
                 {
                   fprintf(stderr,"  IFF ");
@@ -288,11 +290,10 @@ XA_ANIM_HDR *anim_hdr;
                   fprintf(stderr,"\n");
                 }
                 break;
-        case BMHD:
-		IFF_Read_BMHD(fin,&bmhd);
+        case IFF_BMHD:
+		IFF_Read_BMHD(xin,&bmhd);
                 if (xa_verbose)
-                {
-                 fprintf(stderr,"     Size %ldx%ldx%ld comp=%ld masking=%ld\n",
+                { fprintf(stderr,"     Size %dx%dx%d comp=%d masking=%d\n",
                                 bmhd.width,bmhd.height,bmhd.depth,
                                 bmhd.compression,bmhd.masking);
                 }
@@ -310,13 +311,13 @@ XA_ANIM_HDR *anim_hdr;
                 bmhd_flag = 1;
                 break;
 
-	case FACE: /* used in MovieSetter anims */
+	case IFF_FACE: /* used in MovieSetter anims */
 	      {
 		xaULONG garb;
-		bmhd.pageWidth  = bmhd.width  = UTIL_Get_MSB_Short(fin);
-		bmhd.pageHeight = bmhd.height = UTIL_Get_MSB_Short(fin);
-		garb = UTIL_Get_MSB_Long(fin); /* read x, y */
-		garb = UTIL_Get_MSB_Long(fin); /* read xoff, yoff */
+		bmhd.pageWidth  = bmhd.width  = xin->Read_MSB_U16(xin);
+		bmhd.pageHeight = bmhd.height = xin->Read_MSB_U16(xin);
+		garb = xin->Read_MSB_U32(xin); /* read x, y */
+		garb = xin->Read_MSB_U32(xin); /* read xoff, yoff */
 		bmhd.depth = 5;
 		bmhd.compression = BMHD_COMP_BYTERUN;
 		bmhd.x = bmhd.y = bmhd.masking = 0;
@@ -332,23 +333,23 @@ XA_ANIM_HDR *anim_hdr;
 		iff_or_mask = CMAP_Get_Or_Mask(1 << iff_imaged);
                 if (xa_verbose)
                 {
-                 fprintf(stderr,"     Size %ldx%ldx%ld comp=%ld masking=%ld\n",
+                 fprintf(stderr,"     Size %dx%dx%d comp=%d masking=%d\n",
                                 bmhd.width,bmhd.height,bmhd.depth,
                                 bmhd.compression,bmhd.masking);
                 }
 	      }
               break;
 
-        case CAMG:
+        case IFF_CAMG:
                 {
                   DEBUG_LEVEL2 fprintf(stderr,"IFF CAMG\n");
                   if (chunk.size != 4) 
-                  {
-                    ret = IFF_Read_Garb(fin,chunk.size);
+                  { 
+		    xin->Seek_FPos(xin,chunk.size,1);
                     break;
                   }
 
-                  camg_flag = UTIL_Get_MSB_Long(fin) | IFF_CAMG_NOP;
+                  camg_flag = xin->Read_MSB_U32(xin) | IFF_CAMG_NOP;
 
                   if ((camg_flag & IFF_CAMG_EHB) && (cmap_flag == xaTRUE))  
                   {
@@ -395,7 +396,7 @@ XA_ANIM_HDR *anim_hdr;
                 }
                 break;
 
-        case CMAP:
+        case IFF_CMAP:
                 {
 		  xaULONG tmp;
                   DEBUG_LEVEL2 fprintf(stderr,"IFF CMAP\n");
@@ -403,12 +404,12 @@ XA_ANIM_HDR *anim_hdr;
                   if (chunk.size == 0x40) 
 		  {
 		    iff_imagec = chunk.size / 2; /* xR+GB */
-		    IFF_Read_CMAP_1(iff_cmap,iff_imagec,fin);
+		    IFF_Read_CMAP_1(iff_cmap,iff_imagec,xin);
 		  }
                   else
 		  {
 		    iff_imagec = chunk.size / 3;  /* Rx+Gx+Bx 1 byte each */
-		    IFF_Read_CMAP_0(iff_cmap,iff_imagec,fin);
+		    IFF_Read_CMAP_0(iff_cmap,iff_imagec,xin);
 		  }
 
                   /* Typically iff_imaged matches iff_imagec but not always 
@@ -470,10 +471,24 @@ XA_ANIM_HDR *anim_hdr;
                 }
                 break;
 
-	case BODY:
+	case IFF_NAME:		/* seek over the filename */
+	  xin->Read_Block(xin,NAME_string,chunk.size);
+	  DEBUG_LEVEL2 fprintf(stderr,"Read NAME \"%s\"\n", NAME_string);
+	  name_flag = xaTRUE; /* and flag we want the next BODY nuked */
+	  break;
+
+	case IFF_BODY:
 	  {
 	    XA_ACTION *act;
 	    ACT_DLTA_HDR *dlta_hdr;
+
+	    if (name_flag == xaTRUE)    /* seek over everything */
+	    {
+		DEBUG_LEVEL2 fprintf(stderr,"NAME BODY\n");
+		xin->Seek_FPos(xin,chunk.size,1);
+		name_flag = xaFALSE;
+		break;
+	    }
 
 	    DEBUG_LEVEL2 fprintf(stderr,"IFF BODY\n");
 	    if (chdr_flag == xaFALSE)
@@ -497,15 +512,15 @@ XA_ANIM_HDR *anim_hdr;
 	    IFF_Add_Frame(1,act);
 
 /* POD TEMP FINISH THIS eventually. For now body's are read in
-	    if (xa_file_flag == xaTRUE)
+	    if (xin->load_flag & XA_IN_LOAD_FILE)
 	    {
 	      dlta_hdr =(ACT_DLTA_HDR *)malloc(sizeof(ACT_DLTA_HDR));
 	      if (dlta_hdr == 0) IFF_TheEnd1("IFF_Read_BODY: malloc err");
 	      act->data = (xaUBYTE *)dlta_hdr;
 	      dlta_hdr->flags = ACT_DBL_BUF;
-	      dlta_hdr->fpos  = ftell(fin);
+	      dlta_hdr->fpos  = xin->Seek_FPos(xin);
 	      dlta_hdr->fsize = chunk.size;
-	      fseek(fin,chunk.size,1);
+	      xin->Seek_FPos(xin,chunk.size,1);
 	      if (chunk.size > iff_max_fvid_size) iff_max_fvid_size =chunk.size;
 	    }
 	    else
@@ -517,7 +532,7 @@ XA_ANIM_HDR *anim_hdr;
 	      act->data = (xaUBYTE *)dlta_hdr;
 	      dlta_hdr->flags = ACT_DBL_BUF | DLTA_DATA;
 	      dlta_hdr->fpos = 0; dlta_hdr->fsize = chunk.size;
-	      IFF_Read_BODY(fin,dlta_hdr->data,chunk.size,
+	      IFF_Read_BODY(xin,dlta_hdr->data,chunk.size,
 				iff_imagex, iff_imagey, iff_imaged,
 				(int)(bmhd.compression),(int)(bmhd.masking),
 				iff_or_mask);
@@ -531,31 +546,31 @@ XA_ANIM_HDR *anim_hdr;
 	  }
 	  break;
 
-        case ANHD:
+        case IFF_ANHD:
 		{
 		  Anim_Header   anhd;
 		  DEBUG_LEVEL2 fprintf(stderr,"IFF ANHD\n");
 		  if (chunk.size >= Anim_Header_SIZE)
 		  {
-		    IFF_Read_ANHD(fin,&anhd,chunk.size);
+		    IFF_Read_ANHD(xin,&anhd,chunk.size);
 		    iff_dlta_compression = anhd.op;
 		    iff_dlta_bits = anhd.bits;
 /*
 		    if (xa_verbose) 
-			fprintf(stderr,"ANHD time = %ld\n",anhd.reltime); 
+			fprintf(stderr,"ANHD time = %d\n",anhd.reltime); 
 */
 		  }
 		  else 
 		  {
-		    IFF_Read_Garb(fin,chunk.size); 
+		    xin->Seek_FPos(xin,chunk.size,1);
 		    iff_dlta_compression = 0xffffffff;
 		    iff_dlta_bits = 0x0;
-		    fprintf(stderr,"ANHD chunksize mismatch %ld\n",chunk.size);
+		    fprintf(stderr,"ANHD chunksize mismatch %d\n",chunk.size);
 		  }
 		}
 		break;
 
-        case DLTA:
+        case IFF_DLTA:
 	  {
 	    ACT_DLTA_HDR *dlta_hdr;
 	    XA_ACTION *act;
@@ -565,15 +580,15 @@ XA_ANIM_HDR *anim_hdr;
 	    act->h_cmap = iff_cur_hmap;
   	    IFF_Add_Frame(1,act);
 
-	    if (xa_file_flag == xaTRUE)
+	    if (xin->load_flag & XA_IN_LOAD_FILE)
 	    {
 	      dlta_hdr =(ACT_DLTA_HDR *)malloc(sizeof(ACT_DLTA_HDR));
 	      if (dlta_hdr == 0) IFF_TheEnd1("IFF_Read_DLTA: malloc err");
 	      act->data = (xaUBYTE *)dlta_hdr;
 	      dlta_hdr->flags = ACT_DBL_BUF;
-	      dlta_hdr->fpos  = ftell(fin);
+	      dlta_hdr->fpos  = xin->Get_FPos(xin);
 	      dlta_hdr->fsize = chunk.size;
-	      fseek(fin,chunk.size,1);
+	      xin->Seek_FPos(xin,chunk.size,1);
 	      if (chunk.size > iff_max_fvid_size) iff_max_fvid_size =chunk.size;
 	    }
 	    else
@@ -583,7 +598,7 @@ XA_ANIM_HDR *anim_hdr;
 	      act->data = (xaUBYTE *)dlta_hdr;
 	      dlta_hdr->flags = ACT_DBL_BUF | DLTA_DATA;
 	      dlta_hdr->fpos = 0; dlta_hdr->fsize = chunk.size;
-	      ret=fread(dlta_hdr->data,chunk.size,1,fin);
+	      ret=xin->Read_Block(xin,dlta_hdr->data,chunk.size);
 	    }
 
 	    dlta_hdr->xsize = iff_imagex;
@@ -639,42 +654,41 @@ XA_ANIM_HDR *anim_hdr;
 		break;
 	      default:  
 		act->type = ACT_NOP;
-		fprintf(stderr,"Unsupported Delta %ld\n",iff_dlta_compression);
+		fprintf(stderr,"Unsupported Delta %d\n",iff_dlta_compression);
 		break;
 	    }
 	  }
 	break;
 
-	case ANSQ:
+	case IFF_ANSQ:
 	  {
 	    DEBUG_LEVEL2 fprintf(stderr,"IFF ANSQ\n");
 	    ansq_flag = 1;  /* we found an ansq chunk */
-	    IFF_Read_ANSQ(fin,chunk.size);
+	    IFF_Read_ANSQ(xin,chunk.size);
 	  }
 	  break;
 
-        case CRNG: 
+        case IFF_CRNG: 
 	  DEBUG_LEVEL2 fprintf(stderr,"IFF CRNG\n");
-	  IFF_Read_CRNG(anim_hdr,fin,chunk.size,&crng_flag);
+	  IFF_Read_CRNG(anim_hdr,xin,chunk.size,&crng_flag);
 	  break;
 
-	case TINY : /* ignore */
-	case DPI : /* ignore */
-	case IMRT: /* ignore */
-	case GRAB: /* ignore */
-	case DPPS: /* ignore */
-	case DPPV: /* ignore */
-	case DPAN: /* ignore */
-	case DRNG: /* ignore */
-	case VHDR: /* sound ignore should kill next body until bmhd*/
-	case ANNO: /* sound ignore */
-	case CHAN: /* sound ignore */
-	case ANFI: /* sound ignore */
-		if (chunk.size & 0x01) chunk.size++;
-                ret = IFF_Read_Garb(fin,chunk.size);
+	case IFF_TINY : /* ignore */
+	case IFF_DPI : /* ignore */
+	case IFF_IMRT: /* ignore */
+	case IFF_GRAB: /* ignore */
+	case IFF_DPPS: /* ignore */
+	case IFF_DPPV: /* ignore */
+	case IFF_DPAN: /* ignore */
+	case IFF_DRNG: /* ignore */
+	case IFF_VHDR: /* sound ignore should kill next body until bmhd*/
+	case IFF_ANNO: /* sound ignore */
+	case IFF_CHAN: /* sound ignore */
+	case IFF_ANFI: /* sound ignore */
+		xin->Seek_FPos(xin,chunk.size,1);
                 break;
     default:
-	if ( feof(fin) ) exit_flag = 1;   /* end of file */
+	if ( xin->At_EOF(xin,-1) ) exit_flag = 1;   /* end of file */
 	else
 	{
 	  fprintf(stderr,"Unknown IFF type="); IFF_Print_ID(stderr,chunk.id);
@@ -683,7 +697,7 @@ XA_ANIM_HDR *anim_hdr;
 	     )
 	  {
 	    fprintf(stderr,"  Will Continue Reading File.\n");
-	    ret = IFF_Read_Garb(fin,chunk.size);
+	    xin->Seek_FPos(xin,chunk.size,1);
 	  }
 	  else
 	  {
@@ -705,8 +719,8 @@ XA_ANIM_HDR *anim_hdr;
 
   } /* end if ret==0 */
  } /* end of while not eof or exit_flag */
- DEBUG_LEVEL2 fprintf(stderr,"Bytes Read = %lx\n",file_read);
- fclose(fin);
+ DEBUG_LEVEL2 fprintf(stderr,"Bytes Read = %x\n",file_read);
+ xin->Close_File(xin);
 
  /* 
   * Set up a map of delta's to their action numbers.
@@ -746,7 +760,7 @@ XA_ANIM_HDR *anim_hdr;
 		dlta_i++; 
 		if (dlta_i > iff_dlta_cnt)
 		{
-  		  fprintf(stderr,"IFF_Read: dlta setup err  <%ld > %ld> \n",
+  		  fprintf(stderr,"IFF_Read: dlta setup err  <%d > %d> \n",
 						dlta_i,iff_dlta_cnt);
   		  IFF_TheEnd();
 		}
@@ -761,7 +775,7 @@ XA_ANIM_HDR *anim_hdr;
 		break;
      }
    } /* end of while */
-   DEBUG_LEVEL1 fprintf(stderr,"%ld dltas found\n",dlta_i);
+   DEBUG_LEVEL1 fprintf(stderr,"%d dltas found\n",dlta_i);
 
    iff_time = XA_GET_TIME(IFF_SPEED_DEFAULT * IFF_MS_PER_60HZ);
 
@@ -808,7 +822,7 @@ XA_ANIM_HDR *anim_hdr;
        iff_act_cur = iff_act_cur->next;
        if ( (frame_i > iff_frame_cnt) && (iff_act_cur != 0) )
        {
-         fprintf(stderr,"IFF_ansq: frame err %ld %ld\n",frame_i,iff_frame_cnt);
+         fprintf(stderr,"IFF_ansq: frame err %d %d\n",frame_i,iff_frame_cnt);
          IFF_TheEnd();
        }
      }
@@ -845,7 +859,7 @@ XA_ANIM_HDR *anim_hdr;
             iff_act_cur = iff_act_cur->next;
 	    if ( (frame_i > iff_frame_cnt) && (iff_act_cur != 0) )
 	    {
-	      fprintf(stderr,"IFF_ansq: frame err %ld %ld\n",
+	      fprintf(stderr,"IFF_ansq: frame err %d %d\n",
 						frame_i,iff_frame_cnt);
 	      IFF_TheEnd();
 	    }
@@ -856,6 +870,8 @@ XA_ANIM_HDR *anim_hdr;
       anim_hdr->frame_lst[frame_i].zztime = -1;
       anim_hdr->frame_lst[frame_i].act  = 0;
       anim_hdr->last_frame = frame_i - 1;
+      anim_hdr->total_time = anim_hdr->frame_lst[frame_i-1].zztime 
+                                + anim_hdr->frame_lst[frame_i-1].time_dur;
     }
     else   /* no ansq chunk */
     {
@@ -897,7 +913,7 @@ XA_ANIM_HDR *anim_hdr;
         frame_i++;
         if (frame_i > iff_act_cnt)
         {
-          fprintf(stderr,"IFF_Read: frame inconsistency %ld %ld\n",
+          fprintf(stderr,"IFF_Read: frame inconsistency %d %d\n",
                 frame_i,iff_act_cnt);
           IFF_TheEnd();
         }
@@ -921,10 +937,14 @@ XA_ANIM_HDR *anim_hdr;
 	/* PODNOTE: IFF last two frames need to have zztime start at 0 again*/
         frame_i++;
         anim_hdr->loop_frame = iff_dlta_acts[2].frame;
+        anim_hdr->total_time = anim_hdr->frame_lst[frame_i-4].zztime 
+                                + anim_hdr->frame_lst[frame_i-4].time_dur;
       }
       else
       {
 	anim_hdr->loop_frame = 0; 
+        anim_hdr->total_time = anim_hdr->frame_lst[frame_i-1].zztime 
+                                + anim_hdr->frame_lst[frame_i-1].time_dur;
       }
       if (frame_i > 0 ) anim_hdr->last_frame = frame_i - 1;
       else anim_hdr->last_frame = 0;
@@ -934,7 +954,7 @@ XA_ANIM_HDR *anim_hdr;
       frame_i++;
       if (xa_verbose) 
       {
-	fprintf(stderr,"     dlta_cnt=%ld comp=%ld ",
+	fprintf(stderr,"     dlta_cnt=%d comp=%d ",
 				iff_dlta_cnt,iff_dlta_compression);
 	if (camg_flag & IFF_CAMG_EHB) fprintf(stderr," EHB\n");
 	else if (iff_anim_flags & ANIM_HAM8) fprintf(stderr," HAM8\n");
@@ -973,14 +993,14 @@ XA_ANIM_HDR *anim_hdr;
   anim_hdr->anim_flags = iff_anim_flags;
   IFF_Free_Stuff();
   iff_chdr = 0;
-  if (xa_buffer_flag) IFF_Buffer_Action(anim_hdr);
+  if (xin->load_flag & XA_IN_LOAD_BUF) IFF_Buffer_Action(anim_hdr);
   else
   {
     anim_hdr->anim_flags |= ANIM_SNG_BUF;
     if (iff_dlta_cnt > 1) anim_hdr->anim_flags |= ANIM_DBL_BUF;
     if (iff_anim_flags | ANIM_HAM) anim_hdr->anim_flags |= ANIM_3RD_BUF;
   }
-  if (xa_file_flag==xaTRUE) anim_hdr->anim_flags |= ANIM_USE_FILE;
+  if (xin->load_flag & XA_IN_LOAD_FILE) anim_hdr->anim_flags |= ANIM_USE_FILE;
   anim_hdr->fname = anim_hdr->name;
   anim_hdr->max_fvid_size = iff_max_fvid_size;
   return(xaTRUE);
@@ -1019,9 +1039,9 @@ xaULONG cmap_bits;
 /*
  *
  */
-void IFF_Read_BODY(fin,image_out,bodysize,xsize,ysize,depth,
+void IFF_Read_BODY(xin,image_out,bodysize,xsize,ysize,depth,
 			compression,masking,or_mask)
-FILE *fin;
+XA_INPUT *xin;
 xaUBYTE *image_out;
 xaULONG xsize,ysize,depth;
 xaLONG bodysize,compression,masking;
@@ -1043,8 +1063,8 @@ xaULONG or_mask;
 
  inbuff = (xaBYTE *)malloc(bodysize);
  if (inbuff == 0) IFF_TheEnd1("IFF_Read_Body: malloc failed");
- ret=fread(inbuff,bodysize,1,fin);
- if (ret!=1) IFF_TheEnd1("IFF_Read_Body: read of BODY chunk failed");
+ ret=xin->Read_Block(xin,inbuff,bodysize);
+ if (ret<bodysize) IFF_TheEnd1("IFF_Read_Body: read of BODY chunk failed");
  sbuff = inbuff;
 
 
@@ -1073,7 +1093,7 @@ xaULONG or_mask;
        rowsize = imagex_pad / 8; 
        dbuff = rowbuff;
        ret=UnPackRow(&sbuff,&dbuff,&bodysize,&rowsize);
-       if (ret) { fprintf(stderr,"error %ld in unpack\n",ret); IFF_TheEnd();}
+       if (ret) { fprintf(stderr,"error %d in unpack\n",ret); IFF_TheEnd();}
        sptr = rowbuff;
      }
 
@@ -1101,7 +1121,7 @@ xaULONG or_mask;
        rowsize = imagex_pad / 8;
        dbuff = rowbuff;
        ret=UnPackRow(&sbuff,&dbuff,&bodysize,&rowsize);
-       if (ret) { fprintf(stderr,"error %ld in unpack\n",ret); IFF_TheEnd();}
+       if (ret) { fprintf(stderr,"error %d in unpack\n",ret); IFF_TheEnd();}
      }
      else sptr += xsize/8;
    }
@@ -1111,31 +1131,18 @@ xaULONG or_mask;
 }
 
 
+
 /*
  *
  */
-xaLONG IFF_Read_Garb(fp,size)
-FILE *fp;
-xaLONG size;
-{
- xaBYTE *garb;
-
- garb = (xaBYTE *)malloc(size);
- if (garb==0)
- { fprintf(stderr,"readgarb malloc err size=%ld",size); return(-1);}
- fread(garb,size,1,fp);
- FREE(garb,0x1006); garb=0;
- return(0);
-}
-
 void IFF_Print_ID(fout,id)
 FILE *fout;
 xaLONG id;
 {
- fprintf(fout,"%c",     ((id >> 24) & 0xff)   );
- fprintf(fout,"%c",     ((id >> 16) & 0xff)   );
- fprintf(fout,"%c",     ((id >>  8) & 0xff)   );
- fprintf(fout,"%c(%lx)", (id        & 0xff),id);
+ fprintf(fout,"%c",     (char)((id >> 24) & 0xff)   );
+ fprintf(fout,"%c",     (char)((id >> 16) & 0xff)   );
+ fprintf(fout,"%c",     (char)((id >>  8) & 0xff)   );
+ fprintf(fout,"%c(%x)",(char)(id        & 0xff),id);
 }
 
 
@@ -1150,22 +1157,19 @@ xaULONG dsize;          /* delta size */
 XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 { xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
   xaULONG imaged = dec_info->imaged;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
- register xaLONG col,depth,dmask;
- register xaLONG rowsize,width;
- xaULONG poff;
- register xaUBYTE *i_ptr;
- register xaUBYTE *dptr,opcnt,op,cnt;
- xaLONG miny,minx,maxy,maxx;
+  register xaLONG col,depth,dmask;
+  register xaLONG rowsize,width;
+  xaULONG poff;
+  register xaUBYTE *i_ptr;
+  register xaUBYTE *dptr,opcnt,op,cnt;
+  xaLONG miny,minx,maxy,maxx;
 
- /* set to opposites for min/max testing */
- dec_info->xe = dec_info->ye = 0; dec_info->ys = imagey; dec_info->xs = imagex;
+  /* set to opposites for min/max testing */
+  dec_info->xe = dec_info->ye = 0; dec_info->ys = imagey; dec_info->xs = imagex;
 
- width = imagex;
- rowsize = width >> 3;
- dmask = 1;
+  width = imagex;
+  rowsize = width >> 3;
+  dmask = 1;
  for(depth=0; depth<imaged; depth++)
  {
   minx = -1;
@@ -1270,9 +1274,6 @@ xaULONG dsize;          /* delta size */
 XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 { xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
   xaULONG imaged = dec_info->imaged;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
  register xaLONG i,depth,dmask;
  xaULONG poff;
  register xaSHORT  offset;
@@ -1322,29 +1323,6 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
  return(ACT_DLTA_NORM); 
 }
 
-/* 
- *
- */
-xaLONG Is_IFF_File(filename)
-xaBYTE *filename;
-{
- FILE *fp;
- xaULONG firstword;
-
- if ( (fp=fopen(filename,XA_OPEN_MODE)) == 0) return(xaNOFILE);
-  /* by reading bytes we can ignore big/little endian problems */
- firstword  = (fgetc(fp) & 0xff) << 24;
- firstword |= (fgetc(fp) & 0xff) << 16;
- firstword |= (fgetc(fp) & 0xff) <<  8;
- firstword |= (fgetc(fp) & 0xff);
-
- fclose(fp);
-
- if (firstword == FORM) return(xaTRUE);
- if (firstword == LIST) return(xaTRUE);
- if (firstword == PROP) return(xaTRUE);
- return(xaFALSE);
-}
 
 void IFF_Hash_Init(num)
 xaULONG num;
@@ -1459,9 +1437,7 @@ XA_ANIM_HDR *anim_hdr;
 	  dec_info.skip_flag = 0;
 
 	  dlta_flag = dlta_hdr->delta(buff0, dlta_hdr->data, 
-		dlta_hdr->fsize, 0, 0, xaFALSE,
-		iff_imagex,iff_imagey,iff_imaged,
-		&minx, &miny, &maxx, &maxy, dlta_hdr->special,dlta_hdr->extra);
+						dlta_hdr->fsize, &dec_info);
 	  minx = dec_info.xs;	miny = dec_info.ys;
 	  maxx = dec_info.xe;	maxy = dec_info.ye;
 
@@ -1591,19 +1567,16 @@ xaULONG dsize;          /* delta size */
 XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 { xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
   xaULONG imaged = dec_info->imaged;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
- register xaLONG rowsize,width;
- register xaUBYTE *i_ptr;
- register xaLONG exitflag;
- register xaULONG  type,r_flag,b_cnt,g_cnt,r_cnt; 
- register xaULONG b,g,r;
- register xaULONG offset,dmask,depth;
- register xaUBYTE data;
- xaLONG changed,xor_flag;
- xaLONG tmp,minx,miny,maxx,maxy;
- xaLONG kludge_j;
+  register xaLONG rowsize,width;
+  register xaUBYTE *i_ptr;
+  register xaLONG exitflag;
+  register xaULONG  type,r_flag,b_cnt,g_cnt,r_cnt; 
+  register xaULONG b,g,r;
+  register xaULONG offset,dmask,depth;
+  register xaUBYTE data;
+  xaLONG changed,xor_flag;
+  xaLONG tmp,minx,miny,maxx,maxy;
+  xaLONG kludge_j;
  /* this kludge is because animations with width less than 320 are considered
   * centered in the middle of a 320 screen. Does this happen with
   * animations greater than lores overscan(374) and less than hi-res(640)????
@@ -1730,11 +1703,16 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
  } /* end of while loop */
 
  /* if changed is zero then this Delta didn't change the image at all */ 
+ /* BUT we can't return a NOP because we still need the double buffers to
+  * be swapped
+  */
  if (changed==0)
  {
-   dec_info->xs = dec_info->ys = dec_info->xe = dec_info->ye = 0;
+   dec_info->xs = dec_info->ys = 0;
+   dec_info->xe = 8; dec_info->ye = 1;
    DEBUG_LEVEL2 fprintf(stderr,"DELTA J nothing changed\n");
-   return(ACT_DLTA_NOP);
+   if (xor_flag) return(ACT_DLTA_XOR);
+   return(ACT_DLTA_NORM);
  }
  if (xa_optimize_flag == xaTRUE)
  {
@@ -1745,7 +1723,7 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
    if (dec_info->ys >= imagey) dec_info->ys = 0;
    if (dec_info->xe <= 0)      dec_info->xe = imagex;
    if (dec_info->ye <= 0)      dec_info->ye = imagey;
-   DEBUG_LEVEL2 fprintf(stderr,"xypos=<%ld,%ld> xysize=<%ld %ld>\n",
+   DEBUG_LEVEL2 fprintf(stderr,"xypos=<%d,%d> xysize=<%d %d>\n",
 		dec_info->xs,dec_info->ys,dec_info->xe,dec_info->ye );
  }
  else
@@ -1768,10 +1746,7 @@ xaULONG dsize;          /* delta size */
 XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 { xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
   xaULONG imaged = dec_info->imaged;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          
   xaULONG vertflag = (xaULONG)(dec_info->extra);
-  XA_CHDR *chdr = dec_info->chdr;
  register xaLONG i,depth,dmask,width;
  xaULONG poff0,poff1;
  register xaUBYTE *i_ptr;
@@ -1921,68 +1896,67 @@ xaLONG *min_x,*min_y,*max_x,*max_y;
 }
 
 void
-IFF_Read_BMHD(fin,bmhd)
-FILE *fin;
+IFF_Read_BMHD(xin,bmhd)
+XA_INPUT *xin;
 Bit_Map_Header *bmhd;
 {
   /* read Bit_Map_Header into bmhd */
   /* read so as to avoid endian problems */
-  bmhd->width              = UTIL_Get_MSB_Short(fin);
-  bmhd->height             = UTIL_Get_MSB_Short(fin);
-  bmhd->x                  = UTIL_Get_MSB_Short(fin);
-  bmhd->y                  = UTIL_Get_MSB_Short(fin);
-  bmhd->depth              = fgetc(fin);
-  bmhd->masking            = fgetc(fin);
-  bmhd->compression        = fgetc(fin);
-  bmhd->pad1               = fgetc(fin);
-  bmhd->transparentColor   = UTIL_Get_MSB_Short(fin);
-  bmhd->xAspect            = fgetc(fin);
-  bmhd->yAspect            = fgetc(fin);
-  bmhd->pageWidth          = UTIL_Get_MSB_Short(fin);
-  bmhd->pageHeight         = UTIL_Get_MSB_Short(fin);
+  bmhd->width              = xin->Read_MSB_U16(xin);
+  bmhd->height             = xin->Read_MSB_U16(xin);
+  bmhd->x                  = xin->Read_MSB_U16(xin);
+  bmhd->y                  = xin->Read_MSB_U16(xin);
+  bmhd->depth              = xin->Read_U8(xin);
+  bmhd->masking            = xin->Read_U8(xin);
+  bmhd->compression        = xin->Read_U8(xin);
+  bmhd->pad1               = xin->Read_U8(xin);
+  bmhd->transparentColor   = xin->Read_MSB_U16(xin);
+  bmhd->xAspect            = xin->Read_U8(xin);
+  bmhd->yAspect            = xin->Read_U8(xin);
+  bmhd->pageWidth          = xin->Read_MSB_U16(xin);
+  bmhd->pageHeight         = xin->Read_MSB_U16(xin);
 } 
 
 void
-IFF_Read_ANHD(fin,anhd,chunk_size)
-FILE *fin;
+IFF_Read_ANHD(xin,anhd,chunk_size)
+XA_INPUT *xin;
 Anim_Header *anhd;
 xaULONG chunk_size;
 {
   xaULONG i;
-  anhd->op		= fgetc(fin);
-  anhd->mask		= fgetc(fin);
-  anhd->w		= UTIL_Get_MSB_Short(fin);
-  anhd->h		= UTIL_Get_MSB_Short(fin);
-  anhd->x		= UTIL_Get_MSB_Short(fin);
-  anhd->y		= UTIL_Get_MSB_Short(fin);
-  anhd->abstime		= UTIL_Get_MSB_Long(fin);
-  anhd->reltime		= UTIL_Get_MSB_Long(fin);
-  anhd->interleave	= fgetc(fin);
-  anhd->pad0		= fgetc(fin);
-  anhd->bits		= UTIL_Get_MSB_Long(fin);
-  fread((xaBYTE *)(anhd->pad),1,16,fin); /* read pad */
+  anhd->op		= xin->Read_U8(xin);
+  anhd->mask		= xin->Read_U8(xin);
+  anhd->w		= xin->Read_MSB_U16(xin);
+  anhd->h		= xin->Read_MSB_U16(xin);
+  anhd->x		= xin->Read_MSB_U16(xin);
+  anhd->y		= xin->Read_MSB_U16(xin);
+  anhd->abstime		= xin->Read_MSB_U32(xin);
+  anhd->reltime		= xin->Read_MSB_U32(xin);
+  anhd->interleave	= xin->Read_U8(xin);
+  anhd->pad0		= xin->Read_U8(xin);
+  anhd->bits		= xin->Read_MSB_U32(xin);
+  xin->Read_Block(xin,(xaBYTE *)(anhd->pad),16); /* read pad */
   i = Anim_Header_SIZE;
-  while(i < chunk_size) {fgetc(fin); i++;}
+  while(i < chunk_size) {xin->Read_U8(xin); i++;}
 }
 
 void
-IFF_Read_ANSQ(fin,chunk_size)
-FILE *fin;
+IFF_Read_ANSQ(xin,chunk_size)
+XA_INPUT *xin;
 xaULONG chunk_size;
-{
-  xaULONG i;
+{ xaULONG i;
   xaUBYTE *p;  /* data is actually big endian xaUSHORT */
   xaBYTE *garb;
 
   iff_ansq_cnt = chunk_size / 4;
   iff_ansq_cnt++; /* adding dlta 0 up front */
-  DEBUG_LEVEL2 fprintf(stderr,"    ansq_cnt=%ld dlta_cnt=%ld\n",
+  DEBUG_LEVEL2 fprintf(stderr,"    ansq_cnt=%d dlta_cnt=%d\n",
 						iff_ansq_cnt,iff_dlta_cnt);
   /* allocate space for ansq variables
   */
-  iff_ansq = (IFF_ANSQ *)malloc( iff_ansq_cnt * sizeof(IFF_ANSQ));
+  iff_ansq = (IFF_ANSQ_HDR *)malloc( iff_ansq_cnt * sizeof(IFF_ANSQ_HDR));
   if (iff_ansq == NULL) IFF_TheEnd1("IFF_Read_ANSQ: malloc err");
-  if (xa_verbose) fprintf(stderr,"     frames=%ld dlts=%d comp=%ld\n",
+  if (xa_verbose) fprintf(stderr,"     frames=%d dlts=%d comp=%d\n",
 			iff_ansq_cnt,iff_dlta_cnt,iff_dlta_compression);
   garb = (xaBYTE *)malloc(chunk_size);
   if (garb==0)
@@ -1990,7 +1964,7 @@ xaULONG chunk_size;
     fprintf(stderr,"ansq malloc not enough\n");
     IFF_TheEnd();
   }
-  fread(garb,chunk_size,1,fin);
+  xin->Read_Block(xin,garb,chunk_size);
   p = (xaUBYTE *)(garb);
   /* first delta is only used once and doesn't appear in
   * the ANSQ
@@ -2007,7 +1981,7 @@ xaULONG chunk_size;
     iff_ansq[i].time |= (xaULONG)(*p++);
     iff_ansq[i].frame = 0;
     DEBUG_LEVEL2
-    fprintf(stderr,"<%ld %ld> ",iff_ansq[i].dnum, iff_ansq[i].time);
+    fprintf(stderr,"<%d %d> ",iff_ansq[i].dnum, iff_ansq[i].time);
   }
   FREE(garb,0x100C); garb=0;
 }
@@ -2034,9 +2008,9 @@ XA_CHDR *chdr;
 
 
 void
-IFF_Read_CRNG(anim_hdr,fin,chunk_size,crng_flag)
+IFF_Read_CRNG(anim_hdr,xin,chunk_size,crng_flag)
 XA_ANIM_HDR *anim_hdr;
-FILE *fin;
+XA_INPUT *xin;
 xaULONG chunk_size;
 xaULONG *crng_flag;
 {
@@ -2054,11 +2028,11 @@ xaULONG *crng_flag;
     ACT_CYCLE_HDR *act_cycle;
 
     /* read CRNG chunk */
-    rate   = UTIL_Get_MSB_UShort(fin);  /* throw away pad1 */
-    rate   = UTIL_Get_MSB_UShort(fin);
-    active = UTIL_Get_MSB_UShort(fin);
-    low    = fgetc(fin);
-    high   = fgetc(fin);
+    rate   = xin->Read_MSB_U16(xin);  /* throw away pad1 */
+    rate   = xin->Read_MSB_U16(xin);
+    active = xin->Read_MSB_U16(xin);
+    low    = xin->Read_U8(xin);
+    high   = xin->Read_U8(xin);
     /* make it an action only if its valid
     */
     if (   (active & IFF_CRNG_ACTIVE) && (low < high) 
@@ -2093,41 +2067,40 @@ xaULONG *crng_flag;
     else DEBUG_LEVEL2 fprintf(stderr,"IFF_CRNG not used\n");
   }
   else
-  {
-    IFF_Read_Garb(fin,chunk_size);
-    fprintf(stderr,"IFF_CRNG chunksize mismatch %ld\n",chunk_size);
+  { xin->Seek_FPos(xin,chunk_size,1);
+    fprintf(stderr,"IFF_CRNG chunksize mismatch %d\n",chunk_size);
   }
 }
 
 
 void
-IFF_Read_CMAP_0(cmap,size,fin)
+IFF_Read_CMAP_0(cmap,size,xin)
 ColorReg *cmap;
 xaULONG size;
-FILE *fin;
+XA_INPUT *xin;
 {
   xaULONG i;
   for(i=0; i < size; i++)
   {
-    cmap[i].red   = fgetc(fin);
-    cmap[i].green = fgetc(fin);
-    cmap[i].blue  = fgetc(fin);
+    cmap[i].red   = xin->Read_U8(xin);
+    cmap[i].green = xin->Read_U8(xin);
+    cmap[i].blue  = xin->Read_U8(xin);
   }
 }
 
 void
-IFF_Read_CMAP_1(cmap,size,fin)
+IFF_Read_CMAP_1(cmap,size,xin)
 ColorReg *cmap;
 xaULONG size;
-FILE *fin;
+XA_INPUT *xin;
 {
   xaULONG i;
   for(i=0; i < size; i++)
   {
     xaULONG d;
-    d = fgetc(fin);
+    d = xin->Read_U8(xin);
     cmap[i].red   = (d & 0x0f) << 4;
-    d = fgetc(fin);
+    d = xin->Read_U8(xin);
     cmap[i].green = (d & 0xf0);
     cmap[i].blue  = (d & 0x0f) << 4;
   }
@@ -2161,7 +2134,7 @@ xaULONG d_flag;		/* map_flag */
   if (d_flag==xaTRUE) psize = x11_bytes_pixel;
   else psize = 1;
 
-  DEBUG_LEVEL1 fprintf(stderr,"ham_cmap: = %lx\n",(xaULONG)h_cmap);
+  DEBUG_LEVEL1 fprintf(stderr,"ham_cmap: = %x\n",(xaULONG)h_cmap);
 
   if (xa_ham_map == 0)
   {
@@ -2172,7 +2145,7 @@ xaULONG d_flag;		/* map_flag */
   if ((the_chdr != xa_ham_chdr) || (xa_ham_init != 6))
   {
     register xaULONG i;
-    DEBUG_LEVEL1 fprintf(stderr,"xa_ham_map: old = %lx new = %lx\n",
+    DEBUG_LEVEL1 fprintf(stderr,"xa_ham_map: old = %x new = %x\n",
 					(xaULONG)xa_ham_chdr,(xaULONG)the_chdr);
     for(i=0; i<XA_HAM6_CACHE_SIZE; i++) xa_ham_map[i] = XA_HAM_MAP_INVALID;
     xa_ham_chdr = the_chdr; xa_ham_init = 6;
@@ -2281,7 +2254,7 @@ xaULONG d_flag;		/* map_flag */
   if ( (the_chdr != xa_ham_chdr) || (xa_ham_init != 8))
   {
     register xaULONG i;
-    DEBUG_LEVEL1 fprintf(stderr,"xa_ham8_map: old = %lx new = %lx\n",
+    DEBUG_LEVEL1 fprintf(stderr,"xa_ham8_map: old = %x new = %x\n",
 					(xaULONG)xa_ham_chdr,(xaULONG)the_chdr);
     for(i=0; i<XA_HAM8_CACHE_SIZE; i++) xa_ham_map[i] = XA_HAM_MAP_INVALID;
     xa_ham_chdr = the_chdr; xa_ham_init = 8;
@@ -2346,11 +2319,9 @@ void
 IFF_Shift_CMAP(cmap,csize)
 ColorReg *cmap;
 xaULONG csize;
-{
-  xaULONG i;
+{ xaULONG i;
   for(i=0;i<csize;i++)
-  {
-    cmap[i].red   >>= 4;
+  { cmap[i].red   >>= 4;
     cmap[i].green >>= 4;
     cmap[i].blue  >>= 4;
   }
@@ -2365,9 +2336,7 @@ xaULONG dsize;          /* delta size */
 XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 { xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
   xaULONG imaged = dec_info->imaged;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
+  void *extra = dec_info->extra;
  register xaLONG col,depth,dmask;
  register xaLONG rowsize,width;
  xaULONG poff,doff,col_shift;
@@ -2532,23 +2501,21 @@ xaULONG dsize;          /* delta size */
 XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 { xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
   xaULONG imaged = dec_info->imaged;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
- register xaLONG col,depth,dmask;
- register xaLONG rowsize,width;
- xaULONG poff,col_shift;
- register xaUBYTE *i_ptr;
- register xaUBYTE *optr;
- register xaULONG opcnt,op,cnt;
- xaLONG miny,minx,maxy,maxx;
- xaULONG iextra = (xaULONG)(extra);
+  void *extra = dec_info->extra;
+  register xaLONG col,depth,dmask;
+  register xaLONG rowsize,width;
+  xaULONG poff,col_shift;
+  register xaUBYTE *i_ptr;
+  register xaUBYTE *optr;
+  register xaULONG opcnt,op,cnt;
+  xaLONG miny,minx,maxy,maxx;
+  xaULONG iextra = (xaULONG)(extra);
 
  /* set to opposites for min/max testing */
- dec_info->xs = imagex;
- dec_info->ys = imagey;
- dec_info->xe = 0;
- dec_info->ye = 0;
+  dec_info->xs = imagex;
+  dec_info->ys = imagey;
+  dec_info->xe = 0;
+  dec_info->ye = 0;
 
  i_ptr = image;
  width = imagex;
@@ -2885,10 +2852,6 @@ xaUBYTE *delta;         /* delta data. */
 xaULONG dsize;          /* delta size */
 XA_DEC_INFO *dec_info;  /* Decoder Info Header */
 { xaULONG imagex = dec_info->imagex;    xaULONG imagey = dec_info->imagey;
-  xaULONG imaged = dec_info->imaged;
-  xaULONG map_flag = dec_info->map_flag;        xaULONG *map = dec_info->map;
-  xaULONG special = dec_info->special;          void *extra = dec_info->extra;
-  XA_CHDR *chdr = dec_info->chdr;
   xaULONG image_size = imagex * imagey;
   memcpy( (char *)image, (char *)delta, image_size);
   dec_info->xs = dec_info->ys = 0;  dec_info->xe = imagex; dec_info->ye = imagey; 

@@ -1,0 +1,100 @@
+
+
+This is the checklist to keep track of Audio Codec to Audio Hardware
+conversion support.
+
+Currently Supported Hardware Configurations
+
+  0   Sun uLaw		mono    8 bits
+  1   Linear PCM	mono    8 bits
+  2   Linear PCM	mono   16 bits Big Endian
+  3   Signed PCM	mono   16 bits Little Endian
+  4   Linear PCM	mono   16 bits Big Endian
+  5   Signed PCM	mono   16 bits Little Endian
+
+4: (Sun Sparc 10)
+0: (Sun Sparc 1,2,IPC,IPX)
+
+Currently Supported Audio Codecs
+
+  a   Sun uLaw		mono    8 bits
+  b   ARM log		mono    8 bits
+  c   Linear PCM	mono    8 bits
+  d   Signed PCM	mono    8 bits
+  e   Linear PCM	mono   16 bits Big Endian
+  f   Signed PCM	mono   16 bits Little Endian
+  g   Linear PCM	mono   16 bits Big Endian
+  h   Signed PCM	mono   16 bits Little Endian
+  i   MS ADPCM		mono    4 bits
+  j   Intel DVI(old) 	mono    4 bits
+  k   Intel DVI(new) 	mono    4 bits
+  l   Apple IMA4	mono    4 bits
+
+  A   Sun uLaw		stereo  8 bits
+  B   ARM log		stereo  8 bits
+  C   Linear PCM	stereo  8 bits
+  D   Signed PCM	stereo  8 bits
+  E   Linear PCM	stereo 16 bits Big Endian
+  F   Signed PCM	stereo 16 bits Little Endian
+  G   Linear PCM	stereo 16 bits Big Endian
+  H   Signed PCM	stereo 16 bits Little Endian
+  I   MS ADPCM		stereo  4 bits
+  J   Intel DVI(old) 	stereo  4 bits
+  K   Intel DVI(new) 	stereo  4 bits
+  L   Apple IMA4	stereo  4 bits
+
+
+	| 0 | 1 | 2 | 3 | 4 | 5 |
+   -----+---+---+---+---+---+---+
+    a   | Y | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    b   | N | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    c   | Y | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    d   | Y | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    e   |   | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    f   |   | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    g   |   | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    h   |   | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    i   | Y | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    j   | Y | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    k   | Y | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    l   | Y | Y |   |   | Y |   |
+   =====+===+===+===+===+===+===+
+    A   |   | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    B   |   | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    C   |   | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    D   | N | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    E   |   | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    F   |   | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    G   |   | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    H   |   | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    I   | Y | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    J   | Y | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    K   | Y | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+    L   | Y | Y |   |   | Y |   |
+   -----+---+---+---+---+---+---+
+
+
+
+

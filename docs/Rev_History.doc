@@ -1,0 +1,346 @@
+
+TBD work prior revision history back in.
+-------------------------------------------------------------------------
+TODO (not in any specific order)
+-------------------------------------------------------------------------
+	+ Add kludge for 24 bit X11 Visuals that are only 3 bytes per
+          pixel instead of the normal 4 bytes per pixel.
+	  Performance-wise, this will always be slower than the 4 bytes
+	  case(faster to write 32 bits once than 8 bits three times).
+	  Unclear yet whether I'll optimize for this case.
+	+ Add playback as file downloads for AVI and FLI files.
+	+ Move audio codecs to dlls.
+	+ Redo audio API to allow for greater flexibilty.
+	+ Add audio conversion routines to output stereo sound.
+	+ Improve GUI
+	    + toggle for internal/headphones/lineout
+	    + scrollbar for video frame #
+	+ Make use of X11 resources
+	+ MPEG Type P and Type B frame support
+	+ Enable more formats to be supported by serial streams.
+	  (like JPEG, MPEG, etc). 
+	+ add +f option for GIF images.
+
+
+-------------------------------------------------------------------------
+Known Bugs:
+-------------------------------------------------------------------------
+
+	+ QT	The quicktime edit chunk isn't fully supported. So
+		Quicktimes that have gaps in the audio or video
+		track don't sync up correctly.
+
+	+ QT	Quicktime 3.0 introduced features like embedded URLs
+		and files which don't store any audio/video directly
+		but instead reference other files that do.
+		These aren't supported yet.
+
+	+ X11	XFree  introduced a non-standard Visual - packed 24bpps.
+		Note that I'm not talking depth, I'm talking bpp(bits 
+		per pixel).
+
+-------------------------------------------------------------------------
+2.80.1  (21Mar99)
+-------------------------------------------------------------------------
+	+ JPEG: now guesses at DQT table if JPEG doesn't have one.
+	+ DOCS: Forgot to include xanim.readme and xanim.man pages.
+        + DOCS: Fleshed out README.dll file.
+	+ minor tweaks to help some systems compile XAnim better.
+	+ Make: added defines to allow a different default DLL directory.
+	+ Make: added defines for zlib include/lib directories.
+	+ IMake: changed dependencies from Makefile to Imakefile.
+
+-------------------------------------------------------------------------
+2.80.0  (14Mar99) What happened to 1998?
+-------------------------------------------------------------------------
+	+ AVI:  Added support for RainbowRunner JPG(dmb1) video codec
+	+ AVI:  Added support for Broadway MPEG(bw10) video codec.
+	+ AVI:  Cleaned up Xing's Editable MPEG(xmpg) video codec.
+	+ AVI:  Added support for Y41P capture video codec.
+	+ AVI:  Added support for I420 capture video codec.
+	+ AVI:  Added support for VYUY capture video codec.
+	+ AVI:  Added support for V422 capture video codec.
+	+ AVI:  Added support for YV12 capture video codec.
+	+ AVI:  Added support for Y41P capture video codec.
+	+ AVI:  Added support for YUY2 capture video codec.
+	+ QT:   Added support for MJPG-A video codec.
+	+ QT:   Added support for 8BPS depth 8 video codec.
+	+ QT:   Added support for 8BPS depth 24 video codec.
+	+ QT:   Added support for Compressed Headers using zlib.
+	+ QT:   Added support for skip/free chunks.
+	+ DLL:  AVI/Quicktime can now use xanim specific dll video modules.
+	+ DLL:  Created Creative CYUV   video decompression dll module.
+	+ DLL:  Created Radius Cinepak  video decompression dll module.
+	+ DLL:  Created Intel YVU9      video decompression dll module.
+	+ DLL:  Created Intel Indeo 3.x video decompression dll module.
+	+ DLL:  Created Intel Indeo 4.1 video decompression dll module.
+	+ DLL:  Created Intel Indeo 5.0 video decompression dll module.
+	+ DLL:  Created CCITT H.261     video decompression dll module.
+	+ DLL:  Created CCITT H.263     video decompression dll module.
+	+ JPEG: Cleaned up some bugs and improved error recovery.
+	+ J6I:  Added support for J6I jpeg images. Haven't figured out audio.
+        + 8SVX: Andreas Micklei submitted code for Amiga 8SVX audio format.
+	+ X11:  Moheb Mekhaiel submitted partial patch to fix endian 
+                mismatch between host and remote display.
+
+-------------------------------------------------------------------------
+2.70.7.0  (20Mar98)  What happened to 1997?
+-------------------------------------------------------------------------
+	+ SGI MOVI:	Added support for MVC2 video codec
+	+ SGI MOVI:	Added support for RGB uncompressed video codec
+	+ AVI:		RGB24 is now padded correctly.
+	+ AVI:		RLE8 where width not multiple of 4 is now fixed.
+	+ AVI:		Added support for the MS GSM 6.10 audio codec.
+			  :GSM support is from source code made available by
+			  :Jutta Degener/Carsten Bormann of the Communications
+			  :and Operating Systems Research Group (KBS) at the
+			  :Technische Universitaet Berlin.  See the copyright
+			  :notice at the top of the "xa_gsm.c" file.
+			  : The AVI/WAV GSM is 320 samples in 65 bytes.
+			  : The Quicktime GSM is 160 samples in 33 bytes.
+	+ WAV:		Added support for the MS GSM 6.10 audio codec.
+	+ QT:		Added support for the GSM 6.10 audio codec.
+	+ QT:		Fixed problem supporting Quicktime 3.0. Would
+			incorrectly report missing .data section.
+	+ QT:		Added support for uLAW audio codec.
+	+ GIF:		Adam Moss added code to handle disposal methods.
+	+ GIF:		Fixed bug in generated clip mask for tranparent images.
+	+ Show:		Eric Shaw sent code to tile Video to X11 root window.
+			Option is +root. 
+	+ Util:		Adam Moss optimized scaling routines for speed.
+	+ X11:		The default Visual is now used by default instead
+			of selecting the deepest one.
+	+ Misc:		The +f option is now on by default. So XAnim will
+			not read the entire animation into memory first.
+			Most hard drives are fast enought that this won't
+			slow things down by much.  It's on NFS mounted
+			partitions that heavy slow downs could occurs(and
+			in which case use -f).
+
+	+ Misc:		bunch of other minor fixes that I don't remember.
+
+-------------------------------------------------------------------------
+2.70.6.4  (26Jan97) SuperBowl XXXI Sunday: Patriots vs Packers and I'm torn.
+-------------------------------------------------------------------------
+	+ SGI MOVI:	fixed bug with MVC1 compression and 16/24 X11 dpys.
+        + Audio:	Add some more conversions(uLaw, armLaw) for machines 
+			with 8 bit PCM audio.
+	+ AUDIO:	NetBSD some more tweaks by Dowdeswell.
+	+ AUDIO:	BSDI/OS v2.1 support tweak added. (Jay Vassos-Libove)
+        + REMOTE:	tweaked buttons so they'll stay down a minum 
+			time when pressed to provide better visual feed back.
+	+ Indeo:	fixed bug with YUV to RGB conversion for odd sized
+			images.
+	+ AUDIO:	Steve Waterworth fixed up HP Aserver code.
+	+ JFIF:		fixed bug with +b switch and JPEG images.
+	+ AUDIO:	Fixed bug with the stereo DVI codec.
+        + Looping:	fixed bug when pingponging in FLIs
+        + Looping:	Pressing the "p" key inside anim window will now
+			toggle the pingpong flag which affects how the
+			animation is looped. see "xanim.readme"
+	+ X11:    	Fixed bug with TrueColor visuals that had colormaps
+			greater than 256 entries.(ie XFree86's 32bpp)
+
+	+ Remote Window Commands and Control added. See +W* options
+          in the xanim.readme/xanim.man files and see the
+	  Remote_Window.doc file.
+
+-------------------------------------------------------------------------
+2.70.6.3  (02Aug96)
+-------------------------------------------------------------------------
+	+ AVI:  fixed bug with RGB depth 24  on depth 16 Displays.
+	+ IMA4: fixed bug that caused audio noise with quicktimes
+		that used the stereo IMA4  audio codec.
+	+ MISC: Fixed colormap problem with -Cn and audio only files.
+	+ JPG:  JPEG 111111 fixed color bug with dither/+Cn option.
+	+ MISC: cleaned up type casting for functions that return ptrs
+                to void *functions. 
+        + QT:	There's a new variation to the quicktime file format
+		where the headers are stored up front(allows streaming
+		of quicktime animations). Previous xanim revs had
+		trouble reading this.
+	+ AUDIO: Roland sent in modifications to the NetBSD audio code
+		 to improve support for a wider variety of cards.
+	+ AUDIO: Minor mods for Digital Unix 3.2C MME 1.60
+
+-------------------------------------------------------------------------
+2.70.6.2  (06Jun96)
+-------------------------------------------------------------------------
+	+ CVID:  broke grayscale cvid animations. If you already
+		 have 27061 then edit "xa_qt.c" and change line 1127 from: 
+		   ---
+		    }
+		   ---
+	         to be: 
+		   ---
+		    }
+		    if (qt->depth == 40) qt->depth = 8;
+		   ---
+	         and recompile.
+
+-------------------------------------------------------------------------
+2.70.6.1  (05Jun96)
+-------------------------------------------------------------------------
+	+ KPCD:  Fixed Minor warning that some fanatical compilers
+                 considered an error. :^)   No reason to upgrade
+                 to this is you can compile 2.70.6
+
+-------------------------------------------------------------------------
+2.70.6  (04Jun96)
+-------------------------------------------------------------------------
+	+ REMOTE:  Petunia volume scrollbar is now settable with mouse.
+	+ REMOTE:  -Zr wasn't working with Petunia.
+	+ REMOTE:  some compile errors when compiling with no remote control.
+	+ AVI:     hooks for Creative CYUV Video Codec added. 
+			see creative.readme for instructions.
+	+ AVI:     Added support for WHAM video codec(same as CRAM).
+	+ QT:	   Added support for Kodak Photo CD Video Codec.
+	+ QT:	   Added support for RAW depth 1 Video Codec
+	+ QT:	   Added support for RLE depth 4 Video Codec
+	+ QT:	   Added support for Microsoft Video 1 Video Codec.
+	+WAV:	   large audio chunks are broken into smaller chunks
+		   artificially by xanim to improve +f memory usage.
+
+-------------------------------------------------------------------------
+2.70.5.4 (01May96)
+-------------------------------------------------------------------------
+	+ Okay, I screwed up. I had changed over to long ints. Big
+          mistake. Changing back. This won't affect machines with 32
+          data paths. Alpha users need to revert back to the xa2.0_
+          decompression modules.
+
+	+ AUDIO: Fixed bug where audio_ring can occasionally get out
+                 of sync between the update and the audio_out pointers.
+       
+
+-------------------------------------------------------------------------
+2.70.5.3 (28Apr96)
+-------------------------------------------------------------------------
+	+ This is just a clean up release. Fixed all the "gcc -Wall"
+          warnings on both linux and SunOS 4.1.3 machines.
+          Some of these warnings were(or were treated) as compile 
+	  errors on SGI and Alpha machines.
+
+-------------------------------------------------------------------------
+2.70.5.2 (19Apr96)
+-------------------------------------------------------------------------
+	+ MPG: fixed a bug when allocating MPG buffers if the height 
+	       was greater than the width.
+
+	+ FLI: fixed a bug introduced in 27051 that affects some FLIs.
+
+-------------------------------------------------------------------------
+2.70.5.1 (12Apr96)
+-------------------------------------------------------------------------
+	+ AUD:  with the +f option, stopping moving restarting  or
+	        playing backward then forwards could occasionally
+		break audio. Now fixed. This bug was recently
+	 	introduced, but not sure when.
+
+	+ AVI:	added +F dithering support to CRAM16 Video Codec.
+
+	+ BUG:  fixed bug in 2x2 dithering used by Cinepak. 
+	        Was introduced in 2705 as I tried to improved the dithering.
+                This caused potential core dumps.
+
+	+ HPDEV:  setting sampling rate occasionally failed because 
+	          /dev/audio reported it was busy. Now loop on that.
+
+-------------------------------------------------------------------------
+2.70.5 (04Apr96)
+-------------------------------------------------------------------------
+	+ AVI:     fixed Ultimotion bug with 16/24 depth displays.
+		   I didn't correct generate the correct colors. 
+
+	+ WIDGETS: I'm starting to do my own GUI. Eventually, I will
+                   no longer support Athena, Athena3d or Motif.
+                   Quite frankly, it's been a pain trying to support
+                   them with all sorts of library, include, portability
+		   and installation problems.  
+
+		   Use XA_REMOTE_DEFS = -DXA_PETUNIA instead. Not saying
+		   it's better, just more portable across the X11
+                   platforms and less bothersome(to me). Also, it's the
+		   only GUI I plan on support and improving on now.
+		   Constructive feedback welcome.
+
+	+ QT:   added YUV2 support for depth 16 and 24 Displays.
+	+ MOVI: added display depth > 8 support to MVC1 video codec.
+	+ MOVI: added +F dithering to MVC1 video codec.
+		This slows it down considerably. So use -F to turn off
+		or +CF4 as an alternative method. Will try to optimize
+		later.
+	+ AVI:  added support for RGB depth  4 Video Codec
+	+ AVI:  added support for RGB depth 16 Video Codec
+	+ IFF:  fixed compile error with fprintf statements.
+
+-------------------------------------------------------------------------
+2.70.4.3
+-------------------------------------------------------------------------
+	+ removed erroneous "static" from the xa_wav.c and xa_avi.c 
+	  files. Caused compile errors with some compilers.
+	+ Redid how audio-only files are merged with video files.
+	  See the "+Am" and the "+AM" options in the xanim.read
+	  or the xanim.man files.
+	+ AUDIO: with audio only files, you know have 100ms resolution
+	  for single stepping through that file. 
+	+ AVI: Added support for audio only AVI files.
+	+ QT:  Added support for audio only QT files.
+
+-------------------------------------------------------------------------
+2.70.4.2
+-------------------------------------------------------------------------
+	+ Replaced bcopy with memcpy for those machines without bcopy.
+	+ QT: Added dithering to RPZA Video Codec(makes it twice as slow).
+	   use the +F or -F option to turn it on or off respectively.
+
+-------------------------------------------------------------------------
+2.70.4.1
+-------------------------------------------------------------------------
+        + Bug fix for machines without audio.
+          I tested it, I fixed something else and broke it. argh. :^)
+
+-------------------------------------------------------------------------
+2.70.4
+-------------------------------------------------------------------------
+	+ video/audio sync fixed. Was broken in 2.70.3(actually it was
+           only partially implemented after a change I did).
+	+ QT: IMA4 audio codec, mono/stereo added.
+	+ QT: fixed bug that caused lack of sync with some animations.
+	  Had to do with incorrectly determining frame timing.
+	+ QT: fixed RLE8 bug that caused trailers.
+	+ QT: fixed YUV2 bug.
+	+ JPEG: fixed bug in 21_11_11 JPEG files with depth 16 and 24 displays.
+          Caused core dumps.
+	+ JPEG: fixed bug that caused corruption with some images.
+	+ JPEG: added support for 41_11_11 images/anims.
+	+ MPEG: fixed bug that caused corruption with some newer
+	  mpegs. NOTE: XAnim doesn't suport mpeg files with interleaved
+          audio yet.
+	+ AVI: XAnim now used AVI IDX1 chunk if present instead of scanning
+          the entire AVI file. If AVI file is truncated or coming in
+          from a serial stream, then it defaults back to scanning.
+	  This greatly speeds up CDROM reading with +f option.
+	+ AVI/WAV: added MSADPCM stereo audio support.
+	+ AVI/WAV: added DVI/IMA mono/stereo audio support.
+	  NOTE: both old and new DVI formats supported. User needs to
+           use "+k2" option with old DVI format. Only way to tell is
+           if it sounds "bad" and "+k2" fixes it. Whadda pain.
+	+ SGI Movie format support added. Just JPEG and MVC1 Video codecs.
+          MVC2 not yet supported.
+	+ stdin input for the following formats *ONLY*: 
+		AVI, FLI, FLC, DL, GIF, IFF, Movie_Setters and RLE
+	+ ftp input for the following formats *ONLY*: 
+		AVI, FLI, FLC, DL, GIF, IFF, Movie_Setters and RLE
+          Still needs to load entire file.  User needs to define
+          XANIM_USER and XANIM_PASSWD env variables. Typically
+          anonymous and user's email address are used.
+	+ Audio Conversion routines rewritten to improve freq conversion.
+	+ -DXA_FORK define no longer needed.
+	+ HP: HP Audio SUPPORT IS BROKEN IN 2.70.4. Use HPDEV instead.
+	  will hopefully be fixed.
+	+ -Ae option to turn off audio wasn't working. fixed.
+	+ Probably a lot of other stuff I forgot about.
+		
+-------------------------------------------------------------------------
+-------------------------------------------------------------------------

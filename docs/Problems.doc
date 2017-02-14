@@ -1,0 +1,116 @@
+
+This file describes some of the common warnings and errors that
+you might encounter while running XAnim 2.70.3 and above.
+
+For the purposes of most of the errors messages, assume this
+was the command line:
+
+			"xanim anim_file"
+
+
+1) Unable to open/read animation:  anim_file
+
+    This means either XAnim was unable to find the file "anim_file"
+    or it did not have read permission for file "anim_file".
+   
+2) Unknown or unsupported animation type: anim_file
+ 
+    XAnim doesn't recognize "anim_file" as being in a format
+    that it supports.
+
+3)  malloc err
+
+   If "malloc err" occurs, either by itself or within a sentence, it
+   means that you do not have enough memory to view that particular
+   animation with the options you selected.
+
+   For most animation formats, the "+f" option can significantly
+   reduce memory usage, but can lead to audio/video sync problems
+   if playing back from a CDROM.  Also note, not all formats can
+   make use of the +f option. See "xanim.readme" for more details
+   on this subject.
+
+4) AVI Video Codec: Intel Indeo R3.x depth=24 is unsupported by this executable.
+   QT Video Codec:  Intel Indeo R3.x depth=24 is unsupported by this executable.
+   AVI Video Codec: Radius Cinepak depth=24 is unsupported by this executable.
+   QT Video Codec:  Radius Cinepak depth=24 is unsupported by this executable.
+
+   Or similiar.
+
+   If you get one of the above errors messages, it means that you
+   did not compile in Radius Cinepak or Intel Indeo support into
+   XAnim. You will want to read the "cinepak.readme" and "intel.readme"
+   for instructions on how to do this.
+
+   Since different files are required for each machine/OS combination, 
+   the readme files distributed with your particular revision of XAnim 
+   may be out of date as I add support for newer machines. In which
+   case you'll want to grab the latest readme files at the following
+   WWW sites:
+
+        http://xanim.va.pubnix.com/home.html
+        http://smurfland.cit.buffalo.edu/xanim/home.html
+        http://www.tm.informatik.uni-frankfurt.de/xanim/
+
+   or via anonymous ftp from ftp xanim.va.pubnix.com [199.170.0.28]
+
+5) Video Codec: Unknown XXXX(7768616d) depth=8 is unsupported by this exec.
+
+   Where XXXX is any four letter combination.
+
+   Both AVI and Quicktime files can make use of many different Video
+   Codecs. New ones are being developed all the time and most of them
+   are proprietary and specs are not readily available(if at all).
+   Also, many Video Codecs can have different depths. XAnim may
+   support one depth, but not another.  The depth has nothing to
+   do with your display type.
+
+   The above warning message indicates that XAnim is not familiar
+   with that particular Video Codec. You should contact me with
+   the above information, where you obtained the animation file
+   and any other information that might help me identify the
+   Vendor/Software responsible for producing it. I can then
+   attempt to obtain the specifications from them so that I
+   may support that format, providing there are no licensing fees.
+
+6) Warning: No supported Video frames found.
+
+   This occurs in when XAnim can not find any video frames
+   inside a Quicktime or AVI file.  Current revisions of
+   XAnim do not support audio only Quicktime/AVI files.
+   This will change in the near future.
+
+7) AVI vid dlta: read failed
+
+   This is a warning message. It means XAnim encountered the
+   end of the animation file BEFORE it was supposed to. This
+   typically occurs when an animation file was truncated
+   for whatever reason. It is common for this to occur
+   when downloading via the WWW during peak traffic hours.
+
+   XAnim will still display any full frames that it
+   found before the end of the file.
+
+8) QT: file possibly truncated or missing .rsrc info
+
+   Quicktime animations usually store critical file
+   headers at the very end of the file. If the file
+   was truncated for whatever reason, then these
+   headers are missing and the file is unplayable
+   by anything.
+
+   This can also occur if the file was not properly
+   transferred from the Macintosh and the critical
+   headers were no added to the end of the data
+   fork. Again, not playable.
+
+   NOTE: 27062 incorrectly reports this error with the
+    new format quicktimes. 27063 fixes this.
+
+9) QT: This is only .data fork. Need .rsrc fork
+
+   This means the Quicktime animation was not
+   properly prepared and transferred from the
+   Macintosh. Critical header information is
+   missing. This file is unplayable by anything.
+

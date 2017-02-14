@@ -2,23 +2,17 @@
 /*
  * xa_jmov.c
  *
- * Copyright (C) 1995 by Mark Podlipec. 
+ * Copyright (C) 1995-1998,1999 by Mark Podlipec. 
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  * 
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
- *
- */
-/* The following copyright applies to all Ultimotion Segments of the Code:
- *
- * "Copyright International Business Machines Corporation 1994, All rights
- *  reserved. This product uses Ultimotion(tm) IBM video technology."
  *
  */
 
@@ -31,7 +25,6 @@
 
 #include "xa_jmov.h" 
 
-xaLONG Is_JMOV_File();
 xaULONG JMOV_Read_File();
 JMOV_FRAME *JMOV_Add_Frame();
 void JMOV_Free_Frame_List();
@@ -42,34 +35,30 @@ void JMOV_Read_Frame();
 
 
 /* CODEC ROUTINES */
-xaULONG JFIF_Decode_JPEG();
-void JFIF_Read_IJPG_Tables();
+extern xaULONG JFIF_Decode_JPEG();
 extern void XA_Gen_YUV_Tabs();
-extern JPG_Alloc_MCU_Bufs();
-extern jpg_search_marker();
-extern IJPG_Tab1[64];
-extern IJPG_Tab2[64];
-extern JFIF_Init_IJPG_Tables();
+extern void JPG_Alloc_MCU_Bufs();
+extern char IJPG_Tab1[64];
+extern char IJPG_Tab2[64];
+extern void JFIF_Init_IJPG_Tables();
 
-void CMAP_Cache_Clear();
-void CMAP_Cache_Init();
+extern void CMAP_Cache_Clear();
+extern void CMAP_Cache_Init();
 
-XA_ACTION *ACT_Get_Action();
-XA_CHDR *ACT_Get_CMAP();
-XA_CHDR *CMAP_Create_332();
-XA_CHDR *CMAP_Create_422();
-XA_CHDR *CMAP_Create_Gray();
-void ACT_Add_CHDR_To_Action();
-void ACT_Setup_Mapped();
-void ACT_Get_CCMAP();
-XA_CHDR *CMAP_Create_CHDR_From_True();
-xaULONG CMAP_Find_Closest();
-xaUBYTE *UTIL_RGB_To_FS_Map();
-xaUBYTE *UTIL_RGB_To_Map();
+extern XA_ACTION *ACT_Get_Action();
+extern XA_CHDR *ACT_Get_CMAP();
+extern XA_CHDR *CMAP_Create_332();
+extern XA_CHDR *CMAP_Create_422();
+extern XA_CHDR *CMAP_Create_Gray();
+extern void ACT_Add_CHDR_To_Action();
+extern void ACT_Setup_Mapped();
+extern void ACT_Get_CCMAP();
+extern XA_CHDR *CMAP_Create_CHDR_From_True();
+extern xaULONG CMAP_Find_Closest();
+extern xaUBYTE *UTIL_RGB_To_FS_Map();
+extern xaUBYTE *UTIL_RGB_To_Map();
 
-xaULONG UTIL_Get_MSB_Long();
-xaULONG UTIL_Get_MSB_UShort();
-void  UTIL_FPS_2_Time();
+extern void  UTIL_FPS_2_Time();
 extern XA_ANIM_SETUP *XA_Get_Anim_Setup();
 void XA_Free_Anim_Setup();
 
@@ -79,7 +68,7 @@ xaULONG jmov_audio_type;
 xaULONG jmov_audio_freq;
 xaULONG jmov_audio_chans;
 xaULONG jmov_audio_bps;
-xaULONG XA_Add_Sound();
+extern xaULONG XA_Add_Sound();
 
 
 xaULONG jmov_frame_cnt;
@@ -119,47 +108,17 @@ JMOV_FRAME *fframes;
   }
 }
 
-#define JMOV_j_mo 0x6A5F6D6F
-#define JMOV_vie  0x76696500
-
-
-/*
- *
- */
-xaLONG Is_JMOV_File(filename)
-char *filename;
-{
-  FILE *fin;
-  xaULONG data0,data1;
-
-  if ( (fin=fopen(filename,XA_OPEN_MODE)) == 0) return(xaNOFILE);
-  data0 = UTIL_Get_MSB_Long(fin);
-  data1 = (UTIL_Get_MSB_Long(fin)) & 0xffffff00;
- 
-  fclose(fin);
-  if ( (data0 == JMOV_j_mo) && (data1 == JMOV_vie)) return(xaTRUE);
-  return(xaFALSE);
-}
-
 
 xaULONG JMOV_Read_File(fname,anim_hdr,audio_attempt)
 char *fname;
 XA_ANIM_HDR *anim_hdr;
 xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
-{
-  FILE *fin;
+{ XA_INPUT *xin = anim_hdr->xin;
   xaLONG i,t_time;
   xaULONG t_timelo;
-  XA_ACTION *act;
   XA_ANIM_SETUP *jmov;
   JMOV_HDR   jmov_hdr;
  
-  if ( (fin=fopen(fname,XA_OPEN_MODE)) == 0)
-  {
-    fprintf(stderr,"can't open JMOV File %s for reading\n",fname);
-    return(xaFALSE);
-  }
-
   jmov = XA_Get_Anim_Setup();
   jmov->vid_time = XA_GET_TIME( 100 ); /* default */
 
@@ -168,19 +127,19 @@ xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
   jmov_frame_cur	= 0;
   jmov_audio_attempt	= audio_attempt;
 
-  if (JMOV_Read_Header(fin,anim_hdr,jmov,&jmov_hdr) == xaFALSE)
+  if (JMOV_Read_Header(xin,anim_hdr,jmov,&jmov_hdr) == xaFALSE)
   {
     fprintf(stderr,"JMOV: read header error\n");
-    fclose(fin);
+    xin->Close_File(xin);
     return(xaFALSE);
   }
 
-  JMOV_Read_Index(fin,anim_hdr,jmov,&jmov_hdr);
+  JMOV_Read_Index(xin,anim_hdr,jmov,&jmov_hdr);
 
 
   if (xa_verbose) 
   {
-    fprintf(stderr,"JMOV %ldx%ldx%ld frames %ld\n",
+    fprintf(stderr,"JMOV %dx%dx%d frames %d\n",
 		jmov->imagex,jmov->imagey,jmov->imagec,jmov_frame_cnt);
   }
   if (jmov_frame_cnt == 0)
@@ -201,7 +160,7 @@ xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
   {
     if (i > jmov_frame_cnt)
     {
-      fprintf(stderr,"JMOV_Read_Anim: frame inconsistency %ld %ld\n",
+      fprintf(stderr,"JMOV_Read_Anim: frame inconsistency %d %d\n",
                 i,jmov_frame_cnt);
       break;
     }
@@ -222,8 +181,8 @@ xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
   anim_hdr->frame_lst[i].zztime = -1;
   anim_hdr->frame_lst[i].act  = 0;
   anim_hdr->loop_frame = 0;
-  if (xa_buffer_flag == xaFALSE) anim_hdr->anim_flags |= ANIM_SNG_BUF;
-  if (xa_file_flag == xaTRUE) anim_hdr->anim_flags |= ANIM_USE_FILE;
+  if (!(xin->load_flag & XA_IN_LOAD_BUF)) anim_hdr->anim_flags |= ANIM_SNG_BUF;
+  if (xin->load_flag & XA_IN_LOAD_FILE) anim_hdr->anim_flags |= ANIM_USE_FILE;
   anim_hdr->anim_flags |= ANIM_FULL_IM;
   anim_hdr->max_fvid_size = jmov->max_fvid_size;
   anim_hdr->max_faud_size = jmov->max_faud_size;
@@ -245,31 +204,33 @@ xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
 } /* end of read file */
 
 
-xaULONG JMOV_Read_Header(fin,anim_hdr,jmov,jmov_hdr)
-FILE *fin;
+xaULONG JMOV_Read_Header(xin,anim_hdr,jmov,jmov_hdr)
+XA_INPUT *xin;
 XA_ANIM_HDR *anim_hdr;
 XA_ANIM_SETUP *jmov;
 JMOV_HDR *jmov_hdr;
 { xaULONG t;
-  t 			= UTIL_Get_MSB_Long(fin); /* skip 8 bytes of header */
-  t 			= UTIL_Get_MSB_Long(fin); 
-  jmov_hdr->version	= UTIL_Get_MSB_Long(fin);
-  jmov_hdr->fps		= UTIL_Get_MSB_Long(fin);
-  jmov_hdr->frames	= UTIL_Get_MSB_Long(fin);
-  jmov_hdr->width	= UTIL_Get_MSB_Long(fin);  
-  jmov_hdr->height	= UTIL_Get_MSB_Long(fin);
-  jmov_hdr->bandwidth	= UTIL_Get_MSB_Long(fin);
-  jmov_hdr->qfactor	= UTIL_Get_MSB_Long(fin);
-  jmov_hdr->mapsize	= UTIL_Get_MSB_Long(fin);
-  jmov_hdr->indexbuf	= UTIL_Get_MSB_Long(fin);
-  jmov_hdr->tracks	= UTIL_Get_MSB_Long(fin);
-  jmov_hdr->volbase 	= UTIL_Get_MSB_Long(fin); 
-  jmov_hdr->audioslice	= UTIL_Get_MSB_Long(fin);
-/* Audio_hdr ??? Nice and compatible I see */
-  jmov_hdr->freq	= UTIL_Get_MSB_Long(fin);
-  jmov_hdr->chans	= UTIL_Get_MSB_Long(fin);
-  jmov_hdr->prec	= UTIL_Get_MSB_Long(fin);
-  jmov_hdr->codec	= UTIL_Get_MSB_Long(fin);
+  char *audio_desc;
+  t 			= xin->Read_MSB_U32(xin); /* skip 8 bytes of header */
+  t 			= xin->Read_MSB_U32(xin); 
+  jmov_hdr->version	= xin->Read_MSB_U32(xin);
+  jmov_hdr->fps		= xin->Read_MSB_U32(xin);
+  jmov_hdr->frames	= xin->Read_MSB_U32(xin);
+  jmov_hdr->width	= xin->Read_MSB_U32(xin);  
+  jmov_hdr->height	= xin->Read_MSB_U32(xin);
+  jmov_hdr->bandwidth	= xin->Read_MSB_U32(xin);
+  jmov_hdr->qfactor	= xin->Read_MSB_U32(xin);
+  jmov_hdr->mapsize	= xin->Read_MSB_U32(xin);
+  jmov_hdr->indexbuf	= xin->Read_MSB_U32(xin);
+  jmov_hdr->tracks	= xin->Read_MSB_U32(xin);
+  jmov_hdr->volbase 	= xin->Read_MSB_U32(xin); 
+  jmov_hdr->audioslice	= xin->Read_MSB_U32(xin);
+/* Sun's Audio_hdr */
+  jmov_hdr->freq	= xin->Read_MSB_U32(xin);
+  xin->Read_MSB_U32(xin); /* sja throw away samples per unit */
+  jmov_hdr->prec	= xin->Read_MSB_U32(xin);
+  jmov_hdr->chans	= xin->Read_MSB_U32(xin);
+  jmov_hdr->codec	= xin->Read_MSB_U32(xin);
 
   UTIL_FPS_2_Time(jmov, ((double)(jmov_hdr->fps)) );
 
@@ -282,10 +243,13 @@ JMOV_HDR *jmov_hdr;
   {
     case JMOV_AUDIO_ENC_NONE:
     case JMOV_AUDIO_ENC_PCM:
-        jmov_audio_type = XA_AUDIO_LINEAR;
+	if (jmov_audio_bps == 1) jmov_audio_type = XA_AUDIO_LINEAR;
+	else			 jmov_audio_type = XA_AUDIO_SIGNED;
+        audio_desc = "PCM";
 	break;
     case JMOV_AUDIO_ENC_ULAW:
 	jmov_audio_type = XA_AUDIO_ULAW;
+        audio_desc = "ULAW";
 	break;
   }
   if ( (jmov_audio_chans > 2) || (jmov_audio_chans == 0) )
@@ -300,11 +264,19 @@ JMOV_HDR *jmov_hdr;
     jmov_audio_type |= XA_AUDIO_BIGEND_MSK;
   }
 
-  if (jmov_audio_type == XA_AUDIO_INVALID)
-  {
-    if (jmov_audio_attempt == xaTRUE) 
-	fprintf(stderr,"JMOV: Audio Type unsupported %ld \n",jmov_hdr->codec);
-    jmov_audio_attempt = xaFALSE;
+  if (jmov_hdr->audioslice)
+  { if (jmov_audio_type == XA_AUDIO_INVALID)
+    { if (jmov_audio_attempt == xaTRUE) 
+	fprintf(stderr,"JMOV: Audio Type unsupported %d \n",jmov_hdr->codec);
+      jmov_audio_attempt = xaFALSE;
+    }
+    else
+    { if (xa_verbose) 
+      { fprintf(stderr,"  Audio Codec: %s Rate=%d Chans=%d bps=%d\n",
+	audio_desc,jmov_audio_freq,jmov_audio_chans,
+			(jmov_audio_bps==1)?(8):(16) );
+      }
+    }
   }
 
   /* JFIF_Init_IJPG_Tables( jmov_hdr->qfactor ); */
@@ -312,10 +284,10 @@ JMOV_HDR *jmov_hdr;
 
 DEBUG_LEVEL1
 {
-  fprintf(stderr,"JMOV: ver %ld  fps %ld frame %ld  res %ldx%ld\n",
+  fprintf(stderr,"JMOV: ver %d  fps %d frame %d  res %dx%d\n",
 	jmov_hdr->version, jmov_hdr->fps, jmov_hdr->frames,
 	jmov_hdr->width, jmov_hdr->height);
-  fprintf(stderr,"      qf %ld mapsize %ld indx %lx tracks %ld audsz %lx\n",
+  fprintf(stderr,"      qf %d mapsize %d indx %x tracks %d audsz %x\n",
 	jmov_hdr->qfactor, jmov_hdr->mapsize, jmov_hdr->indexbuf,
 	jmov_hdr->tracks, jmov_hdr->audioslice);
 }
@@ -329,13 +301,13 @@ DEBUG_LEVEL1
   JPG_Alloc_MCU_Bufs(anim_hdr,jmov->imagex,0,xaFALSE);
 
   if (   (cmap_true_map_flag == xaFALSE) /* depth 16 and not true_map */
-      || (xa_buffer_flag == xaFALSE) )
+      || (!(xin->load_flag & XA_IN_LOAD_BUF)) )
   {
      if (cmap_true_to_332 == xaTRUE)
              jmov->chdr = CMAP_Create_332(jmov->cmap,&jmov->imagec);
      else    jmov->chdr = CMAP_Create_Gray(jmov->cmap,&jmov->imagec);
   }
-  if ( (jmov->pic==0) && (xa_buffer_flag == xaTRUE))
+  if ( (jmov->pic==0) && (xin->load_flag & XA_IN_LOAD_BUF))
   {
     jmov->pic_size = jmov->imagex * jmov->imagey;
     if ( (cmap_true_map_flag == xaTRUE) && (jmov->depth > 8) )
@@ -347,8 +319,8 @@ DEBUG_LEVEL1
 }
 
 
-void JMOV_Read_Index(fin,anim_hdr,jmov,jmov_hdr)
-FILE *fin;
+void JMOV_Read_Index(xin,anim_hdr,jmov,jmov_hdr)
+XA_INPUT *xin;
 XA_ANIM_HDR *anim_hdr;
 XA_ANIM_SETUP *jmov;
 JMOV_HDR *jmov_hdr;
@@ -360,23 +332,23 @@ JMOV_HDR *jmov_hdr;
 
   index = (xaULONG *)malloc( (idx_cnt + 1) * sizeof(xaULONG) );
 
-  ret = fseek(fin,idx_off,0);
+  ret = xin->Seek_FPos(xin,idx_off,0);
   for(i=0; i<idx_cnt; i++)
   {
-    if (feof(fin))
+    if (xin->At_EOF(xin,-1))
     {
-      fprintf(stderr,"JMOV: index truncated cur %ld tot %ld\n",i,idx_cnt);
+      fprintf(stderr,"JMOV: index truncated cur %d tot %d\n",i,idx_cnt);
       idx_cnt = i;
       break;
     }
-    index[i] = UTIL_Get_MSB_Long(fin);
+    index[i] = xin->Read_MSB_U32(xin);
   }
   index[idx_cnt] = 0;
 
   for(i=0; i<idx_cnt; i++)
   { xaULONG offset = index[i];
-    fseek(fin,offset,0);
-    JMOV_Read_Frame(fin,anim_hdr,jmov,jmov_hdr); 
+    xin->Seek_FPos(xin,offset,0);
+    JMOV_Read_Frame(xin,anim_hdr,jmov,jmov_hdr); 
   } 
 }
 
@@ -392,17 +364,17 @@ JMOV_HDR *jmov_hdr;
 #define JMOV_JPEG       0xec
 
 
-void JMOV_Read_Frame(fin,anim_hdr,jmov,jmov_hdr)
-FILE *fin;
+void JMOV_Read_Frame(xin,anim_hdr,jmov,jmov_hdr)
+XA_INPUT *xin;
 XA_ANIM_HDR *anim_hdr;
 XA_ANIM_SETUP *jmov;
 JMOV_HDR *jmov_hdr;
 { xaULONG exit_flag;
 
   exit_flag = xaFALSE;
-  while( (!feof(fin)) & (exit_flag == xaFALSE))
+  while( (!xin->At_EOF(xin,-1)) & (exit_flag == xaFALSE))
   { xaULONG type;
-    type = fgetc(fin);
+    type = xin->Read_U8(xin);
     switch(type)
     {
       case JMOV_END_FRAME:
@@ -417,17 +389,17 @@ JMOV_HDR *jmov_hdr;
       case JMOV_AUDIO_2:
       case JMOV_AUDIO_3:
 	{ xaULONG snd_size = jmov_hdr->audioslice;
-	DEBUG_LEVEL1 fprintf(stderr,"JMOV: AUDIO %lx\n",type);
+	DEBUG_LEVEL1 fprintf(stderr,"JMOV: AUDIO %x\n",type);
 
 	  if (jmov_audio_attempt==xaTRUE)
 	  { xaLONG ret;
-	    if (xa_file_flag==xaTRUE)
-	    { xaLONG rets, cur_fpos = ftell(fin);
+	    if (xin->load_flag & XA_IN_LOAD_FILE)
+	    { xaLONG rets, cur_fpos = xin->Get_FPos(xin);
 	      rets = XA_Add_Sound(anim_hdr,0,jmov_audio_type, cur_fpos,
 			jmov_audio_freq, snd_size, 
-			&jmov->aud_time,&jmov->aud_timelo);
+			&jmov->aud_time,&jmov->aud_timelo, 0, 0);
 	      if (rets==xaFALSE) jmov_audio_attempt = xaFALSE;
-	      fseek(fin,snd_size,1); /* move past this chunk */
+	      xin->Seek_FPos(xin,snd_size,1); /* move past this chunk */
 	      if (snd_size > jmov->max_faud_size) 
 				jmov->max_faud_size = snd_size;
  
@@ -435,18 +407,18 @@ JMOV_HDR *jmov_hdr;
 	    else
 	    { xaUBYTE *snd = (xaUBYTE *)malloc(snd_size);
 	      if (snd==0) TheEnd1("JMOV: snd malloc err");
-	      ret = fread( snd, snd_size, 1, fin);
-	      if (ret != 1) fprintf(stderr,"JMOV: snd rd err\n");
+	      ret = xin->Read_Block(xin, snd, snd_size);
+	      if (ret < snd_size) fprintf(stderr,"JMOV: snd rd err\n");
 	      else
 	      { int rets;
 	        rets = XA_Add_Sound(anim_hdr,snd,jmov_audio_type, -1,
                                         jmov_audio_freq, snd_size,
-                                        &jmov->aud_time, &jmov->aud_timelo);
+                                        &jmov->aud_time, &jmov->aud_timelo, 0, 0);
 	        if (rets==xaFALSE) jmov_audio_attempt = xaFALSE;
 	      }
 	    }
 	  }
-	  else fseek(fin,snd_size,1); /* skip over */
+	  else xin->Seek_FPos(xin,snd_size,1); /* skip over */
 	}
 	break;
       case JMOV_CMAP:
@@ -454,28 +426,28 @@ JMOV_HDR *jmov_hdr;
 	  DEBUG_LEVEL1 fprintf(stderr,"JMOV: CMAP - ignored\n");
           if (jmov_hdr->mapsize > (16*1024) )
 	  {
-	    fprintf(stderr,"JMOV: CMAP just too big %ld\n",jmov_hdr->mapsize);
+	    fprintf(stderr,"JMOV: CMAP just too big %d\n",jmov_hdr->mapsize);
 	    return;
 	  }
-          fseek(fin,size,1);  /* skip over */
+          xin->Seek_FPos(xin,size,1);  /* skip over */
 	}
 	break;
       case JMOV_MMAP:
 	{ xaULONG cnt;
 	  DEBUG_LEVEL1 fprintf(stderr,"JMOV: MMAP - ignored\n");
 
-          cnt = fgetc(fin);
+          cnt = xin->Read_U8(xin);
 	  while(cnt--)
           { xaULONG slot,r,g,b;
-	    slot = UTIL_Get_MSB_UShort();
-	    r = fgetc(fin); g = fgetc(fin); b = fgetc(fin);
+	    slot = xin->Read_MSB_U16();
+	    r = xin->Read_U8(xin); g = xin->Read_U8(xin); b = xin->Read_U8(xin);
           }
         }
 	break;
       case JMOV_FPS:
         { xaULONG fps;
 	  DEBUG_LEVEL1 fprintf(stderr,"JMOV: FPS\n");
-	  fps = UTIL_Get_MSB_Long(fin);
+	  fps = xin->Read_MSB_U32(xin);
 	  UTIL_FPS_2_Time(jmov, ((double)(fps)) );
         }
 	break;
@@ -485,30 +457,30 @@ JMOV_HDR *jmov_hdr;
           ACT_DLTA_HDR *dlta_hdr;
 
 	  DEBUG_LEVEL1 fprintf(stderr,"JMOV: JPEG\n");
-	  dlta_len = UTIL_Get_MSB_Long(fin);
+	  dlta_len = xin->Read_MSB_U32(xin);
 
 	  act = ACT_Get_Action(anim_hdr,ACT_DELTA);
-	  if (xa_file_flag == xaTRUE)
+	  if (xin->load_flag & XA_IN_LOAD_FILE)
 	  {
 	    dlta_hdr = (ACT_DLTA_HDR *) malloc(sizeof(ACT_DLTA_HDR));
 	    if (dlta_hdr == 0) TheEnd1("JMOV: dlta malloc err");
 	    act->data = (xaUBYTE *)dlta_hdr;
 	    dlta_hdr->flags = ACT_SNGL_BUF;
 	    dlta_hdr->fsize = dlta_len;
-	    dlta_hdr->fpos  = ftell(fin);
+	    dlta_hdr->fpos  = xin->Get_FPos(xin);
 	    if (dlta_len > jmov->max_fvid_size) jmov->max_fvid_size = dlta_len;
-	    fseek(fin,dlta_len,1);
+	    xin->Seek_FPos(xin,dlta_len,1);
 	  }
 	  else
 	  { xaULONG d; xaLONG ret;
 	    d = dlta_len + (sizeof(ACT_DLTA_HDR));
 	    dlta_hdr = (ACT_DLTA_HDR *) malloc( d );
-	    if (dlta_hdr == 0) TheEnd1("QT rle: malloc failed");
+	    if (dlta_hdr == 0) TheEnd1("JMOV: malloc failed");
 	    act->data = (xaUBYTE *)dlta_hdr;
 	    dlta_hdr->flags = ACT_SNGL_BUF | DLTA_DATA;
 	    dlta_hdr->fpos = 0; dlta_hdr->fsize = dlta_len;
-	    ret = fread( dlta_hdr->data, dlta_len, 1, fin);
-	    if (ret != 1) { fprintf(stderr,"JMOV: read err\n"); return; }
+	    ret = xin->Read_Block(xin, dlta_hdr->data, dlta_len);
+	    if (ret < dlta_len) { fprintf(stderr,"JMOV: read err\n"); return; }
 	  }
 	  JMOV_Add_Frame(jmov->vid_time,jmov->vid_timelo,act);
 	  dlta_hdr->xpos = dlta_hdr->ypos = 0;
@@ -516,13 +488,13 @@ JMOV_HDR *jmov_hdr;
 	  dlta_hdr->ysize = jmov->imagey;
 	  dlta_hdr->special = 0;
 	  dlta_hdr->extra = (void *)(0x10);
-	  dlta_hdr->xapi_rev = 0x0001;
+	  dlta_hdr->xapi_rev = 0x0002;
 	  dlta_hdr->delta = JFIF_Decode_JPEG;
-	  ACT_Setup_Delta(jmov,act,dlta_hdr,fin);
+	  ACT_Setup_Delta(jmov,act,dlta_hdr,xin);
         }
 	break;
       default:
-	fprintf(stderr,"JMOV: Unknown type %lx - aborting\n",type);
+	fprintf(stderr,"JMOV: Unknown type %x - aborting\n",type);
 	return;
 	break;
     } /* end of switch */

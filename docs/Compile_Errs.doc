@@ -1,0 +1,155 @@
+
+
+ This file needs to be updated as time permits. And perhaps areas
+ from problems common to specific machines.
+
+
+--------------------------------------------------------------------------
+Problem:
+
+	You are using gcc and Solaris 2.6 and get the following
+	error when compile stuff(xanim included):
+
+        /usr/include/sys/model.h:32: #error "No DATAMODEL_NATIVE specified"
+
+Solution:
+
+	You need to use a gcc that has been compiled/installed specifically
+	for Solaris 2.6.
+
+--------------------------------------------------------------------------
+Problem:
+
+	You are using Imake and XFree and the compiler can't find
+	the X11 include files and you have installed the X11 include
+	files.
+
+Solution:
+
+	The Imake setup with XFree has recently been broken. The fix
+	is to edit the file:
+
+		/usr/X11R6/lib/X11/config/X11.tmpl
+
+	and change the following line from:
+
+		INCDIR = $(INCROOT)		/* header files */
+
+	to be:
+
+		INCDIR = $(INCROOT)/X11		/* header files */
+
+	and then redo "xmkmf" and "make xanim"
+
+	XFree needs to fix this in their next release.
+
+-------------
+Problem
+
+	The compiler reports:
+
+	   In file included from xa_audio.c:224:
+	   xa_audio.h:42: stropts.h: No such file or directory
+	   xa_audio.h:46: sun/audioio.h: No such file or directory
+
+Solution
+	By default, the XAnim makefiles are configured for SunOS audio.
+
+	If you are using another platform(like linux, Solaris, HP, SGI, etc)
+	then you need to edit the Makefile and select the XA_AUDIO* defines
+	for your particular machine.
+
+-------------
+Problem
+
+	When adding the XAnim decompression modules the 
+	Compiler(linker actually) reports something similiar to:
+
+	  ld: elf error: file xa2.0_iv32_sparcELF.o: unknown type, unable 
+	  to process using elf(3E) libraries
+
+
+Probable Reasons
+
+	The decompress modules are probably still compressed. Verify
+	their size with size listed in the readme files. If necessary,
+	rename  "mv lib lib.Z" and then "uncompress lib.Z".
+
+-------------
+Problem:
+
+     Compiler reports following symbols as undefined
+     >   ld: Undefined symbol
+     >      _XtStrings
+     >      _XtShellStrings
+
+Possible Reason:  
+
+   Your LD_LIBRARY_PATH doesn't match the XLIBDIR that is in the Makefile. 
+   This is because you're using the /usr/openwin/X11/includes, and some
+   unrelated X11 library release(usually /usr/lib/X11).
+
+-------------
+Problem
+
+	SGI Compiler core dumps. (A long standing feature of theirs :)
+
+Solution:
+
+	Uncomment out the following define in the Makefile:
+
+	XA_SGI1 = -old_ld -32
+
+-------------
+Problem
+	Compiler can't find  -lX11, -lXext, etc
+
+
+Probable Reason:
+
+	This are the X11 libraries, libX11.*, libXext.*  and most likely
+	the XLIBDIR defines wasn't set correctly in the Makefile.
+
+	Verify that XLIBDIR is set to the directory in which those files
+	are located.
+
+-------------
+Problem:
+
+     Compiler reports following symbols as undefined
+     > .XShmDetach
+     > .XShmPutImage
+     > .XShmAttach
+     > .XShmCreateImage
+     > .XShmQueryExtension
+     > compile FAILED.
+
+Probable Reason: 
+
+   Your machine doesn't support X11 Shared Memory Extension.
+     
+   These are all X11 Shared memory extensions and NOT all machines
+   supports them.  So, you'll want to edit Imakefile or Makefile and
+   comment out the following line:
+
+   XA_SHARED = -DXSHM
+
+   If you're using Imakfile you need to "xmkmf" and "make xanim"
+   or if you're using Makefile.unx, just "make xanim".
+
+-------------
+Problem:  
+
+    Compiler reports the following on HP machines:
+
+     anyfilename: too much defining - use -H option
+     anyfilename: no space
+
+    The solution is uncomment out the following line in the Makefile
+
+     XA_HPUX_DEFS = -Wp,-H200000
+
+    and then recompile
+
+---------------------------------------------------------------------------
+

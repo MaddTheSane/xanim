@@ -2,15 +2,15 @@
 /*
  * xa_audio.c
  *
- * Copyright (C) 1994,1995 by Mark Podlipec.
+ * Copyright (C) 1994-1998,1999 by Mark Podlipec.
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  *
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
@@ -100,6 +100,20 @@
  * 13Jun95 - SONY: modified for SVR4/NEWS-OS 6.x machines 
  *	     by Takashi Hagiwara, Sony Corporation (hagiwara@sm.sony.co.jp)
  * 04Sep95 - SOLARIS: replaced SOLARIS define with SVR4. see what happens.
+ * 12Apr96 - HPDEV: occasionally audio device reports busy when trying to
+ *           set the sample rate. Now loop on this condition.
+ * 25Nov96 - HP AServer. Code fixed up by Steve Waterworth.
+ * 18Mar97 - Linux patch by Corey Minyard improves video/audio syncing on
+ *           some soundcards by using SNDCTL_DSP_SETFRAGMENT.
+ * 25Sep97 - Kevin Hildebrand recommended using AUDIO_ENCODING_SLINEAR
+ *           for NetBSD audio. Jarkko Torppa also reported this.
+ * 02Jan98 - SETFRAGMENT patch was causing 1/2 second delay on start on my
+ *	     linux system. Temporarily backing patch out til I can further
+ *	     debug it.  search for SETFRAG if you want to put it back in.
+ * 27Apr98 - Updates to NetBSD audio init code from Charles Hannum.
+ * 21Feb99 - Added routine *_Audio_Prep  to hide initialization delays
+ *	     when starting audio.
+ * 02Mar99 - Linux: Change XA_LINUX_NEWER_SND TO OLDER_SND to avoid confusion.
  *
  ****************************************************************************/
 
@@ -117,6 +131,7 @@
    void  XXX_Audio_Init()
    void  XXX_Audio_Kill()
    void  XXX_Audio_Off()
+   void  XXX_Audio_Prep()
    void  XXX_Audio_On()
    xaULONG XXX_Closest_Freq(target_freq)
    void  XXX_Set_Audio_Out(flag)   slowly replacing toggles 
@@ -167,9 +182,9 @@
  same amount of time-which has been pre-calculated). audio time is
  used to keep the video in sync with the audio.
 
- XA_Update_Ring is called in XA_Audio_On() just before audio is
- started up and is called in XA_Audio_Output() after a Audio Ring
- buffer has been sent to the audio device.
+ XA_Update_Ring is called in XA_Audio_Prep() just before audio is
+ started up(by XA_Audio_On) and is called in XA_Audio_Output() after
+ a Audio Ring buffer has been sent to the audio device.
 
  XA_Update_Ring fills empty ring positions by walking along the list
  of SND_HDRs, converting the anim's audio to the proper audio format
@@ -194,7 +209,9 @@
        XAnim may continue on without audio if the audio device
        is in use by another program.
 
- XA_Audio_On() should enable and startup the audio. 
+ XA_Audio_Prep() should enable and prep the audio. 
+
+ XA_Audio_On() should actually start the audio.
 
  XA_Audio_Off() should stop the audio. Ideally this routine should
  immediate stop audio and flush what ever information has piled
@@ -226,19 +243,9 @@
 #endif
 #endif
 
-extern XtAppContext  theContext;
-
-#ifdef XA_FORK
-#ifdef XA_AUD_OUT_MERGED
+extern XA_AUD_FLAGS *vaudiof;
+extern xaULONG xa_vaudio_present;
 extern XtAppContext  theAudContext;
-#endif
-#endif
-
-
-/* POD NOTE: move into xanim.h */
-#define XA_ABS(x) (((x)<0)?(-(x)):(x))
-
-xaULONG XA_Audio_Speaker();
 
 
 /***************** ITIMER EXPERIMENTATION ********************************/
@@ -253,7 +260,8 @@ xaULONG xa_out_init = 0;  /* number of initial audio ring bufs to write ahead*/
 XtIntervalId xa_interval_id = 0;
 xaULONG        xa_interval_time = 1;
 
-extern Display       *theDisp;
+extern Display	*theDisp;
+extern xaULONG	xa_kludge900_aud;
 
 
 /**** Non Hardware Specific Functions ************/
@@ -262,7 +270,6 @@ void Init_Audio_Ring();
 void Kill_Audio_Ring();
 void XA_Update_Ring();
 void XA_Flush_Ring();
-xaULONG XA_Add_Sound();
 XA_SND *XA_Audio_Next_Snd();
 void XA_Read_Audio_Delta();
 xaLONG XA_Read_AV_Time();
@@ -271,10 +278,13 @@ extern xaUBYTE *xa_audcodec_buf;
 extern xaULONG xa_audcodec_maxsize;
 extern int xa_aud_fd;
 
-#ifdef XA_FORK
-xaULONG XA_Fork_Add_Snd();
-xaULONG XA_IPC_Sound();
-#endif
+
+extern xaULONG XA_ADecode_PCMXM_PCM1M();
+extern xaULONG XA_ADecode_PCM1M_PCM2M();
+extern xaULONG XA_ADecode_DVIM_PCMxM();
+extern xaULONG XA_ADecode_DVIS_PCMxM();
+extern xaULONG XA_ADecode_IMA4M_PCMxM();
+extern xaULONG XA_ADecode_IMA4S_PCMxM();
 
 
 typedef struct AUDIO_RING_STRUCT
@@ -296,18 +306,20 @@ XA_AUDIO_RING_HDR *xa_audio_ring_t = 0;
 #define XA_HARD_BUFF_1K 1024
 
 
-void Gen_Ulaw_2_Signed();
-void Gen_Signed_2_Ulaw();
+void Gen_Signed_2_uLaw();
+void Gen_uLaw_2_Signed();
+void Gen_aLaw_2_Signed();
 void Gen_Arm_2_Signed();
 
-xaLONG  XA_Ulaw_to_Signed();
-xaUBYTE XA_Signed_To_Ulaw();
+xaLONG  XA_uLaw_to_Signed();
+xaUBYTE XA_Signed_To_uLaw();
 xaULONG XA_Audio_Linear_To_AU();
 
 /*POD NOTE: Make these tables dynamically allocated */
 /* Sun ULAW CONVERSION TABLES/ROUTINES */
 xaUBYTE xa_sign_2_ulaw[256];
 xaULONG xa_ulaw_2_sign[256];
+xaULONG xa_alaw_2_sign[256];
 
 /* ARM VIDC MULAW CONVERSION TABLES/ROUTINES */
 xaULONG xa_arm_2_signed[256];
@@ -318,17 +330,10 @@ xaULONG XA_Audio_PCM1M_PCM2M();
 xaULONG XA_Audio_PCM1S_PCM2M();
 xaULONG XA_Audio_PCMXM_PCM1M();
 xaULONG XA_Audio_PCMXS_PCM1M();
-xaULONG XA_Audio_ADPCMM_PCM2M();
 xaULONG XA_Audio_PCM2X_PCM2M();
-xaULONG XA_Audio_ULAWM_PCM2M();
-xaULONG XA_Audio_ULAWS_PCM2M();
-xaULONG XA_Audio_ARMLAWM_PCM2M();
-xaULONG XA_Audio_ARMLAWS_PCM2M();
-xaULONG XA_Audio_Silence();
 
 
 /* AUDIO CODEC BUFFERING ROUTINES */
-xaULONG ms_adpcm_decode();
 
 extern xaULONG xa_audio_present;
 extern xaULONG xa_audio_status;
@@ -349,9 +354,7 @@ extern xaULONG xa_audio_divtest;  Z* testing only *Z
 extern xaULONG xa_audio_port;
 */
 
-#ifdef XA_FORK
 xaULONG xa_vaudio_hard_buff = 0;		/* VID Domain snd chunk size */
-#endif
 
 xaULONG xa_audio_hard_freq;		/* hardware frequency */
 xaULONG xa_audio_hard_buff;		/* preferred snd chunk size */
@@ -359,14 +362,13 @@ xaULONG xa_audio_ring_size;		/* preferred num of ring entries */
 xaULONG xa_audio_hard_type;		/* hardware sound encoding type */
 xaULONG xa_audio_hard_bps;		/* hardware bytes per sample */
 xaULONG xa_audio_hard_chans;		/* hardware number of chan. not yet */
-xaULONG xa_update_ring_sem = 0;
-xaULONG xa_audio_out_sem = 0;
 xaULONG xa_audio_flushed = 0;
 
 void  XA_Audio_Setup();
 void (*XA_Audio_Init)();
 void (*XA_Audio_Kill)();
 void (*XA_Audio_Off)();
+void (*XA_Audio_Prep)();
 void (*XA_Audio_On)();
 void (*XA_Adjust_Volume)();
 xaULONG (*XA_Closest_Freq)();
@@ -375,12 +377,7 @@ void  (*XA_Speaker_Tog)();
 void  (*XA_Headphone_Tog)();
 void  (*XA_LineOut_Tog)();
 
-#ifdef XA_AUD_OUT_MERGED
-#ifdef XA_FORK
 void New_Merged_Audio_Output();
-#endif
-static void Merged_Audio_Output();
-#endif
 
 
 /****************************************************************************/
@@ -398,6 +395,7 @@ void XA_Null_Audio_Setup()
   XA_Audio_Init		= XA_NoAudio_Nop;
   XA_Audio_Kill		= XA_NoAudio_Nop;
   XA_Audio_Off		= XA_NoAudio_Nop2;
+  XA_Audio_Prep		= XA_NoAudio_Nop;
   XA_Audio_On		= XA_NoAudio_Nop;
   XA_Closest_Freq	= XA_NoAudio_Nop1;
   XA_Set_Output_Port	= XA_NoAudio_Nop2;
@@ -484,6 +482,9 @@ void XA_No_Audio_Support()
 #ifndef AUDIO_ENCODING_LINEAR
 #define AUDIO_ENCODING_LINEAR (3)
 #endif
+#ifndef AUDIO_ENCODING_ULAW
+#define AUDIO_ENCODING_ULAW (3)
+#endif
 #ifndef AUDIO_DEV_UNKNOWN
 #define AUDIO_DEV_UNKNOWN (0)
 #endif
@@ -510,6 +511,7 @@ void XA_No_Audio_Support()
 void  Sparc_Audio_Init();
 void  Sparc_Audio_Kill();
 void  Sparc_Audio_Off();
+void  Sparc_Audio_Prep();
 void  Sparc_Audio_On();
 void  Sparc_Adjust_Volume();
 xaULONG Sparc_Closest_Freq();
@@ -535,6 +537,7 @@ void XA_Audio_Setup()
   XA_Audio_Init		= Sparc_Audio_Init;
   XA_Audio_Kill		= Sparc_Audio_Kill;
   XA_Audio_Off		= Sparc_Audio_Off;
+  XA_Audio_Prep		= Sparc_Audio_Prep;
   XA_Audio_On		= Sparc_Audio_On;
   XA_Closest_Freq	= Sparc_Closest_Freq;
   XA_Set_Output_Port	= Sparc_Set_Output_Port;
@@ -567,16 +570,17 @@ void Sparc_Audio_Init()
   if (devAudio == -1)
   {
     if (errno == EBUSY) fprintf(stderr,"Audio_Init: Audio device is busy. - ");
-    else fprintf(stderr,"Audio_Init: Error %lx opening audio device. - ",errno);
+    else fprintf(stderr,"Audio_Init: Error %x opening audio device. - ",errno);
     fprintf(stderr,"Will continue without audio\n");
     xa_audio_present = XA_AUDIO_ERR;
     return;
   }
   ret = ioctl(devAudio, AUDIO_GETDEV, &type);
-/* POD NOTE: Sparc 5 has new audio device (CS4231) */
+  /* POD NOTE: Sparc 5 has new audio device (CS4231) */
 #ifdef SVR4	/* was SOLARIS */
   if ( (   (strcmp(type.name, "SUNW,dbri"))   /* Not DBRI (SS10's) */
-        && (strcmp(type.name, "SUNW,CS4231"))) /* and not CS4231 (SS5's) */
+        && (strcmp(type.name, "SUNW,CS4231")) /* and not CS4231 (SS5's) */
+        && (strcmp(type.name, "SUNW,sb16")))  /* and SoundBlaster 16 */
       || ret) /* or ioctrl failed */
 #else
   if (ret || (type==AUDIO_DEV_UNKNOWN) || (type==AUDIO_DEV_AMD) )
@@ -588,12 +592,20 @@ void Sparc_Audio_Init()
     xa_audio_hard_buff  = XA_HARD_BUFF_1K;             /* default buffer size */
     xa_audio_hard_bps   = 1;
     xa_audio_hard_chans = 1;
-    Gen_Signed_2_Ulaw();
+    Gen_Signed_2_uLaw();
   }
-  else /* DBRI or CS4231 */
+  else /* DBRI or CS4231 or SB16 */
   {
-    DEBUG_LEVEL1 fprintf(stderr,"SPARC DBRI or CS4231 AUDIO\n");
+    DEBUG_LEVEL1 fprintf(stderr,"SPARC DBRI or CS4231 or SB16 AUDIO\n");
+#ifdef SVR4
+#ifdef _LITTLE_ENDIAN
+    xa_audio_hard_type  = XA_AUDIO_SIGNED_2ML;
+#else
+    xa_audio_hard_type  = XA_AUDIO_SIGNED_2MB; /* default to this */
+#endif
+#else
     xa_audio_hard_type  = XA_AUDIO_SIGNED_2MB;
+#endif
     xa_audio_hard_freq  = 11025;
     xa_audio_hard_buff  = XA_HARD_BUFF_1K;             /* default buffer size */
     xa_audio_hard_bps   = 2;
@@ -605,16 +617,42 @@ void Sparc_Audio_Init()
  */
     audio_info.play.buffer_size = XA_HARD_BUFF_1K;
     xa_audio_hard_buff  = XA_HARD_BUFF_1K;   /* default buffer size */
-
 #endif
-    audio_info.play.sample_rate = 11025;
-    audio_info.play.precision = 16;
-    audio_info.play.channels = 1;
-    audio_info.play.encoding = AUDIO_ENCODING_LINEAR;
+
+	/* POD NOTE: this is currently used for testing purposes */
+    switch(xa_kludge900_aud)
+    {
+      case 900:
+fprintf(stderr,"Sun Audio: uLAW\n");
+	xa_audio_hard_type  = XA_AUDIO_SUN_AU;
+	xa_audio_hard_freq  = 8000;
+	xa_audio_hard_bps   = 1;
+	audio_info.play.sample_rate = 8000;
+	audio_info.play.channels = 1;
+	xa_audio_hard_bps   = 1;
+	audio_info.play.encoding = AUDIO_ENCODING_ULAW;
+	Gen_Signed_2_uLaw();
+	break;
+      case 901:
+fprintf(stderr,"Sun Audio: 8 bit PCM\n");
+	audio_info.play.sample_rate = 11025;
+	audio_info.play.precision = 8;
+	audio_info.play.channels = 1;
+	audio_info.play.encoding = AUDIO_ENCODING_LINEAR;
+	break;
+      case 0:
+      default:
+	audio_info.play.sample_rate = 11025;
+	audio_info.play.precision = 16;
+	audio_info.play.channels = 1;
+	audio_info.play.encoding = AUDIO_ENCODING_LINEAR;
+	break;
+    }
+
     ret = ioctl(devAudio, AUDIO_SETINFO, &audio_info);
     if (ret)
     {
-      fprintf(stderr,"AUDIO BRI FATAL ERROR %ld\n",errno);
+      fprintf(stderr,"AUDIO BRI FATAL ERROR %d\n",errno);
       xa_audio_present = XA_AUDIO_ERR;
       return;
     }
@@ -648,7 +686,6 @@ void Sparc_Audio_Off(flag)
 xaULONG flag;
 { long ret;
 
-  DEBUG_LEVEL1 fprintf(stderr,"Sparc_Audio_Off\n");
   if (xa_audio_status != XA_AUDIO_STARTED) return;
 
   /* SET FLAG TO STOP OUTPUT ROUTINE */
@@ -659,28 +696,28 @@ xaULONG flag;
 
   /* FLUSH AUDIO DEVICE */
   ret = ioctl(devAudio, I_FLUSH, FLUSHW);
-  if (ret == -1) fprintf(stderr,"Sparc Audio: off flush err %ld\n",errno);
+  if (ret == -1) fprintf(stderr,"Sparc Audio: off flush err %d\n",errno);
 
   xa_time_audio = -1;
   xa_audio_flushed = 0;
 
   /* FLUSH AUDIO DEVICE AGAIN */
   ret = ioctl(devAudio, I_FLUSH, FLUSHW);
-  if (ret == -1) fprintf(stderr,"Sparc Audio: off flush err %ld\n",errno);
+  if (ret == -1) fprintf(stderr,"Sparc Audio: off flush err %d\n",errno);
 
   /* RESTORE ORIGINAL VOLUME */
-  Sparc_Adjust_Volume(XAAUD->volume);
+  if (XAAUD->mute != xaTRUE) Sparc_Adjust_Volume(XAAUD->volume);
 }
 
-/********** Sparc_Audio_On **********************
+/********** Sparc_Audio_Prep **********************
  * Turn On Audio Stream.
  *
  *****/
-void Sparc_Audio_On()
+void Sparc_Audio_Prep()
 { 
   DEBUG_LEVEL2 
   {
-    fprintf(stderr,"Sparc_Audio_On \n");
+    fprintf(stderr,"Sparc_Audio_Prep \n");
   }
   if (xa_audio_status == XA_AUDIO_STARTED) return;
   else if (xa_audio_present != XA_AUDIO_OK) return;
@@ -693,7 +730,7 @@ void Sparc_Audio_On()
       AUDIO_INITINFO(&a_info);
       a_info.play.sample_rate = xa_snd_cur->hfreq;
       ret = ioctl(devAudio, AUDIO_SETINFO, &a_info);
-      if (ret == -1) fprintf(stderr,"audio setfreq: freq %lx errno %ld\n",
+      if (ret == -1) fprintf(stderr,"audio setfreq: freq %x errno %d\n",
 						xa_snd_cur->hfreq, errno);
       xa_audio_hard_freq = xa_snd_cur->hfreq;
     }
@@ -702,20 +739,30 @@ void Sparc_Audio_On()
     xa_out_time = 500;  /* keep audio fed 500ms ahead of video */
     xa_out_init = xa_audio_ring_size - 1;
     xa_interval_time = xa_snd_cur->ch_time / XAAUD->divtest;
+    if (xa_interval_time == 0) xa_interval_time = 1;
 
-DEBUG_LEVEL1 fprintf(stderr,"ch_time %ld out_time %ld int time %ld \n",xa_snd_cur->ch_time,xa_out_time,xa_interval_time);
+DEBUG_LEVEL1 fprintf(stderr,"ch_time %d out_time %d int time %d \n",xa_snd_cur->ch_time,xa_out_time,xa_interval_time);
 
-    xa_audio_status = XA_AUDIO_STARTED;
     XA_Flush_Ring();
     XA_Update_Ring(1000);
+    xa_audio_status = XA_AUDIO_PREPPED;
+  }
+}
 
-    if (xa_interval_time == 0) xa_interval_time = 1;
+/****-------------------------------------------------------------------****
+ *
+ ****-------------------------------------------------------------------****/
+void Sparc_Audio_On()
+{ 
+  DEBUG_LEVEL2 fprintf(stderr,"Sparc_Audio_On \n");
+
+  if (   (xa_snd_cur)
+      && (xa_audio_present == XA_AUDIO_OK)
+      && (xa_audio_status == XA_AUDIO_PREPPED) )
+  { 
+    xa_audio_status = XA_AUDIO_STARTED;
     xa_time_now = XA_Read_AV_Time();  /* get new time */
-#ifdef XA_FORK
     New_Merged_Audio_Output();
-#else
-    Merged_Audio_Output();
-#endif
   }
 }
 
@@ -731,7 +778,7 @@ xaLONG ifreq;
 {
 
 /* POD
-fprintf(stderr,"Sparc_Closest_Freq: hardtype %lx freq %ld\n",
+fprintf(stderr,"Sparc_Closest_Freq: hardtype %x freq %d\n",
 			xa_audio_hard_type,ifreq);
 */
 
@@ -744,7 +791,7 @@ fprintf(stderr,"Sparc_Closest_Freq: hardtype %lx freq %ld\n",
     xa_audio_hard_buff = XA_HARD_BUFF_1K;
     while(valid[i])
     { 
-      if (XA_ABS(valid[i] - ifreq) < XA_ABS(best - ifreq)) best = valid[i];
+      if (xaABS(valid[i] - ifreq) < xaABS(best - ifreq)) best = valid[i];
       i++;
     }
     return(best);
@@ -765,7 +812,7 @@ xaULONG aud_ports;
   AUDIO_INITINFO(&a_info);
   a_info.play.port = sparc_ports;
   ret = ioctl(devAudio, AUDIO_SETINFO, &a_info);
-  if (ret < 0) fprintf(stderr,"Audio: couldn't set speaker port %ld\n",errno);
+  if (ret < 0) fprintf(stderr,"Audio: couldn't set speaker port %d\n",errno);
 }
 
 /************* Sparc_Speaker_Toggle *****************************************
@@ -839,6 +886,7 @@ xaULONG volume;
 void  AIX_Audio_Init();
 void  AIX_Audio_Kill();
 void  AIX_Audio_Off();
+void  AIX_Audio_Prep();
 void  AIX_Audio_On();
 
 xaULONG AIX_Closest_Freq();
@@ -857,14 +905,15 @@ extern char  * xa_audio_device;
 /*----------------------------------------------------------------------------*/
 void XA_Audio_Setup ( )
 {
-  XA_Audio_Init =     AIX_Audio_Init;
-  XA_Audio_Kill =     AIX_Audio_Kill;
-  XA_Audio_Off =      AIX_Audio_Off;
-  XA_Audio_On =       AIX_Audio_On;
-  XA_Closest_Freq =   AIX_Closest_Freq;
-  XA_Speaker_Tog =    AIX_Speaker_Tog;
-  XA_Headphone_Tog =  AIX_Headphone_Tog;
-  XA_LineOut_Tog =    AIX_LineOut_Tog;
+  XA_Audio_Init		= AIX_Audio_Init;
+  XA_Audio_Kill		= AIX_Audio_Kill;
+  XA_Audio_Off		= AIX_Audio_Off;
+  XA_Audio_Prep		= AIX_Audio_Prep;
+  XA_Audio_On		= AIX_Audio_On;
+  XA_Closest_Freq	= AIX_Closest_Freq;
+  XA_Speaker_Tog	= AIX_Speaker_Tog;
+  XA_Headphone_Tog	= AIX_Headphone_Tog;
+  XA_LineOut_Tog	= AIX_LineOut_Tog;
   XA_Adjust_Volume	= AIX_Adjust_Volume;
 
   xa_snd_cur = 0;
@@ -1012,21 +1061,13 @@ void AIX_Audio_Off ( )
 /*----------------------------------------------------------------------------*/
 /*                                                                            */
 /*----------------------------------------------------------------------------*/
-void AIX_Audio_On ( )
+void AIX_Audio_Prep( )
 {
   audio_control control;
   int           rc;
 
-  if ( xa_audio_status == XA_AUDIO_STARTED )
-  {
-    return;
-  }
-
-  if ( xa_audio_present != XA_AUDIO_OK )
-  {
-    return;
-  }
-
+  if ( xa_audio_status == XA_AUDIO_STARTED ) return;
+  if ( xa_audio_present != XA_AUDIO_OK ) return;
   if ( xa_snd_cur )
   {
     /* Change the frequency if needed */
@@ -1034,7 +1075,7 @@ void AIX_Audio_On ( )
     {
       audio_init init;
 
-      printf ( "AIX_Audio_On: setting frequency to %d\n", xa_snd_cur->hfreq );
+      printf ( "AIX_Audio_Prep: setting frequency to %d\n", xa_snd_cur->hfreq );
 
       memset ( & init, '\0', sizeof ( init ) );
 
@@ -1049,7 +1090,7 @@ void AIX_Audio_On ( )
       if ( ( rc = ioctl ( devAudio, AUDIO_INIT, & init ) ) < 0 )
       {
         fprintf ( stderr,
-                  "AIX_Audio_On: AUDIO_INIT failed, rate = %d, errno = %d\n",
+                  "AIX_Audio_Prep: AUDIO_INIT failed, rate = %d, errno = %d\n",
                   init.srate, errno );
       }
 
@@ -1060,15 +1101,10 @@ void AIX_Audio_On ( )
     xa_out_time = 250;  /* keep audio fed 250ms ahead of video - may be 500*/
     xa_out_init = xa_audio_ring_size - 1;
     xa_interval_time = xa_snd_cur->ch_time / XAAUD->divtest;
+    if ( xa_interval_time == 0 ) xa_interval_time = 1;
 
-    xa_audio_status = XA_AUDIO_STARTED;
     XA_Flush_Ring();
     XA_Update_Ring(1000);
-    if ( xa_interval_time == 0 )
-    {
-      xa_interval_time = 1;
-    }
-    xa_time_now = XA_Read_AV_Time();  /* get new time */
 
     /* POD: The following 8 lines need to be before Merged_Audio_Output now */
     memset ( & control, '\0', sizeof ( control ) );
@@ -1077,16 +1113,23 @@ void AIX_Audio_On ( )
     control.position      = 0;
     if ( ( rc = ioctl ( devAudio, AUDIO_CONTROL, & control ) ) < 0 )
     {
-      fprintf(stderr,"AIX_Audio_On: AUDIO_START failed, errno = %d\n", errno );
+      fprintf(stderr,"AIX_Audio_Prep: AUDIO_START failed, errno = %d\n", errno );
     }
-
-#ifdef XA_FORK
-    New_Merged_Audio_Output();
-#else
-    Merged_Audio_Output();
-#endif
+    xa_audio_status = XA_AUDIO_PREPPED;
   }
+}
 
+
+void AIX_Audio_On()
+{
+  if (   (xa_snd_cur)
+      && (xa_audio_present == XA_AUDIO_OK)
+      && (xa_audio_status == XA_AUDIO_PREPPED) )
+  {
+    xa_audio_status = XA_AUDIO_STARTED;
+    xa_time_now = XA_Read_AV_Time();  /* get new time */
+    New_Merged_Audio_Output();
+  }
 }
 
 
@@ -1104,7 +1147,7 @@ xaLONG ifreq;
   xa_audio_hard_buff = XA_HARD_BUFF_1K;
   while ( valid [ i ] )
   {
-    if ( XA_ABS(valid[i] - ifreq) < XA_ABS(best - ifreq) )
+    if ( xaABS(valid[i] - ifreq) < xaABS(best - ifreq) )
     {
       best = valid [ i ];
     }
@@ -1320,6 +1363,7 @@ xaULONG ews_audio_ports = AUOUT_SP;
 void  EWS_Audio_Init();
 void  EWS_Audio_Kill();
 void  EWS_Audio_Off();
+void  EWS_Audio_Prep();
 void  EWS_Audio_On();
 void  EWS_Adjust_Volume();
 xaULONG EWS_Closest_Freq();
@@ -1348,6 +1392,7 @@ void XA_Audio_Setup()
   XA_Audio_Init		= EWS_Audio_Init;
   XA_Audio_Kill		= EWS_Audio_Kill;
   XA_Audio_Off		= EWS_Audio_Off;
+  XA_Audio_Prep		= EWS_Audio_Prep;
   XA_Audio_On		= EWS_Audio_On;
   XA_Closest_Freq	= EWS_Closest_Freq;
   XA_Set_Output_Port	= (void *)(0);
@@ -1404,7 +1449,7 @@ void EWS_Audio_Init()
     ret = ioctl(devAudio, AUIOC_SETTYPE, &audio_type);
     if (ret)
     {
-      fprintf(stderr,"EWS: AUIOC_SETTYPE error %ld\n",errno);
+      fprintf(stderr,"EWS: AUIOC_SETTYPE error %d\n",errno);
       xa_audio_present = XA_AUDIO_ERR;
       return;
     }
@@ -1455,14 +1500,14 @@ xaULONG flag;
 
 }
 
-/********** EWS_Audio_On **********************
+/********** EWS_Audio_Prep **********************
  * Turn On Audio Stream.
  *
  *****/
-void EWS_Audio_On()
+void EWS_Audio_Prep()
 { 
   DEBUG_LEVEL2 
-    fprintf(stderr,"EWS_Audio_On \n");
+    fprintf(stderr,"EWS_Audio_Prep \n");
   if (xa_audio_status == XA_AUDIO_STARTED) return;
   else if (xa_audio_present != XA_AUDIO_OK) return;
   else if (xa_snd_cur)
@@ -1473,33 +1518,42 @@ void EWS_Audio_On()
     { 
       
       ret = ioctl(devAudio, AUIOC_GETTYPE, &audio_type);
-      if (ret == -1) fprintf(stderr,"AUIOC_GETTYPE: errno %ld\n",errno);
+      if (ret == -1) fprintf(stderr,"AUIOC_GETTYPE: errno %d\n",errno);
       audio_type.rate=EWS_Closest_Freq(xa_snd_cur->hfreq);
       ret = ioctl(devAudio, AUIOC_SETTYPE, &audio_type);
-      if (ret == -1) fprintf(stderr,"AUIOC_SETTYPE: freq %lx errno %ld\n",
+      if (ret == -1) fprintf(stderr,"AUIOC_SETTYPE: freq %x errno %d\n",
 						xa_snd_cur->hfreq, errno);
       xa_audio_hard_freq = xa_snd_cur->hfreq;
     }
-    EWS_Adjust_Volume(XAAUD->volume);
+    if (XAAUD->mute != xaTRUE) EWS_Adjust_Volume(XAAUD->volume);
 
     /* xa_snd_cur gets changes in Update_Ring() */
     xa_out_time = 250; /* keep audio fed 250ms ahead of video */
     xa_out_init = xa_audio_ring_size - 1;
     xa_interval_time = xa_snd_cur->ch_time / XAAUD->divtest;
+    if (xa_interval_time == 0) xa_interval_time = 1;
 
-    xa_audio_status = XA_AUDIO_STARTED;
     XA_Flush_Ring();
     XA_Update_Ring(1000);
-
-    if (xa_interval_time == 0) xa_interval_time = 1;
-    xa_time_now = XA_Read_AV_Time();  /* get new time */
-#ifdef XA_FORK
-    New_Merged_Audio_Output();
-#else
-    Merged_Audio_Output();
-#endif
+    xa_audio_status = XA_AUDIO_PREPPED;
   }
 }
+
+/****-------------------------------------------------------------------****
+ *
+ ****-------------------------------------------------------------------****/
+void EWS_Audio_On()
+{
+  if (   (xa_snd_cur)
+      && (xa_audio_present == XA_AUDIO_OK)
+      && (xa_audio_status == XA_AUDIO_PREPPED) )
+  { 
+    xa_audio_status = XA_AUDIO_STARTED;
+    xa_time_now = XA_Read_AV_Time();  /* get new time */
+    New_Merged_Audio_Output();
+  }
+}
+
 
 
 /********** EWS_Closest_Freq **********************************************
@@ -1521,7 +1575,7 @@ xaLONG ifreq;
   xa_audio_hard_buff = XA_HARD_BUFF_1K;
   while(valid[i])
   { 
-    if (XA_ABS(valid[i] - ifreq) < XA_ABS(best - ifreq)) best = valid[i];
+    if (xaABS(valid[i] - ifreq) < xaABS(best - ifreq)) best = valid[i];
     i++;
   }
   if (valid[i])
@@ -1554,7 +1608,7 @@ xaULONG flag;
   ret = ioctl(devAudio, AUIOC_SETLINE, &audio_line);
   if (ret == -1)
   {
-    fprintf(stderr,"Audio: couldn't toggle speaker %ld\n",errno);
+    fprintf(stderr,"Audio: couldn't toggle speaker %d\n",errno);
     ews_audio_ports = old_ports;
   }
 }
@@ -1580,7 +1634,7 @@ xaULONG flag;
   ret = ioctl(devAudio, AUIOC_SETLINE, &audio_line);
   if (ret == -1)
   {
-    fprintf(stderr,"Audio: couldn't toggle headphone %ld\n",errno);
+    fprintf(stderr,"Audio: couldn't toggle headphone %d\n",errno);
     ews_audio_ports = old_ports;
   }
 }
@@ -1601,7 +1655,7 @@ xaULONG volume;
   ret = ioctl(devAudio, AUIOC_GETVOLUME, &audio_vol);
   if (ret == -1)
   {
-    fprintf(stderr,"Audio: couldn't get volume%ld\n",errno);
+    fprintf(stderr,"Audio: couldn't get volume%d\n",errno);
     return;
   }
 
@@ -1610,7 +1664,7 @@ xaULONG volume;
   ret = ioctl(devAudio, AUIOC_SETVOLUME, &audio_vol);
   if (ret == -1)
   {
-    fprintf(stderr,"Audio: couldn't set volume%ld\n",errno);
+    fprintf(stderr,"Audio: couldn't set volume%d\n",errno);
   }
 
 }
@@ -1637,6 +1691,7 @@ xaULONG volume;
 void Sony_Audio_Init();
 void Sony_Audio_Kill();
 void Sony_Audio_Off();
+void Sony_Audio_Prep();
 void Sony_Audio_On();
 void Sony_Adjust_Volume();
 xaULONG Sony_Closest_Freq();
@@ -1673,6 +1728,7 @@ void XA_Audio_Setup()
 	XA_Audio_Init		= Sony_Audio_Init;
 	XA_Audio_Kill		= Sony_Audio_Kill;
 	XA_Audio_Off		= Sony_Audio_Off;
+	XA_Audio_Prep		= Sony_Audio_Prep;
 	XA_Audio_On		= Sony_Audio_On;
 	XA_Closest_Freq		= Sony_Closest_Freq;
 	XA_Set_Output_Port	= (void *)(0);
@@ -1720,7 +1776,7 @@ void Sony_Audio_Init()
 
 	if (ioctl(devAudio, SBIOCGETTYPE, (char *)&sbtype) < 0) {
 #ifdef SVR4
-		fprintf(stderr,"CANNOT GET SBTYPE ERROR %ld\n",errno);
+		fprintf(stderr,"CANNOT GET SBTYPE ERROR %d\n",errno);
 #endif 
 		sbtype = SBTYPE_AIF2;	/* I guess so */	
 	}
@@ -1753,7 +1809,7 @@ void Sony_Audio_Init()
 	xa_audio_hard_buff  = 1024;         /* default buffer size */
 	xa_audio_hard_bps   = 1;
 	xa_audio_hard_chans = 1;
-	Gen_Signed_2_Ulaw() ;
+	Gen_Signed_2_uLaw() ;
 
 	audio_info.sb_mode    = LOGPCM ;
 	audio_info.sb_format  = 0 ;		/* was BSZ128 */
@@ -1765,12 +1821,12 @@ void Sony_Audio_Init()
 
 	ret = ioctl(devAudio, SBIOCSETPARAM, &audio_info);
 	if (ret) {
-		fprintf(stderr,"AUDIO BRI FATAL ERROR %ld\n",errno);
+		fprintf(stderr,"AUDIO BRI FATAL ERROR %d\n",errno);
 		TheEnd1("SONY AUDIO BRI FATAL ERROR\n");
 	}
 	ret = ioctl(devAudio, SBIOCGETPARAM, &audio_info);
 	if (ret == -1)
-		 fprintf(stderr,"Can't get audio_info %ld\n",errno);
+		 fprintf(stderr,"Can't get audio_info %d\n",errno);
 	xa_interval_id = 0;
 	xa_audio_present = XA_AUDIO_OK;
 
@@ -1817,7 +1873,7 @@ xaULONG flag;
 
   /* FLUSH AUDIO DEVICE */
   ret = ioctl(devAudio, SBIOCFLUSH, 0);
-  if (ret == -1) fprintf(stderr,"Sony Audio: off flush err %ld\n",errno);
+  if (ret == -1) fprintf(stderr,"Sony Audio: off flush err %d\n",errno);
 
   xa_time_audio = -1;
   xa_audio_flushed = 0;
@@ -1826,14 +1882,14 @@ xaULONG flag;
   ret = ioctl(devAudio, SBIOCWAIT, 0);
 
   /* RESTORE ORIGINAL VOLUME */
-  Sony_Adjust_Volume(XAAUD->volume);
+  if (XAAUD->mute != xaTRUE) Sony_Adjust_Volume(XAAUD->volume);
 }
 
-/********** Sony_Audio_On **********************
+/********** Sony_Audio_Prep **********************
 * Turn On Audio Stream.
 *
 *****/
-void Sony_Audio_On()
+void Sony_Audio_Prep()
 { int ret ;
   struct sbparam a_info ;
 
@@ -1854,7 +1910,7 @@ void Sony_Audio_On()
       a_info.sb_bitwidth= RES8B ;
       a_info.sb_emphasis= 0 ;
       ret=ioctl(devAudio, SBIOCSETPARAM, &a_info); 
-      if( ret == -1 )fprintf(stderr,"audio set freq: freq %lf errno %ld\n",
+      if( ret == -1 )fprintf(stderr,"audio set freq: freq %lf errno %d\n",
 					xa_snd_cur->hfreq, errno);
       xa_audio_hard_freq = xa_snd_cur->hfreq;
     }
@@ -1863,20 +1919,29 @@ void Sony_Audio_On()
     xa_out_time = 250; /* keep audio fed 250ms ahead of video - could be 500*/
     xa_out_init = xa_audio_ring_size - 1;
     xa_interval_time = xa_snd_cur->ch_time / XAAUD->divtest;
+    if (xa_interval_time == 0) xa_interval_time = 1;
 
-    xa_audio_status = XA_AUDIO_STARTED;
     XA_Flush_Ring();
     XA_Update_Ring(1000);
-
-    if (xa_interval_time == 0) xa_interval_time = 1;
-    xa_time_now = XA_Read_AV_Time();  /* get new time */
-#ifdef XA_FORK
-    New_Merged_Audio_Output();
-#else
-    Merged_Audio_Output();
-#endif
+    xa_audio_status = XA_AUDIO_PREPPED;
   }
 }
+
+/****-------------------------------------------------------------------****
+ *
+ ****-------------------------------------------------------------------****/
+void Sony_Audio_On()
+{
+  if (   (xa_snd_cur)
+      && (xa_audio_present == XA_AUDIO_OK)
+      && (xa_audio_status == XA_AUDIO_PREPPED) )
+  { 
+    xa_audio_status = XA_AUDIO_STARTED;
+    xa_time_now = XA_Read_AV_Time();  /* get new time */
+    New_Merged_Audio_Output();
+  }
+}
+
 /********** Sony_Closest_Freq **********************************************
 *
 ****************************************************************************/
@@ -1888,7 +1953,7 @@ xaLONG	ifreq;
   xa_audio_hard_buff = XA_HARD_BUFF_1K;
   while(sony_audio_rate[i])
   {
-    if (XA_ABS(sony_audio_rate[i] - ifreq) < XA_ABS(best - ifreq)) 
+    if (xaABS(sony_audio_rate[i] - ifreq) < xaABS(best - ifreq)) 
 				best = sony_audio_rate[i];
     i++;
   }
@@ -1954,11 +2019,13 @@ xaULONG volume;
 void Linux_Audio_Init();
 void Linux_Audio_Kill();
 void Linux_Audio_Off();
+void Linux_Audio_Prep();
 void Linux_Audio_On();
 xaULONG Linux_Closest_Freq();
 void Linux_Speaker_Toggle();
 void Linux_Headphone_Toggle();
 void Linux_Adjust_Volume();
+xaULONG Linux_Read_Volume();
 
 int linux_vol_chan;
 
@@ -1976,6 +2043,7 @@ void XA_Audio_Setup()
   XA_Audio_Init		= Linux_Audio_Init;
   XA_Audio_Kill		= Linux_Audio_Kill;
   XA_Audio_Off		= Linux_Audio_Off;
+  XA_Audio_Prep		= Linux_Audio_Prep;
   XA_Audio_On		= Linux_Audio_On;
   XA_Closest_Freq	= Linux_Closest_Freq;
   XA_Set_Output_Port	= (void *)(0);
@@ -2000,39 +2068,66 @@ void Linux_Audio_Init()
 
   if (xa_audio_present != XA_AUDIO_UNK) return;
 
-  devAudio = open("/dev/dsp", O_WRONLY | O_NDELAY, 0);
+  devAudio = open(_FILE_DSP, O_WRONLY | O_NDELAY, 0);
   if (devAudio == -1)
-  { fprintf(stderr,"Can't Open Linux Audio device\n");
+  { fprintf(stderr,"Can't Open %s device\n",_FILE_DSP);
     xa_audio_present = XA_AUDIO_ERR;
     return;
   }
+
+#ifdef SNDCTL_DSP_SETFRAGMENT
+  tmp = 0x0008000b; /* 8 2048 byte buffers */
+#ifdef XA_LINUX_OLDER_SND
+  ret = ioctl(devAudio, SNDCTL_DSP_SETFRAGMENT, tmp);
+#else
+  ret = ioctl(devAudio, SNDCTL_DSP_SETFRAGMENT, &tmp);
+#endif
+#else
+  ret = 0;
+#endif
+  if (ret == -1) fprintf(stderr,"Linux Audio: Error setting fragment size\n");
+
   ioctl(devAudio, SNDCTL_DSP_SYNC, NULL);
   /* SETUP SAMPLE SIZE */
-  tmp = 16;
-#ifdef XA_LINUX_NEWER_SND
-  ret = ioctl(devAudio, SNDCTL_DSP_SAMPLESIZE, &tmp);
-#else
+  if (xa_kludge900_aud == 900) tmp = 8;  /* POD testing purposes */
+  else tmp = 16;
+#ifdef SNDCTL_DSP_SAMPLESIZE
+#ifdef XA_LINUX_OLDER_SND
   ret = ioctl(devAudio, SNDCTL_DSP_SAMPLESIZE, tmp);
+#else
+  ret = ioctl(devAudio, SNDCTL_DSP_SAMPLESIZE, &tmp);
+#endif
+#else
+  ret = -1;
 #endif
   if ((ret == -1) || (tmp == 8)) xa_audio_hard_bps = 1;
   else xa_audio_hard_bps = 2;
 
+/* TESTING
+fprintf(stderr,"audio hard bps %d\n",xa_audio_hard_bps);
+*/
+
   /* SETUP Mono/Stereo */
   tmp = 0;  /* mono(0) stereo(1) */ 
-#ifdef XA_LINUX_NEWER_SND
-  ret = ioctl(devAudio, SNDCTL_DSP_STEREO, &tmp);
-#else
+#ifdef XA_LINUX_OLDER_SND
   ret = ioctl(devAudio, SNDCTL_DSP_STEREO, tmp);
+#else
+  ret = ioctl(devAudio, SNDCTL_DSP_STEREO, &tmp);
 #endif
   if (ret == -1) fprintf(stderr,"Linux Audio: Error setting mono\n");
   xa_audio_hard_chans = 1;
 
   xa_audio_hard_freq  = 11025;  /* 22050 and sometimes 44100 */
   xa_audio_hard_buff  = XA_HARD_BUFF_1K;
-#ifdef XA_LINUX_NEWER_SND
-  ret = ioctl(devAudio, SNDCTL_DSP_GETBLKSIZE, &tmp);
-#else
+
+#ifdef SNDCTL_DSP_GETBLKSIZE
+#ifdef XA_LINUX_OLDER_SND
   ret = ioctl(devAudio, SNDCTL_DSP_GETBLKSIZE, 0);
+#else
+  ret = ioctl(devAudio, SNDCTL_DSP_GETBLKSIZE, &tmp);
+#endif
+#else
+  ret = 0;
 #endif
   if (ret == -1) fprintf(stderr,"Linux Audio: Error getting buf size\n");
   /* POD NOTE: should probably do something with this value. :^) */
@@ -2040,24 +2135,28 @@ void Linux_Audio_Init()
   
   ioctl(devAudio, SNDCTL_DSP_SYNC, NULL);
 
-  devMixer = open("/dev/mixer",  O_RDONLY | O_NDELAY, 0);
+  devMixer = open(_FILE_MIXER,  O_RDONLY | O_NDELAY, 0);
   /* Mixer only present on SB Pro's and above */
   /* if not present then it's set to -1 and ignored later */
   /* THOUGHT: what about doing mixer ioctl to the /dev/dsp device??? */
   if (devMixer < 0) devMixer = devAudio;
    /* determine what volume settings exist */
   { int devices;
-#ifdef XA_LINUX_NEWER_SND
-    ret = ioctl(devMixer, SOUND_MIXER_READ_DEVMASK, &devices);
-    if (ret == -1) devices = 0;
-#else
+#ifdef XA_LINUX_OLDER_SND
     devices = ioctl(devMixer, SOUND_MIXER_READ_DEVMASK, 0 );
     if (devices == -1) devices = 0;
+#else
+    ret = ioctl(devMixer, SOUND_MIXER_READ_DEVMASK, &devices);
+    if (ret == -1) devices = 0;
 #endif
     if (devices & (1 << SOUND_MIXER_PCM)) 
 		linux_vol_chan = SOUND_MIXER_PCM;
     else	linux_vol_chan = SOUND_MIXER_VOLUME;
   }
+
+/*
+  XAAUD->volume = Linux_Read_Volume();
+*/
  
   if (xa_audio_hard_bps == 1) xa_audio_hard_type  = XA_AUDIO_LINEAR_1M;
   else		xa_audio_hard_type  = XA_AUDIO_SIGNED_2ML;
@@ -2092,25 +2191,30 @@ xaULONG flag;
   if (xa_audio_status != XA_AUDIO_STARTED) return;
   /* SET FLAG TO STOP OUTPUT ROUTINE */
   xa_audio_status = XA_AUDIO_STOPPED;
-  Linux_Adjust_Volume(XA_AUDIO_MINVOL);
-  ioctl(devAudio, SNDCTL_DSP_SYNC, NULL);
+
+  ioctl(devAudio, SNDCTL_DSP_RESET, NULL);
+
+  /* Linux_Adjust_Volume(XA_AUDIO_MINVOL); */
+  /* ioctl(devAudio, SNDCTL_DSP_SYNC, NULL); */
   xa_time_audio = -1;
   xa_audio_flushed = 0;
   ioctl(devAudio, SNDCTL_DSP_SYNC, NULL);
-  Linux_Adjust_Volume(XAAUD->volume);
+  /* if (XAAUD->mute != xaTRUE) Linux_Adjust_Volume(XAAUD->volume); */
+
 }
 
-/********** Linux_Audio_On ***************************************************
+/********** Linux_Audio_Prep ***************************************************
  * Startup Linux Audio
  *
  *****************************************************************************/
-void Linux_Audio_On()
+void Linux_Audio_Prep()
 {
-  DEBUG_LEVEL2 fprintf(stderr,"Linux_Audio_On \n");
+  DEBUG_LEVEL2 fprintf(stderr,"Linux_Audio_Prep \n");
   if (xa_audio_status == XA_AUDIO_STARTED) return;
   else if (xa_audio_present != XA_AUDIO_OK) return;
   else if (xa_snd_cur)
   { int ret,tmp;
+  
 
     Linux_Adjust_Volume(XA_AUDIO_MINVOL);
     ioctl(devAudio, SNDCTL_DSP_SYNC, NULL);
@@ -2119,35 +2223,44 @@ void Linux_Audio_On()
     if (xa_audio_hard_freq != xa_snd_cur->hfreq)
     {
       tmp = xa_snd_cur->hfreq;
-#ifdef XA_LINUX_NEWER_SND
-      ret = ioctl(devAudio, SNDCTL_DSP_SPEED, &tmp);
-#else
+#ifdef XA_LINUX_OLDER_SND
       tmp = ioctl(devAudio, SNDCTL_DSP_SPEED, tmp);
+#else
+      ret = ioctl(devAudio, SNDCTL_DSP_SPEED, &tmp);
 #endif
       if ((ret == -1) || (tmp != xa_snd_cur->hfreq))
-	fprintf(stderr,"Linux_Audio: err setting freq %lx\n"
+	fprintf(stderr,"Linux_Audio: err setting freq %x\n"
 						,xa_snd_cur->hfreq);
       xa_audio_hard_freq = xa_snd_cur->hfreq;
     }
     ioctl(devAudio, SNDCTL_DSP_SYNC, NULL);
-    Linux_Adjust_Volume(XAAUD->volume);
+    if (XAAUD->mute != xaTRUE) Linux_Adjust_Volume(XAAUD->volume);
 
     /* xa_snd_cur gets changes in Update_Ring() */
     xa_out_time = 250;  /* keep audio 250 ms ahead of video. could be 500ms */
     xa_out_init = xa_audio_ring_size - 1;
     xa_interval_time = xa_snd_cur->ch_time / XAAUD->divtest;
+    if (xa_interval_time == 0) xa_interval_time = 1;
 
-    xa_audio_status = XA_AUDIO_STARTED;
     XA_Flush_Ring();
     XA_Update_Ring(1000);
+    xa_audio_status = XA_AUDIO_PREPPED;
+  }
+}
 
-    if (xa_interval_time == 0) xa_interval_time = 1;
+/****-------------------------------------------------------------------****
+ *
+ ****-------------------------------------------------------------------****/
+void Linux_Audio_On()
+{
+  DEBUG_LEVEL2 fprintf(stderr,"Linux_Audio_On\n");
+  if (   (xa_snd_cur)
+      && (xa_audio_present == XA_AUDIO_OK)
+      && (xa_audio_status == XA_AUDIO_PREPPED) )
+  { 
+    xa_audio_status = XA_AUDIO_STARTED;
     xa_time_now = XA_Read_AV_Time();  /* get new time */
-#ifdef XA_FORK
     New_Merged_Audio_Output();
-#else
-    Merged_Audio_Output();
-#endif
   }
 }
 
@@ -2160,24 +2273,24 @@ xaLONG ifreq;	/* incoming frequency */
 { static int valid[] = {11025, 22050, 44100, 0};
   xaLONG i = 0;
   xaLONG tmp_freq,ofreq = ifreq;
-#ifdef XA_LINUX_NEWER_SND
+#ifndef XA_LINUX_OLDER_SND
   xaLONG ret;
 #endif
 
    /* search up for closest frequency */
   while(valid[i])
   {
-    if (XA_ABS(valid[i] - ifreq) < XA_ABS(ofreq - ifreq)) ofreq = valid[i];
+    if (xaABS(valid[i] - ifreq) < xaABS(ofreq - ifreq)) ofreq = valid[i];
     i++;
   }
 
   tmp_freq = ofreq;
-#ifdef XA_LINUX_NEWER_SND
-  ret = ioctl(devAudio, SNDCTL_DSP_SPEED, &tmp_freq);
-  if (ret == -1) tmp_freq = 0;
-#else
+#ifdef XA_LINUX_OLDER_SND
   tmp_freq = ioctl(devAudio, SNDCTL_DSP_SPEED, tmp_freq);
   if (tmp_freq == -1) tmp_freq = 0;
+#else
+  ret = ioctl(devAudio, SNDCTL_DSP_SPEED, &tmp_freq);
+  if (ret == -1) tmp_freq = 0;
 #endif
   if (tmp_freq) ofreq = tmp_freq;
 
@@ -2219,13 +2332,35 @@ xaULONG volume;
         ((volume * (LINUX_MAX_VOL - LINUX_MIN_VOL)) / XA_AUDIO_MAXVOL);
   if (adj_volume > LINUX_MAX_VOL) adj_volume = LINUX_MAX_VOL;
   adj_volume |= adj_volume << 8;	/* left channel | right channel */
-#ifdef XA_LINUX_NEWER_SND
-  ioctl(devMixer, MIXER_WRITE(linux_vol_chan), &adj_volume);
-#else
+#ifdef XA_LINUX_OLDER_SND
   ioctl(devMixer, MIXER_WRITE(linux_vol_chan), adj_volume);
+#else
+  ioctl(devMixer, MIXER_WRITE(linux_vol_chan), &adj_volume);
 #endif
 }
 
+/********** Linux_Adjust_Volume ***********************************************
+ * Routine for Adjusting Volume on Linux
+ *
+ *****************************************************************************/
+xaULONG Linux_Read_Volume()
+{ xaLONG ret,the_volume = 0;
+  if (devMixer < 0) return(0);
+
+#ifdef XA_LINUX_OLDER_SND
+  the_volume = ioctl(devMixer, MIXER_READ(linux_vol_chan), 0);
+  if (the_volume < 0) the_volume = 0;
+#else
+  ret = ioctl(devMixer, MIXER_READ(linux_vol_chan), &the_volume);
+  if (ret < 0) the_volume = 0;
+#endif
+
+  the_volume =  (XA_AUDIO_MAXVOL * (the_volume - LINUX_MIN_VOL)) 
+						/ (LINUX_MAX_VOL);
+
+  fprintf(stderr,"volume = %d %d %d",the_volume,LINUX_MIN_VOL,LINUX_MAX_VOL);
+  return(the_volume);
+}
 #endif
 /****************************************************************************/
 /******************* END OF LINUX SPECIFIC ROUTINES *********************/
@@ -2240,6 +2375,7 @@ xaULONG volume;
 void SGI_Audio_Init();
 void SGI_Audio_Kill();
 void SGI_Audio_Off();
+void SGI_Audio_Prep();
 void SGI_Audio_On();
 xaULONG SGI_Closest_Freq();
 void SGI_Speaker_Toggle();
@@ -2260,6 +2396,7 @@ void XA_Audio_Setup()
   XA_Audio_Init		= SGI_Audio_Init;
   XA_Audio_Kill		= SGI_Audio_Kill;
   XA_Audio_Off		= SGI_Audio_Off;
+  XA_Audio_Prep		= SGI_Audio_Prep;
   XA_Audio_On		= SGI_Audio_On;
   XA_Closest_Freq	= SGI_Closest_Freq;
   XA_Set_Output_Port	= (void *)(0);
@@ -2352,15 +2489,15 @@ xaULONG flag;
   xa_audio_flushed = 0;
 
   /* RESTORE ORIGINAL VOLUME */
-  SGI_Adjust_Volume(XAAUD->volume);
+  if (XAAUD->mute != xaTRUE) SGI_Adjust_Volume(XAAUD->volume);
 }
 
-/********** SGI_Audio_On **********************
+/********** SGI_Audio_Prep **********************
  * Startup SGI Audio
  *****/
-void SGI_Audio_On()
+void SGI_Audio_Prep()
 {
-  DEBUG_LEVEL2 fprintf(stderr,"SGI_Audio_On \n");
+  DEBUG_LEVEL2 fprintf(stderr,"SGI_Audio_Prep \n");
   if (xa_audio_status == XA_AUDIO_STARTED) return;
   else if (xa_audio_present != XA_AUDIO_OK) return;
   else if (xa_snd_cur)
@@ -2378,18 +2515,26 @@ void SGI_Audio_On()
     xa_out_time = 500;  /* keep audio fed 500ms ahead of video */
     xa_out_init = xa_audio_ring_size - 1;
     xa_interval_time = xa_snd_cur->ch_time / XAAUD->divtest;
+    if (xa_interval_time == 0) xa_interval_time = 1;
 
-    xa_audio_status = XA_AUDIO_STARTED;
     XA_Flush_Ring();
     XA_Update_Ring(1000);
+    xa_audio_status = XA_AUDIO_PREPPED;
+  }
+}
 
-    if (xa_interval_time == 0) xa_interval_time = 1;
+/****-------------------------------------------------------------------****
+ *
+ ****-------------------------------------------------------------------****/
+void SGI_Audio_On()
+{
+  if (   (xa_snd_cur)
+      && (xa_audio_present == XA_AUDIO_OK)
+      && (xa_audio_status == XA_AUDIO_PREPPED) )
+  { 
+    xa_audio_status = XA_AUDIO_STARTED;
     xa_time_now = XA_Read_AV_Time();  /* get new time */
-#ifdef XA_FORK
     New_Merged_Audio_Output();
-#else
-    Merged_Audio_Output();
-#endif
   }
 }
 
@@ -2407,7 +2552,7 @@ xaLONG ifreq;
 
   while(valid[i])
   { 
-    if (XA_ABS(valid[i] - ifreq) < XA_ABS(ofreq - ifreq)) ofreq = valid[i];
+    if (xaABS(valid[i] - ifreq) < xaABS(ofreq - ifreq)) ofreq = valid[i];
     i++;
   }
   sgi_params[0] = AL_OUTPUT_RATE;
@@ -2415,7 +2560,7 @@ xaLONG ifreq;
   ALsetparams(AL_DEFAULT_DEVICE, sgi_params, 2); 
   ALgetparams(AL_DEFAULT_DEVICE, sgi_params, 2); 
   if (ofreq != sgi_params[1])
-	fprintf(stderr,"SGI AUDIO: freq gotten %ld wasn't wanted %ld\n",
+	fprintf(stderr,"SGI AUDIO: freq gotten %d wasn't wanted %d\n",
 		sgi_params[1],ofreq);
   ofreq = sgi_params[1];
   xa_audio_hard_buff = XA_HARD_BUFF_2K; /* fixed for SGI */
@@ -2474,12 +2619,12 @@ xaULONG volume;
 void HP_Audio_Init();
 void HP_Audio_Kill();
 void HP_Audio_Off();
+void HP_Audio_Prep();
 void HP_Audio_On();
 xaULONG HP_Closest_Freq();
 void HP_Speaker_Toggle();
 void HP_Headphone_Toggle();
 void HP_Adjust_Volume();
-static void HP_Audio_Output();
 void HP_Print_Error();
 void HP_Print_ErrEvent();
 long HP_Audio_Err_Handler();
@@ -2528,6 +2673,7 @@ void XA_Audio_Setup()
   XA_Audio_Init		= HP_Audio_Init;
   XA_Audio_Kill		= HP_Audio_Kill;
   XA_Audio_Off		= HP_Audio_Off;
+  XA_Audio_Prep		= HP_Audio_Prep;
   XA_Audio_On		= HP_Audio_On;
   XA_Closest_Freq	= HP_Closest_Freq;
   XA_Set_Output_Port	= (void *)(0);
@@ -2549,7 +2695,7 @@ void HP_Print_Error(pre_str,post_str,status)
 char *pre_str,*post_str;
 AError status;
 { char err_buff[132];
-  if (pre_str) fprintf(stderr,"%s (%ld)",pre_str,(int)(status));
+  if (pre_str) fprintf(stderr,"%s (%d)",pre_str,(int)(status));
   AGetErrorText(audio_connection,status,err_buff,131);
   fprintf(stderr,"%s",err_buff);
   if (post_str) fprintf(stderr,"%s",post_str);
@@ -2562,7 +2708,7 @@ void HP_Print_ErrEvent(pre_str,post_str,errorCode)
 char *pre_str,*post_str;
 int  errorCode;
 { char err_buff[132];
-  if (pre_str) fprintf(stderr,"%s (%ld)",pre_str,(int)(errorCode));
+  if (pre_str) fprintf(stderr,"%s (%d)",pre_str,(int)(errorCode));
   AGetErrorText(audio_connection,errorCode,err_buff,131);
   fprintf(stderr,"%s",err_buff);
   if (post_str) fprintf(stderr,"%s",post_str);
@@ -2581,7 +2727,8 @@ void HP_Audio_Init()
   server[0] = '\0';
 
   DEBUG_LEVEL2 fprintf(stderr,"HP_Audio_Init\n");
-  fprintf(stderr,"HP_Audio_Init: theContext = %lx\n",(xaULONG)theContext);
+  DEBUG_LEVEL2 fprintf(stderr,"HP_Audio_Init: theAudContext = %x\n",
+						(xaULONG)theAudContext);
 
   if (xa_audio_present != XA_AUDIO_UNK) return;
 
@@ -2614,7 +2761,7 @@ void HP_Audio_Init()
   play_attribs.attr.sampled_attr.channels = 1;  /* MONO */
   play_attribs.attr.sampled_attr.interleave = 1; /*???*/
 
-  fprintf(stderr,"REQ- format %ld  bits %ld  rate %ld  chans %ld bo %ld\n",
+  fprintf(stderr,"REQ- format %d  bits %d  rate %d  chans %d bo %d\n",
 	req_attribs.attr.sampled_attr.data_format,
 	req_attribs.attr.sampled_attr.bits_per_sample,
 	req_attribs.attr.sampled_attr.sampling_rate,
@@ -2630,14 +2777,14 @@ void HP_Audio_Init()
   AChoosePlayAttributes(audio_connection, &req_attribs,req_mask,
 				&play_attribs, &req_byteorder, NULL);
 
-  fprintf(stderr,"REQ+ format %ld  bits %ld  rate %ld  chans %ld bo %ld\n",
+  fprintf(stderr,"REQ+ format %d  bits %d  rate %d  chans %d bo %d\n",
 	req_attribs.attr.sampled_attr.data_format,
 	req_attribs.attr.sampled_attr.bits_per_sample,
 	req_attribs.attr.sampled_attr.sampling_rate,
 	req_attribs.attr.sampled_attr.channels,
 	req_byteorder );
 
-  fprintf(stderr,"PLAY format %ld  bits %ld  rate %ld  chans %ld\n",
+  fprintf(stderr,"PLAY format %d  bits %d  rate %d  chans %d\n",
 	play_attribs.attr.sampled_attr.data_format,
 	play_attribs.attr.sampled_attr.bits_per_sample,
 	play_attribs.attr.sampled_attr.sampling_rate,
@@ -2666,7 +2813,7 @@ void HP_Audio_Init()
   if (xa_audio_hard_chans == 2) 
 			xa_audio_hard_type |= XA_AUDIO_STEREO_MSK;
 
-DEBUG_LEVEL1 fprintf(stderr,"HP hard_type %lx\n",xa_audio_hard_type);
+DEBUG_LEVEL1 fprintf(stderr,"HP hard_type %x\n",xa_audio_hard_type);
 
   xa_audio_hard_freq = play_attribs.attr.sampled_attr.sampling_rate;
 
@@ -2690,7 +2837,7 @@ DEBUG_LEVEL1
 */
 { 
   fprintf(stderr,"HP sampling rates: ");
-  for(i=0;i<num;i++) fprintf(stderr,"<%ld>",hp_sample_rates[i]);
+  for(i=0;i<num;i++) fprintf(stderr,"<%d>",hp_sample_rates[i]);
   fprintf(stderr,"\n");
 }
       }
@@ -2760,11 +2907,11 @@ DEBUG_LEVEL1
 
   /* create socket */
   streamSocket = socket(AF_INET, SOCK_STREAM, 0);
-  if (streamSocket < 0) fprintf(stderr,"HP_Audio: socket err %ld\n",errno);
+  if (streamSocket < 0) fprintf(stderr,"HP_Audio: socket err %d\n",errno);
 
   ret = connect(streamSocket,(struct sockaddr *)&audio_stream.tcp_sockaddr,
 					sizeof(struct sockaddr_in) );
-  if (ret < 0) fprintf(stderr,"HP_Audio: connect error %ld\n",errno);
+  if (ret < 0) fprintf(stderr,"HP_Audio: connect error %d\n",errno);
 
   /* Pause Audio Stream */
   APauseAudio( audio_connection, hp_trans_id, NULL, NULL );
@@ -2806,12 +2953,12 @@ xaULONG flag;
   xa_audio_flushed = 0;
 }
 
-/********** HP_Audio_On ***************************************************
+/********** HP_Audio_Prep ***************************************************
  * Startup HP Audio
  *****/
-void HP_Audio_On()
+void HP_Audio_Prep()
 { AudioAttrMask attr_mask;
-  DEBUG_LEVEL2 fprintf(stderr,"HP_Audio_On \n");
+  DEBUG_LEVEL2 fprintf(stderr,"HP_Audio_Prep \n");
   if (xa_audio_status == XA_AUDIO_STARTED) return;
   else if (xa_audio_present != XA_AUDIO_OK) return;
   else if (xa_snd_cur)
@@ -2825,18 +2972,29 @@ void HP_Audio_On()
     }
 
     /* xa_snd_cur gets changes in Update_Ring() */
-    xa_out_time = xa_snd_cur->ch_time * 2;
+    xa_out_time = 250;  /* keep audio fed 500ms ahead of video */
     xa_out_init = xa_audio_ring_size - 1;
     xa_interval_time = xa_snd_cur->ch_time / XAAUD->divtest;
+    if (xa_interval_time == 0) xa_interval_time = 1;
 
-    xa_audio_status = XA_AUDIO_STARTED;
     XA_Flush_Ring();
     XA_Update_Ring(1000);
+    xa_audio_status = XA_AUDIO_PREPPED;
+  }
+}
 
-    if (xa_interval_time == 0) xa_interval_time = 1;
+/****-------------------------------------------------------------------****
+ *
+ ****-------------------------------------------------------------------****/
+void HP_Audio_On()
+{
+  if (   (xa_snd_cur)
+      && (xa_audio_present == XA_AUDIO_OK)
+      && (xa_audio_status == XA_AUDIO_PREPPED) )
+  { 
+    xa_audio_status = XA_AUDIO_STARTED;
     xa_time_now = XA_Read_AV_Time();  /* get new time */
-    xa_interval_id = XtAppAddTimeOut(theContext,1,
-		(XtTimerCallbackProc)HP_Audio_Output,(XtPointer)(NULL));
+    New_Merged_Audio_Output();
   }
 }
 
@@ -2888,80 +3046,15 @@ xaLONG volume;
 	((volume * (HP_MAX_VOL - HP_MIN_VOL)) / XA_AUDIO_MAXVOL);
   if (adj_volume > HP_MAX_VOL) adj_volume = HP_MAX_VOL;
   play_gain = (AGainDB)adj_volume;
-  AGetSystemChannelGain(audio_connection,ASGTPlay,ACTMono,&tmp_gain,NULL);
-  fprintf(stderr,"Get Gain %lx adj_vol %lx  hpmin %lx hpmax %lx\n",tmp_gain,adj_volume,HP_MIN_VOL, HP_MAX_VOL);
 /*
+  AGetSystemChannelGain(audio_connection,ASGTPlay,ACTMono,&tmp_gain,NULL);
+  fprintf(stderr,"Get Gain %x adj_vol %x  hpmin %x hpmax %x\n",
+				tmp_gain,adj_volume,HP_MIN_VOL, HP_MAX_VOL);
   ASetSystemChannelGain(audio_connection,ASGTPlay,ACTMono,play_gain,NULL);
   ASetChannelGain(audio_connection,hp_trans_id,ACTMono,play_gain,NULL);
   ASetGain(audio_connection,hp_trans_id,play_gain,NULL);
 */
   ASetSystemPlayGain(audio_connection,play_gain,NULL);
-}
-
-/********** HP_Audio_Output ***************************************************
- * Set Volume if needed and then write audio data to audio device.
- *
- *****/
-static void HP_Audio_Output()
-{ int ret,time_diff;
-  
-  xa_audio_out_sem = 1;
-  xa_interval_id = 0;
-  if (xa_audio_status != XA_AUDIO_STARTED) {xa_audio_out_sem = 0; return; }
-  time_diff = xa_time_audio - xa_time_now; /* how far ahead is audio */
-  if (time_diff > xa_out_time) /* potentially ahead */
-  {
-    xa_time_now = XA_Read_AV_Time();  /* get new time */
-    time_diff = xa_time_audio - xa_time_now;
-    if (time_diff > xa_out_time)  /* definitely ahead */
-    { 
-      xa_interval_id = XtAppAddTimeOut(theContext, xa_interval_time,
-			(XtTimerCallbackProc)HP_Audio_Output,(XtPointer)(NULL));
-      xa_audio_out_sem = 0;
-      return;
-    }
-  }
-
-    if (xa_audio_ring->len)
-    { xaULONG len,tmp_time,tmp_timelo,ret;
-
-DEBUG_LEVEL1 fprintf(stderr,"HP-out-send\n");
-      if (hp_audio_paused == xaTRUE)
-      {
-        DEBUG_LEVEL1 fprintf(stderr,"HP-out-unpause\n");
-	AResumeAudio( audio_connection, hp_trans_id, NULL, NULL );
-	hp_audio_paused = xaFALSE;
-      }
-      ret = write(streamSocket,xa_audio_ring->buf,xa_audio_ring->len);
-DEBUG_LEVEL1 fprintf(stderr,"HP-out-ret %lx\n",ret);
-/* now that somethings in the buffer, unpause audio if needed */
-      /* Adjust Volume if necessary */
-      if (XAAUD->newvol==xaTRUE)
-      { xaULONG vol = (XAAUD->mute==xaTRUE)?(XA_AUDIO_MINVOL):(XAAUD->volume);
-  	HP_Adjust_Volume(vol); 
-  	XAAUD->newvol = xaFALSE;
-      }
-      xa_time_now = XA_Read_AV_Time(); /* up date time */
-      xa_time_audio   += xa_audio_ring->time;
-      xa_timelo_audio += xa_audio_ring->timelo;
-      if (xa_timelo_audio & 0xff000000)
-		{ xa_time_audio++; xa_timelo_audio &= 0x00ffffff; }
-      xa_audio_ring->len = 0; 
-      xa_audio_ring = xa_audio_ring->next;  /* move to next */
-      if (xa_audio_status != XA_AUDIO_STARTED) { xa_audio_out_sem = 0; return;}
-      if (xa_update_ring_sem==0)
-      {
-        xa_update_ring_sem = 1;
-        XA_Update_Ring(2);
-        xa_update_ring_sem = 0;
-
-      }
-      xa_time_now = XA_Read_AV_Time();  /* get new time */
-      if (xa_audio_status != XA_AUDIO_STARTED) { xa_audio_out_sem = 0; return;}
-      xa_interval_id = XtAppAddTimeOut(theContext,xa_interval_time, 
-			(XtTimerCallbackProc)HP_Audio_Output,(XtPointer)(NULL));
-    } else xa_audio_status = XA_AUDIO_STOPPED;
-    xa_audio_out_sem = 0;
 }
 
 #endif
@@ -2978,6 +3071,7 @@ DEBUG_LEVEL1 fprintf(stderr,"HP-out-ret %lx\n",ret);
 void HPDEV_Audio_Init();
 void HPDEV_Audio_Kill();
 void HPDEV_Audio_Off();
+void HPDEV_Audio_Prep();
 void HPDEV_Audio_On();
 xaULONG HPDEV_Closest_Freq();
 void HPDEV_Speaker_Toggle();
@@ -2998,6 +3092,7 @@ void XA_Audio_Setup()
   XA_Audio_Init		= HPDEV_Audio_Init;
   XA_Audio_Kill		= HPDEV_Audio_Kill;
   XA_Audio_Off		= HPDEV_Audio_Off;
+  XA_Audio_Prep		= HPDEV_Audio_Prep;
   XA_Audio_On		= HPDEV_Audio_On;
   XA_Closest_Freq	= HPDEV_Closest_Freq;
   XA_Set_Output_Port	= (void *)(0);
@@ -3029,6 +3124,9 @@ void HPDEV_Audio_Init()
     return;
   }
 
+  fcntl(devAudio,F_SETFL,O_NDELAY);
+
+
   /* Get description of /dev/audio: */
   if (ioctl (devAudio, AUDIO_DESCRIBE, &audioDesc))
   {
@@ -3038,7 +3136,7 @@ void HPDEV_Audio_Init()
   }
 
   xa_audio_hard_type  = XA_AUDIO_SIGNED_2MB;
-  xa_audio_hard_freq  = 0;	  /* none yet (HPDEV_Audio_On does this job) */
+  xa_audio_hard_freq  = 0; /* none yet (HPDEV_Audio_Prep does this job) */
   xa_audio_hard_bps   = 2;
   xa_audio_hard_chans = 1;
   xa_audio_hard_buff  = XA_HARD_BUFF_1K;
@@ -3096,23 +3194,23 @@ xaULONG flag;
   xa_audio_flushed = 0;
 }
 
-/********** HPDEV_Audio_On ***************************************************
+/********** HPDEV_Audio_Prep **************************************************
  * Startup HP Audio
  *****/
-void HPDEV_Audio_On()
+void HPDEV_Audio_Prep()
 {
-  DEBUG_LEVEL2 fprintf(stderr,"HPDEV_Audio_On\n");
+  DEBUG_LEVEL2 fprintf(stderr,"HPDEV_Audio_Prep\n");
   if (xa_audio_status == XA_AUDIO_STARTED) return;
   else if (xa_audio_present != XA_AUDIO_OK) return;
   else if (xa_snd_cur)
-  {
-    int ret,tmp,utime;
+  { int ret,tmp,utime;
 
     /* Change frequency if necessary */
     if (xa_audio_hard_freq != xa_snd_cur->hfreq)
     { 
-      if (ioctl (devAudio, AUDIO_SET_SAMPLE_RATE, xa_snd_cur->hfreq))
-	perror ("ioctl AUDIO_SET_SAMPLE_RATE on /dev/audio");
+      do { ret = ioctl(devAudio, AUDIO_SET_SAMPLE_RATE, xa_snd_cur->hfreq);
+         } while( (ret < 0) && (errno == EBUSY) );
+      if (ret < 0) perror ("ioctl AUDIO_SET_SAMPLE_RATE on /dev/audio");
       xa_audio_hard_freq = xa_snd_cur->hfreq;
     }
 
@@ -3120,18 +3218,26 @@ void HPDEV_Audio_On()
     xa_out_time = 250; /* keep audio fed 250ms ahead of video */
     xa_out_init = xa_audio_ring_size - 1;
     xa_interval_time = xa_snd_cur->ch_time / XAAUD->divtest;
+    if (xa_interval_time == 0) xa_interval_time = 1;
 
-    xa_audio_status = XA_AUDIO_STARTED;
     XA_Flush_Ring();
     XA_Update_Ring(1000);
+    xa_audio_status = XA_AUDIO_PREPPED;
+  }
+}
 
-    if (xa_interval_time == 0) xa_interval_time = 1;
+/****-------------------------------------------------------------------****
+ *
+ ****-------------------------------------------------------------------****/
+void HPDEV_Audio_On()
+{
+  if (   (xa_snd_cur)
+      && (xa_audio_present == XA_AUDIO_OK)
+      && (xa_audio_status == XA_AUDIO_PREPPED) )
+  { 
+    xa_audio_status = XA_AUDIO_STARTED;
     xa_time_now = XA_Read_AV_Time();  /* get new time */
-#ifdef XA_FORK
     New_Merged_Audio_Output();
-#else
-    Merged_Audio_Output();
-#endif
   }
 }
 
@@ -3148,12 +3254,11 @@ xaLONG ifreq;
   xa_audio_hard_buff = XA_HARD_BUFF_1K;
 
   for (rate_index = 0; rate_index < audioDesc.nrates; ++rate_index)
-    if (abs (audioDesc.sample_rate[rate_index] - ifreq) <= frequency_diff)
-    {
-      nearest_frequency = audioDesc.sample_rate[rate_index];
+  { if (abs (audioDesc.sample_rate[rate_index] - ifreq) <= frequency_diff)
+    { nearest_frequency = audioDesc.sample_rate[rate_index];
       frequency_diff = abs (audioDesc.sample_rate[rate_index] - ifreq);
     }
-
+  }
   return nearest_frequency;
 }
 
@@ -3292,6 +3397,7 @@ xaLONG volume;
 void  AF_Audio_Init();
 void  AF_Audio_Kill();
 void  AF_Audio_Off();
+void  AF_Audio_Prep();
 void  AF_Audio_On();
 void  AF_Adjust_Volume();
 xaULONG AF_Closest_Freq();
@@ -3316,6 +3422,7 @@ void XA_Audio_Setup()
   XA_Audio_Init		= AF_Audio_Init;
   XA_Audio_Kill		= AF_Audio_Kill;
   XA_Audio_Off		= AF_Audio_Off;
+  XA_Audio_Prep		= AF_Audio_Prep;
   XA_Audio_On		= AF_Audio_On;
   XA_Closest_Freq	= AF_Closest_Freq;
   XA_Set_Output_Port	= (void *)(0);
@@ -3456,13 +3563,13 @@ xaULONG flag;
   xa_audio_status = XA_AUDIO_STOPPED;
 }
 
-/********** AF_Audio_On **********************
+/********** AF_Audio_Prep **********************
  * Turn On Audio Stream.
  *
  *****/
-void AF_Audio_On()
+void AF_Audio_Prep()
 {
-  DEBUG_LEVEL2 fprintf(stderr,"AF_Audio_On \n");
+  DEBUG_LEVEL2 fprintf(stderr,"AF_Audio_Prep \n");
   if (xa_audio_status == XA_AUDIO_STARTED) return;
   else if (xa_audio_present != XA_AUDIO_OK) return;
   else if (xa_snd_cur)
@@ -3478,19 +3585,27 @@ void AF_Audio_On()
     xa_out_time = 250; /* keep audio fed 250ms ahead of video - could be 500*/
     xa_out_init = xa_audio_ring_size - 1;
     xa_interval_time = xa_snd_cur->ch_time / XAAUD->divtest;
+    if (xa_interval_time == 0) xa_interval_time = 1;
 
-    xa_audio_status = XA_AUDIO_STARTED;
     XA_Flush_Ring();
     XA_Update_Ring(1000);
+    xa_audio_status = XA_AUDIO_PREPPED;
+  }
+}
 
+/****-------------------------------------------------------------------****
+ *
+ ****-------------------------------------------------------------------****/
+void AF_Audio_On()
+{
+  if (   (xa_snd_cur)
+      && (xa_audio_present == XA_AUDIO_OK)
+      && (xa_audio_status == XA_AUDIO_PREPPED) )
+  { 
+    xa_audio_status = XA_AUDIO_STARTED;
     AFtime0 = AFbaseT = AFGetTime(ac) + TOFFSET;
-    if (xa_interval_time == 0) xa_interval_time = 1;
     xa_time_now = XA_Read_AV_Time();  /* get new time */
-#ifdef XA_FORK
     New_Merged_Audio_Output();
-#else
-    Merged_Audio_Output();
-#endif
   }
 }
 
@@ -3556,6 +3671,7 @@ xaLONG ifreq;
 void  MMS_Audio_Init();
 void  MMS_Audio_Kill();
 void  MMS_Audio_Off();
+void  MMS_Audio_Prep();
 void  MMS_Audio_On();
 void  MMS_Adjust_Volume();
 xaULONG MMS_Closest_Freq();
@@ -3580,6 +3696,7 @@ void XA_Audio_Setup()
   XA_Audio_Init		= MMS_Audio_Init;
   XA_Audio_Kill		= MMS_Audio_Kill;
   XA_Audio_Off		= MMS_Audio_Off;
+  XA_Audio_Prep		= MMS_Audio_Prep;
   XA_Audio_On		= MMS_Audio_On;
   XA_Closest_Freq	= MMS_Closest_Freq;
   XA_Set_Output_Port	= (void *)(0);
@@ -3603,7 +3720,7 @@ void XA_No_Audio_Support()
 /********** MMS_Audio_Init **********************
 
   This just does some generic initialization.  The actual audio
-  output device open is done in the Audio_On routine so that we
+  output device open is done in the Audio_Prep routine so that we
   can get a device which matches the requested sample rate & format
 
  *****/
@@ -3717,7 +3834,7 @@ xaULONG flag;
   xa_audio_status = XA_AUDIO_STOPPED;
 }
 
-/********** MMS_Audio_On **********************
+/********** MMS_Audio_Prep **********************
  * Turn On Audio Stream.
  *
  *****/
@@ -3755,12 +3872,12 @@ LPARAM lParam2;
       }
 }
 
-void MMS_Audio_On()
+void MMS_Audio_Prep()
 {
   MMRESULT status;
   LPPCMWAVEFORMAT lpWaveFormat;
 
-  DEBUG_LEVEL2 fprintf(stderr,"MMS_Audio_On \n");
+  DEBUG_LEVEL2 fprintf(stderr,"MMS_Audio_Prep \n");
   if (xa_audio_status == XA_AUDIO_STARTED) return;
   else if (xa_audio_present != XA_AUDIO_OK) return;
   else if (xa_snd_cur)
@@ -3890,19 +4007,26 @@ void MMS_Audio_On()
     xa_out_time = 100;
     xa_out_init = xa_audio_ring_size - 1;
     xa_interval_time = xa_snd_cur->ch_time / XAAUD->divtest;
+    if (xa_interval_time == 0) xa_interval_time = 1;
 
-    xa_audio_status = XA_AUDIO_STARTED;
     XA_Flush_Ring();
     XA_Update_Ring(1000);
+    xa_audio_status = XA_AUDIO_PREPPED;
+  }
+}
 
-    /* initialize time base */
-    if (xa_interval_time == 0) xa_interval_time = 1;
+/****-------------------------------------------------------------------****
+ *
+ ****-------------------------------------------------------------------****/
+void MMS_Audio_On()
+{
+  if (   (xa_snd_cur)
+      && (xa_audio_present == XA_AUDIO_OK)
+      && (xa_audio_status == XA_AUDIO_PREPPED) )
+  { 
+    xa_audio_status = XA_AUDIO_STARTED;
     xa_time_now = XA_Read_AV_Time();  /* get new time */
-#ifdef XA_FORK
     New_Merged_Audio_Output();
-#else
-    Merged_Audio_Output();
-#endif
   }
 }
 
@@ -3926,7 +4050,7 @@ xaLONG ifreq;
 
     while(valid[i])
     {
-      if (XA_ABS(valid[i] - ifreq) < XA_ABS(best - ifreq)) best = valid[i];
+      if (xaABS(valid[i] - ifreq) < xaABS(best - ifreq)) best = valid[i];
       i++;
     }
 
@@ -4004,9 +4128,9 @@ xaULONG volume;
  vol = (0xFFFF * volume) / 100;	/* convert to 16 bit scale */
  vol = (vol << 16) | vol;	/* duplicate for left & right channels */
 
-/*
-waveOutSetVolume(audio_device_id, vol);
-*/
+#ifdef MMS_VOL
+ waveOutSetVolume(mms_device_id, vol);
+#endif
 
 }
 
@@ -4032,6 +4156,7 @@ waveOutSetVolume(audio_device_id, vol);
 static void		NAS_Audio_Init();
 static void		NAS_Audio_Kill();
 static void		NAS_Audio_Off();
+static void		NAS_Audio_Prep();
 static void		NAS_Audio_On();
 static void		NAS_Adjust_Volume();
 static xaULONG		NAS_Closest_Freq();
@@ -4225,11 +4350,11 @@ xaULONG           flag;
 }
 
 static void
-NAS_Audio_On()
+NAS_Audio_Prep()
 {
     if (NAS_pod_flag) return; NAS_pod_flag = 1; /* POD TEST */
 
-    DEBUG_LEVEL2    fprintf(stdout, "NAS_Audio_On \n");
+    DEBUG_LEVEL2    fprintf(stdout, "NAS_Audio_Prep \n");
 
     if ( (xa_audio_status == XA_AUDIO_STARTED) ||
 	 (xa_audio_present != XA_AUDIO_OK) || (!xa_snd_cur) )
@@ -4268,20 +4393,27 @@ NAS_Audio_On()
 					        * of video - could be 500 */
     xa_out_init = xa_audio_ring_size - 1;
     xa_interval_time = xa_snd_cur->ch_time / XAAUD->divtest;
+    if (xa_interval_time == 0) xa_interval_time = 1;
 
-    xa_audio_status = XA_AUDIO_STARTED;
     XA_Flush_Ring();
     XA_Update_Ring(1000);
+    xa_audio_status = XA_AUDIO_PREPPED;
+    NAS_pod_flag = 0;
+}
 
-    if (xa_interval_time == 0)
-	xa_interval_time = 1;
-    xa_time_now = XA_Read_AV_Time();	       /* get new time */
-#ifdef XA_FORK
+/****-------------------------------------------------------------------****
+ *
+ ****-------------------------------------------------------------------****/
+void NAS_Audio_On()
+{
+  if (   (xa_snd_cur)
+      && (xa_audio_present == XA_AUDIO_OK)
+      && (xa_audio_status == XA_AUDIO_PREPPED) )
+  { 
+    xa_audio_status = XA_AUDIO_STARTED;
+    xa_time_now = XA_Read_AV_Time();  /* get new time */
     New_Merged_Audio_Output();
-#else
-    Merged_Audio_Output();
-#endif
-    NAS_pod_flag = 0; /* POD TEST */
+  }
 }
 
 static void
@@ -4428,6 +4560,7 @@ XA_Audio_Setup()
     XA_Audio_Init = NAS_Audio_Init;
     XA_Audio_Kill = NAS_Audio_Kill;
     XA_Audio_Off = NAS_Audio_Off;
+    XA_Audio_Prep = NAS_Audio_Prep;
     XA_Audio_On = NAS_Audio_On;
     XA_Closest_Freq = NAS_Closest_Freq;
     XA_Set_Output_Port = (void *) (0);
@@ -4454,7 +4587,7 @@ XA_Audio_Setup()
 
 /*
  * NetBSD port provided by Roland C Dowdeswell
- * roland@indiana.edu
+ * roland@imrryr.org
  * Heavily stolen from the Sparc port (like the others)
  * Tuesday 9/May 1995 -- very early -- still dark.
  */
@@ -4464,6 +4597,7 @@ XA_Audio_Setup()
 void  NetBSD_Audio_Init();
 void  NetBSD_Audio_Kill();
 void  NetBSD_Audio_Off();
+void  NetBSD_Audio_Prep();
 void  NetBSD_Audio_On();
 void  NetBSD_Adjust_Volume();
 xaULONG NetBSD_Closest_Freq();
@@ -4475,8 +4609,6 @@ void NetBSD_Headphone_Toggle();
 #define NetBSD_MIN_VOL AUDIO_MIN_GAIN
 
 static int devAudio;
-static audio_info_t audio_info;
-
 
 /********** XA_Audio_Setup **********************
  * 
@@ -4488,6 +4620,7 @@ void XA_Audio_Setup()
   XA_Audio_Init		= NetBSD_Audio_Init;
   XA_Audio_Kill		= NetBSD_Audio_Kill;
   XA_Audio_Off		= NetBSD_Audio_Off;
+  XA_Audio_Prep		= NetBSD_Audio_Prep;
   XA_Audio_On		= NetBSD_Audio_On;
   XA_Closest_Freq	= NetBSD_Closest_Freq;
   XA_Set_Output_Port	= NetBSD_Set_Output_Port;
@@ -4524,16 +4657,68 @@ void NetBSD_Audio_Init()
   }
 
   DEBUG_LEVEL1 fprintf(stderr,"NetBSD AUDIO\n");
-  xa_audio_hard_type  = XA_AUDIO_SUN_AU;
-  xa_audio_hard_freq  = 8000;
-  xa_audio_hard_buff  = 256;             /* default buffer size */
-  xa_audio_hard_bps   = 1;
-  xa_audio_hard_chans = 1;
-  Gen_Signed_2_Ulaw();
 
   AUDIO_INITINFO(&a_info);
-  a_info.blocksize = 256;
+  a_info.blocksize = 1024;
   ioctl(devAudio, AUDIO_SETINFO, &a_info);
+  AUDIO_INITINFO(&a_info);
+
+  a_info.mode = AUMODE_PLAY | AUMODE_PLAY_ALL;
+  ioctl(devAudio, AUDIO_SETINFO, &a_info);
+#ifdef AUDIO_ENCODING_SLINEAR
+  /* Use new encoding names */
+  AUDIO_INITINFO(&a_info);
+  a_info.play.encoding = AUDIO_ENCODING_SLINEAR;
+  a_info.play.precision = 16;
+  if ( ioctl(devAudio, AUDIO_SETINFO, &a_info) < 0)
+  {
+    AUDIO_INITINFO(&a_info);
+    a_info.play.encoding = AUDIO_ENCODING_ULINEAR;
+    a_info.play.precision = 8;
+    ioctl(devAudio, AUDIO_SETINFO, &a_info);
+  }
+#else
+  AUDIO_INITINFO(&a_info);
+  a_info.play.encoding = AUDIO_ENCODING_PCM16;
+  a_info.play.precision = 16;
+  if (ioctl(devAudio, AUDIO_SETINFO, &a_info) < 0)
+  {
+    AUDIO_INITINFO(&a_info);
+    a_info.play.encoding = AUDIO_ENCODING_PCM;
+    a_info.play.precision = 8;
+    ioctl(devAudio, AUDIO_SETINFO, &a_info);
+  }
+#endif
+  AUDIO_INITINFO(&a_info);
+  a_info.play.channels = /*2*/1;  /* Eventually test for and support stereo */
+  ioctl(devAudio, AUDIO_SETINFO, &a_info);
+
+  AUDIO_INITINFO(&a_info);
+  a_info.play.sample_rate = 11025;   /* this is changed later */
+  ioctl(devAudio, AUDIO_SETINFO, &a_info);
+  ioctl(devAudio, AUDIO_GETINFO, &a_info);
+
+/* Eventually support stereo 
+  if (a_info.play.channels == 2)
+    if (a_info.play.precision == 8)
+      xa_audio_hard_type = XA_AUDIO_LINEAR_1S;
+    else
+      xa_audio_hard_type = XA_AUDIO_SIGNED_2SL;
+  else
+*/
+    if (a_info.play.precision == 8)
+      xa_audio_hard_type = XA_AUDIO_LINEAR_1M;
+    else
+      xa_audio_hard_type = XA_AUDIO_SIGNED_2ML;
+
+  xa_audio_hard_freq  = a_info.play.sample_rate;
+  xa_audio_hard_buff  = a_info.blocksize;
+
+	/* only precision 8 and 16 are supported. Fail if otherwise?? */
+  xa_audio_hard_bps   = (a_info.play.precision==8)?1:2;
+  xa_audio_hard_chans = a_info.play.channels;
+  Gen_uLaw_2_Signed();
+  Gen_Signed_2_uLaw();
 
   xa_interval_id = 0;
   xa_audio_present = XA_AUDIO_OK;
@@ -4562,7 +4747,7 @@ void NetBSD_Audio_Kill()
  *****/
 void NetBSD_Audio_Off(flag)
 xaULONG flag;
-{ long ret;
+{ /* long ret; */
 
   DEBUG_LEVEL1 fprintf(stderr,"NetBSD_Audio_Off\n");
   if (xa_audio_status != XA_AUDIO_STARTED) return;
@@ -4576,7 +4761,7 @@ xaULONG flag;
   /* FLUSH AUDIO DEVICE */ /* NOT! */
 /*
   ret = ioctl(devAudio, AUDIO_FLUSH, NULL);
-  if (ret == -1) fprintf(stderr,"NetBSD Audio: off flush err %ld\n",errno);
+  if (ret == -1) fprintf(stderr,"NetBSD Audio: off flush err %d\n",errno);
 */
 
   xa_time_audio = -1;
@@ -4585,22 +4770,22 @@ xaULONG flag;
   /* FLUSH AUDIO DEVICE AGAIN */ /* NOT! */
 /*
   ret = ioctl(devAudio, AUDIO_FLUSH, NULL);
-  if (ret == -1) fprintf(stderr,"NetBSD Audio: off flush err %ld\n",errno);
+  if (ret == -1) fprintf(stderr,"NetBSD Audio: off flush err %d\n",errno);
 */
 
   /* RESTORE ORIGINAL VOLUME */
-  NetBSD_Adjust_Volume(XAAUD->volume);
+  if (XAAUD->mute != xaTRUE) NetBSD_Adjust_Volume(XAAUD->volume);
 }
 
-/********** NetBSD_Audio_On **********************
+/********** NetBSD_Audio_Prep **********************
  * Turn On Audio Stream.
  *
  *****/
-void NetBSD_Audio_On()
+void NetBSD_Audio_Prep()
 {
   DEBUG_LEVEL2 
   {
-    fprintf(stderr,"NetBSD_Audio_On \n");
+    fprintf(stderr,"NetBSD_Audio_Prep \n");
   }
   if (xa_audio_status == XA_AUDIO_STARTED) return;
   else if (xa_audio_present != XA_AUDIO_OK) return;
@@ -4614,7 +4799,7 @@ void NetBSD_Audio_On()
       AUDIO_INITINFO(&a_info);
       a_info.play.sample_rate = xa_snd_cur->hfreq;
       ret = ioctl(devAudio, AUDIO_SETINFO, &a_info);
-      if (ret == -1) fprintf(stderr,"audio setfreq: freq %lx errno %ld\n",
+      if (ret == -1) fprintf(stderr,"audio setfreq: freq %x errno %d\n",
 						xa_snd_cur->hfreq, errno);
       xa_audio_hard_freq = xa_snd_cur->hfreq;
     }
@@ -4623,20 +4808,26 @@ void NetBSD_Audio_On()
     xa_out_time = 100;  /* keep audio fed 500ms ahead of video */  /* was 500, changed it to 100 - rcd */
     xa_out_init = xa_audio_ring_size - 1;
     xa_interval_time = xa_snd_cur->ch_time / XAAUD->divtest;
+    if (xa_interval_time == 0) xa_interval_time = 1;
 
-DEBUG_LEVEL1 fprintf(stderr,"ch_time %ld out_time %ld int time %ld \n",xa_snd_cur->ch_time,xa_out_time,xa_interval_time);
-
-    xa_audio_status = XA_AUDIO_STARTED;
     XA_Flush_Ring();
     XA_Update_Ring(1000);
+    xa_audio_status = XA_AUDIO_PREPPED;
+  }
+}
 
-    if (xa_interval_time == 0) xa_interval_time = 1;
+/****-------------------------------------------------------------------****
+ *
+ ****-------------------------------------------------------------------****/
+void NetBSD_Audio_On()
+{
+  if (   (xa_snd_cur)
+      && (xa_audio_present == XA_AUDIO_OK)
+      && (xa_audio_status == XA_AUDIO_PREPPED) )
+  { 
+    xa_audio_status = XA_AUDIO_STARTED;
     xa_time_now = XA_Read_AV_Time();  /* get new time */
-#ifdef XA_FORK
     New_Merged_Audio_Output();
-#else
-    Merged_Audio_Output();
-#endif
   }
 }
 
@@ -4649,9 +4840,16 @@ DEBUG_LEVEL1 fprintf(stderr,"ch_time %ld out_time %ld int time %ld \n",xa_snd_cu
  ****************************************************************************/
 xaULONG NetBSD_Closest_Freq(ifreq)
 xaLONG ifreq;
-{
-  xa_audio_hard_buff = 256;
-  return 8000;
+{ audio_info_t a_info;
+
+  AUDIO_INITINFO(&a_info);
+  a_info.play.sample_rate = ifreq;
+  ioctl(devAudio, AUDIO_SETINFO, &a_info);
+
+  ioctl(devAudio, AUDIO_GETINFO, &a_info);
+
+  xa_audio_hard_buff  = a_info.blocksize;
+  return (a_info.play.sample_rate);
 }
 
 
@@ -4670,7 +4868,7 @@ audio_info_t a_info;
   AUDIO_INITINFO(&a_info);
   a_info.play.port = NetBSD_ports;
   ret = ioctl(devAudio, AUDIO_SETINFO, &a_info);
-  if (ret < 0) fprintf(stderr,"Audio: couldn't set speaker port %ld\n",errno);
+  if (ret < 0) fprintf(stderr,"Audio: couldn't set speaker port %d\n",errno);
 */
 }
 
@@ -4726,639 +4924,544 @@ void NetBSD_Adjust_Volume(volume)
 xaULONG volume;
 { audio_info_t a_info;
 
-/*
   AUDIO_INITINFO(&a_info);
   a_info.play.gain = NetBSD_MIN_VOL +
 	((volume * (NetBSD_MAX_VOL - NetBSD_MIN_VOL)) / XA_AUDIO_MAXVOL);
   if (a_info.play.gain > NetBSD_MAX_VOL) a_info.play.gain = NetBSD_MAX_VOL;
   ioctl(devAudio, AUDIO_SETINFO, &a_info);
-*/
+
 }
 #endif
-/****************************************************************************/
 /****************************************************************************/
 /******************* END OF NetBSD SPECIFIC ROUTINES ************************/
 /****************************************************************************/
 
-
-/* IMPORTANT: MERGED MUST BE AFTER ALL MACHINE SPECIFIC CODE */
+ /****************************************************************************/
+/**************** TOWNS SPECIFIC ROUTINES ***********************************/
 /****************************************************************************/
-/******************* MERGED AUDIO OUTPUT ROUTINE ****************************/
-/****************************************************************************/
-#ifdef XA_AUD_OUT_MERGED
-
-/********** Merged_Audio_Output **********************
- * Set Volume if needed and then write audio data to audio device.
- *
- * IS 
- *****/
-static void Merged_Audio_Output()
-{ xaLONG time_diff, cnt = xa_audio_ring_size - 1;
-
-  xa_audio_out_sem = 1;
-  xa_interval_id = 0;
-
-DEBUG_LEVEL1 fprintf(stderr,"AUD entry: c %ld\n",xa_time_now);
-
-  /* normal exit is when audio gets ahead */
-  while(cnt--)
-  {
-    if (xa_audio_status != XA_AUDIO_STARTED) { xa_audio_out_sem = 0; return; }
-    time_diff = xa_time_audio - xa_time_now; /* how far ahead is audio */
-    if (time_diff > xa_out_time) /* potentially ahead */
-    {
-      xa_time_now = XA_Read_AV_Time();  /* get new time */
-      time_diff = xa_time_audio - xa_time_now;
-      if (time_diff > xa_out_time)  /* definitely ahead */
-      {
-        DEBUG_LEVEL1 fprintf(stderr,"AUD_OUT: ahead c %ld a %ld\n",
-						xa_time_now,xa_time_audio);
-        xa_interval_id = XtAppAddTimeOut(theContext,xa_interval_time,
-		(XtTimerCallbackProc)Merged_Audio_Output,(XtPointer)(NULL));
-        xa_audio_out_sem = 0;
-        return;
-      }
-    }
-DEBUG_LEVEL1 fprintf(stderr,"AUD_OUT: okay c %ld a %ld\n",xa_time_now,xa_time_audio);
-
-    /******************
-     * METHOD 2: trying to limit flow into audio write buffer by using 
-     * current and audio times. Only grab cur time every so often to
-     * minimize cpu load.
-     * Also, if we're behind, we want to drop through as quickly as possible
-     * in order to get to the write(). Otherwise we might pop.
-     ****************/
-
-    /* If audio buffer is full, write() can't write all of the data. */
-    /* So, next routine checks the rest length in buffer.            */
-#ifdef XA_SONY_AUDIO
-    { int ret, buf_len;
-      ret = ioctl(devAudio, SBIOCBUFRESID,&buf_len) ;
-      if( ret == -1 ) fprintf(stderr,"SONY_AUDIO: SIOCBUFRESID error.\n");
-      if(buf_len > sony_audio_buf_len - xa_audio_ring->len)
-      { xa_interval_id = XtAppAddTimeOut(theContext, xa_interval_time,
-            (XtTimerCallbackProc)Merged_Audio_Output,(XtPointer)(NULL));
-        xa_audio_out_sem = 0;
-        return;
-      }
-    }
-#endif
-#ifdef XA_SGI_AUDIO
-    { int buf_len;
-      buf_len = ALgetfillable(port) ;
-      if (buf_len < (xa_audio_ring->len >> 1))
-      { xa_interval_id = XtAppAddTimeOut(theContext, xa_interval_time,
-		(XtTimerCallbackProc)Merged_Audio_Output,(XtPointer)(NULL));
-	xa_audio_out_sem = 0;
-	return;
-      }
-    }
-#endif
-
-#ifdef XA_MMS_AUDIO
-      {
-	mmeProcessCallbacks();
-	/* NOTE: These buffers aren't part of the XAnim audio ring buffer */
-	/*       Our ring buffer just happens to be the same size */
-	if( mms_buffers_outstanding  >= xa_audio_ring_size ) 
-	{
-	  xa_interval_id = XtAppAddTimeOut(theContext, xa_interval_time,
-                                  (XtTimerCallbackProc)Merged_Audio_Output,
-                                  (XtPointer)(NULL));
-DEBUG_LEVEL2 fprintf(stderr,"Deferring audio write - buffers outstanding = %d\n"
-, mms_buffers_outstanding);
-           
-	  xa_audio_out_sem = 0;
- 	  return ;
-	}
-      }
-#endif
-
-    /************
-     * Valid Audio Sample 
-     *****/
-    if (xa_audio_ring->len)
-    { 
-
-#ifdef XA_SPARC_AUDIO
-      write(devAudio,xa_audio_ring->buf,xa_audio_ring->len); 
-#endif
-
-#ifdef XA_NetBSD_AUDIO
-      write(devAudio,xa_audio_ring->buf,xa_audio_ring->len);
-#endif
-
-#ifdef XA_AIX_AUDIO
-      { int rc;
-        rc = write ( devAudio, xa_audio_ring->buf, xa_audio_ring->len );
-      }
-#endif
-
-#ifdef XA_SGI_AUDIO
-      /* # of Samples, not Bytes. Note: assume 16 bit samples. */
-      ALwritesamps(port,xa_audio_ring->buf, (xa_audio_ring->len >> 1) );
-#endif
-
-#ifdef XA_LINUX_AUDIO
-      write(devAudio,xa_audio_ring->buf,xa_audio_ring->len);
-#endif
-
-#ifdef XA_NAS_AUDIO
-      NAS_Write_Data(xa_audio_ring->buf, xa_audio_ring->len);
-#endif
-
-#ifdef XA_SONY_AUDIO
-      { int ret;
-        write(devAudio,xa_audio_ring->buf,xa_audio_ring->len);
-        /* Buffer of Sony audio device is too large */ /* HP needs this */
-        ret = ioctl(devAudio, SBIOCFLUSH, 0);
-        if( ret == -1 ) fprintf(stderr,"audio output:SBIOCFLUSH error.\n");
-      }
-#endif
-
-#ifdef XA_EWS_AUDIO
-      write(devAudio,xa_audio_ring->buf,xa_audio_ring->len);
-#endif
-
-#ifdef XA_AF_AUDIO
-      { ATime act, atd = AFtime0;
-	if (XAAUD->mute != xaTRUE)
-	  act = AFPlaySamples(ac,AFtime0,xa_audio_ring->len,xa_audio_ring->buf);
-	else act = AFGetTime(ac);
-	if (AFtime0 < act)	AFtime0 = act+TOFFSET;
-	else	AFtime0 += xa_audio_ring->len >> 1; /* Number of samples */
-      }
-#endif
-
-#ifdef XA_HPDEV_AUDIO
-      write (devAudio, xa_audio_ring->buf, xa_audio_ring->len);
-#endif
-
-#ifdef XA_MMS_AUDIO
-      /* As currently implemented, this copies the audio data into a separate
-         shared memory buffer for communication with the multimedia server. We
-         could actually work directly out of the audio ring buffer if it was
-         allocated in shared memory, but this keeps things more independent of
-         each other - tfm
-      */
-      {  
-	MMRESULT	status;
-	int		bytes,len;
-	if (XAAUD->mute != xaTRUE) 
-	{
-	  bytes = xa_audio_hard_buff*xa_audio_hard_bps;
-	  mms_lpWaveHeader->lpData = (LPSTR)(mms_audio_buffer
-						+ mms_next_buffer * bytes);
-	  mms_lpWaveHeader->dwBufferLength = xa_audio_ring->len;
-	  if(xa_audio_ring->len > bytes) 
-	  {
-	    len = bytes;
-	    fprintf(stderr,"Audio chunk truncated to %d bytes\n",len);
-	  }
-	  else len = xa_audio_ring->len;
-	  memcpy( mms_lpWaveHeader->lpData, xa_audio_ring->buf, len);
-	  mms_next_buffer++;
-	  if(mms_next_buffer >= xa_audio_ring_size) mms_next_buffer = 0;
-	  status = waveOutWrite(mms_device_handle, mms_lpWaveHeader,
-							sizeof(WAVEHDR));
-	  if( status != MMSYSERR_NOERROR ) 
-	  {
-	    fprintf(stderr,"waveOutWrite failed - status = %d\n",status);
-	  }
-	  else { mms_buffers_outstanding++; }
-	}
-      }
-#endif
-
-      /* Don't adjust volume until after write. If we're behind
-       * the extra delay could cause a pop. */
-      if (XAAUD->newvol==xaTRUE)
-      { xaULONG vol = (XAAUD->mute==xaTRUE)?(XA_AUDIO_MINVOL):(XAAUD->volume);
-  	XA_Adjust_Volume(vol);
-  	XAAUD->newvol = xaFALSE;
-      }
-      xa_time_audio   += xa_audio_ring->time;
-      xa_timelo_audio += xa_audio_ring->timelo;
-      if (xa_timelo_audio & 0xff000000)
-		{ xa_time_audio++; xa_timelo_audio &= 0x00ffffff; }
-      xa_audio_ring->len = 0;
-      xa_audio_ring = xa_audio_ring->next;  /* move to next */
-      if (xa_audio_status != XA_AUDIO_STARTED) { xa_audio_out_sem = 0; return;}
-      if (xa_out_init) xa_out_init--;
-      else if (xa_update_ring_sem==0)	/*semaphores aren't really used since */
-      {					/*XtAppTimeOut is sequential */
-        xa_update_ring_sem = 1;
-        XA_Update_Ring(2);  /* only allow two to be updated */
-        xa_update_ring_sem = 0;
-      }
-    } 
-    else  /* Audio Sample finished */
-    { xa_time_now = XA_Read_AV_Time();
-
-DEBUG_LEVEL1 fprintf(stderr,"AUD_WAIT: c %ld a %ld\n",xa_time_now,xa_time_audio);
-	/* Is audio still playing buffered samples? */
-      if (xa_time_now < xa_time_audio) 
-      { xaULONG diff = xa_time_audio - xa_time_now;
-        if (xa_audio_status != XA_AUDIO_STARTED) {xa_audio_out_sem = 0; return;}
-        xa_interval_id = XtAppAddTimeOut(theContext, diff,
-		(XtTimerCallbackProc)Merged_Audio_Output,(XtPointer)(NULL));
-        xa_audio_out_sem = 0;	return;
-      }
-      else 
-      { XA_Audio_Off(0);
-	xa_audio_out_sem = 0;	return;
-      }
-    }
-  } /* end of while audio is behind */
-
-  if (xa_audio_status == XA_AUDIO_STARTED)
-  {
-    xa_time_now = XA_Read_AV_Time();
-    if (xa_audio_status != XA_AUDIO_STARTED) { xa_audio_out_sem = 0; return;}
-    xa_interval_id = XtAppAddTimeOut(theContext, xa_interval_time,
-                (XtTimerCallbackProc)Merged_Audio_Output,(XtPointer)(NULL));
-  }
-  xa_audio_out_sem = 0;
-}
-#endif
-/****************************************************************************/
-/******************* END OF MERGED AUDIO OUTPUT ROUTINE *********************/
-/****************************************************************************/
-
-
-
-
-/********* XA_Add_Sound ****************************************
- *
- *
- * Global Variables Used:
- *   double XAAUD->scale	linear scale of frequency
- *   xaULONG  xa_audio_hard_buff	size of sound chunk - set by XA_Closest_Freq().
- *   xaULONG  XAAUD->bufferit	xaTRUE if this routine is to convert and buffer
- * 				the audio data ahead of time.
- *   xaULONG  xa_audio_hard_type	Audio Type of Current Hardware
- *
- * Add sound double checks xa_audio_present. 
- *   If UNK then it calls XA_Audio_Init().
- *   If OK adds the sound, else returns false.
- *****/
-xaULONG XA_Add_Sound(anim_hdr,isnd,itype,fpos,ifreq,ilen,stime,stimelo)
-XA_ANIM_HDR *anim_hdr;
-xaUBYTE *isnd;
-xaULONG itype;	/* sound type */
-xaULONG fpos;	/* file position */
-xaULONG ifreq;	/* input frequency */
-xaULONG ilen;	/* length of snd sample chunk in bytes */
-xaLONG *stime;	/* start time of sample */
-xaULONG *stimelo;	/* fractional start time of sample */
-{
-  XA_SND *new_snd;
-  xaULONG bps,isamps,totsamps,hfreq,inc;
-  double finc,ftime,fadj_freq;
-
-#ifdef XA_FORK
-return(XA_Fork_Add_Snd(anim_hdr,isnd,itype,fpos,ifreq,ilen,stime,stimelo));
-#else
-
-  /* If audio hasn't been initialized, then init it */
-  if (xa_audio_present == XA_AUDIO_UNK) XA_Audio_Init();
-  /* Return xaFALSE if it's not OK */
-  if (xa_audio_present != XA_AUDIO_OK) return(xaFALSE);
-
-  new_snd = (XA_SND *)malloc(sizeof(XA_SND));
-  if (new_snd==0) TheEnd1("snd malloc err");
-
-  bps = 1;
-  if (itype == XA_AUDIO_ADPCM_M)
-  { xaLONG SampPerBlock,w,BytesPerBlock,tmp_len;
-    /* compute number of ms_adpcm out samples and SampPerBlock */
-    BytesPerBlock = (256 * 1); /* 256 * chans */
-    if (ifreq > 11025) BytesPerBlock *= (ifreq / 11000);
-    w = 8 * (BytesPerBlock - (7 * 1));  /* - (7 * chans) */
-    SampPerBlock = (w / (4 * 1)) + 2;
+#ifdef XA_TOWNS_AUDIO
 
 /*
-DEBUG_LEVEL1 fprintf(stderr,"ADPCM ASND: snd %lx bytes %lx ifreq %ld samps %lx ilen %lx \n",new_snd,BytesPerBlock,ifreq,SampPerBlock,ilen);
-*/
+ * FUJITSU FM-TOWNS  port provided by Osamu KURATI,
+ *	kurati@bigfoot.com
+ * Heavily stolen from the Sparc port
+ * Sun Sep. 2, 1997
+ *
+ */
 
-    /* for MSADPCM tot_samps is total sample in a block, not for chunk */
-    isamps = SampPerBlock;
-    /* need to calculate total samples in entire chunk for timing purposes */
-    w = (ilen / BytesPerBlock);  
-    tmp_len = SampPerBlock * w;  /* out len based on full blocks */
+static int auTownsSamplingRate[12]={
+	48000,44100,32000,22050,
+	19200,16000,11025, 9600,
+	 8000, 5512,24000,12000
+	};
 
-    w = ilen - (w * BytesPerBlock); /* bytes remaining */
-    w -= (7 * 1);  /* subtract header */
-    if (w >= 0)  /* if anything left */
-    {
-      w = (8 * w) / ( 4 * 1); /* extra samples */
-      w += 2; /* plus samples in header */
-      tmp_len += w;
-    }
-    totsamps = tmp_len;
-  }
-  else
-  {
-    if (itype & XA_AUDIO_STEREO_MSK) bps *= 2;
-    if (itype & XA_AUDIO_BPS_2_MSK) bps *= 2;
-    totsamps = isamps = ilen / bps;
-  }
-  new_snd->tot_samps = new_snd->samp_cnt = isamps;
-  new_snd->tot_bytes = ilen;
-  new_snd->byte_cnt = 0;
-
-  new_snd->fpos = fpos;
-  new_snd->type = itype;
-  new_snd->flag = 0;
-  new_snd->ifreq = ifreq;
-  hfreq = (XAAUD->playrate)?(XAAUD->playrate):(ifreq);
-  new_snd->hfreq = hfreq = XA_Closest_Freq(hfreq);
-  if (hfreq==0)  /* could'nt find a supported freq */
-  {
-    fprintf(stderr,"Couldn't find a supported frequency. Audio Off.\n");
-    FREE(new_snd,0x502); new_snd = 0; return(xaFALSE);
-  }
-  new_snd->ch_size = xa_audio_hard_buff; /* set by Closest_Freq */
-
-  /* Setup and return Chunk Start Time */
-  new_snd->snd_time = *stime;
-  { xaULONG tint;
-    ftime = ((double)(totsamps) * 1000.0) / (double)(ifreq);
-    tint = (xaULONG)(ftime);   /* get integer time */
-    *stime += tint;
-    ftime -= (double)(tint); /* get fraction time */
-    *stimelo += (xaULONG)( ftime * (double)(1<<24) );
-    while( (*stimelo) > (1<<24)) { *stime += 1; *stimelo -= (1<<24); }
-  }
-
-  /* Determine f2f inc */
-  fadj_freq = (double)(ifreq) * XAAUD->scale;
-  finc = (double)(fadj_freq)/ (double)(hfreq);
-  new_snd->inc = inc = (xaULONG)( finc * (double)(1<<24) );
-  new_snd->inc_cnt = 0;
-
-  /* Determine Chunk Time */
-  ftime = ((double)(xa_audio_hard_buff) * 1000.0) / (double)(hfreq);
-  new_snd->ch_time = (xaLONG)ftime;
-  ftime -= (double)(new_snd->ch_time);
-  new_snd->ch_timelo = (xaULONG)(ftime * (double)(1<<24));
-
-  new_snd->snd	= isnd;
-  new_snd->prev = 0;
-  new_snd->next = 0;
-
-  /* Figure out which conversion routine to use */
-  switch(xa_audio_hard_type)
-  {
-    case XA_AUDIO_SUN_AU:
-      {
-	switch(itype)
-	{
-	  case XA_AUDIO_SIGNED_1M:
-	  case XA_AUDIO_SIGNED_2MB:
-	  case XA_AUDIO_SIGNED_2ML:
-	  case XA_AUDIO_LINEAR_1M:
-	  case XA_AUDIO_LINEAR_2ML:
-	  case XA_AUDIO_LINEAR_2MB:
-	  case XA_AUDIO_SIGNED_1S:
-	  case XA_AUDIO_SIGNED_2SB:
-	  case XA_AUDIO_SIGNED_2SL:
-	  case XA_AUDIO_LINEAR_1S:
-	  case XA_AUDIO_LINEAR_2SL:
-	  case XA_AUDIO_LINEAR_2SB:
-		new_snd->spec = 
-		    ((itype & XA_AUDIO_TYPE_MASK)==XA_AUDIO_LINEAR)?(0):(1);
-		if (itype & XA_AUDIO_BPS_2_MSK)
-		  new_snd->spec |= (itype & XA_AUDIO_BIGEND_MSK)?(2):(4);
-		new_snd->spec |= 8; /* SUN AU bit */
-		if (itype & XA_AUDIO_STEREO_MSK)
-			new_snd->delta = XA_Audio_PCMXS_PCM1M;
-		else
-			new_snd->delta = XA_Audio_PCMXM_PCM1M;
-		break;
-	  case XA_AUDIO_SUN_AU:
-		new_snd->delta = XA_Audio_1M_1M;
-		break;
-	  case XA_AUDIO_ADPCM_M:
-	        new_snd->spec = 2 | 4 | 8;
-		new_snd->delta = XA_Audio_ADPCMM_PCM2M;
-		break;
-	  case XA_AUDIO_NOP:
-		new_snd->delta = XA_Audio_Silence;
-		new_snd->spec = 0x00;
-		break;
-	  default: 
-	    fprintf(stderr,"SUN_AU_AUDIO: Unsupported Software Type %lx\n",
-				itype);
-		FREE(new_snd,0x503); new_snd = 0;
-		return(xaFALSE);
-		break;
-	}
-      }
-      break;
-
-    case XA_AUDIO_SIGNED_2ML:
-    case XA_AUDIO_SIGNED_2MB:
-      {
-	switch(itype)
-	{
-	  case XA_AUDIO_LINEAR_1M:      /* LIN1M -> SIN2M*  */
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 1;
-		else    new_snd->spec = 2;
-		new_snd->delta = XA_Audio_PCM1M_PCM2M;
-		break;
-	  case XA_AUDIO_LINEAR_1S:      /* LIN1S -> SIN2M*  */
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 1;
-		else    new_snd->spec = 2;
-		new_snd->delta = XA_Audio_PCM1S_PCM2M;
-		break;
-	  case XA_AUDIO_SIGNED_1S:      /* SIN1S -> SIN2M*  */
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 6;
-		else    new_snd->spec = 5;
-		new_snd->delta = XA_Audio_PCM1S_PCM2M;
-		break;
-	  case XA_AUDIO_SIGNED_1M:      /* SIN1M -> SIN2M*  */
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 2;
-		else    new_snd->spec = 1;
-		new_snd->delta = XA_Audio_PCM1M_PCM2M;
-		break;
-	  case XA_AUDIO_LINEAR_2MB:     /* LIN2M* -> SIN2M*  */
-	  case XA_AUDIO_LINEAR_2ML:
-	  case XA_AUDIO_SIGNED_2MB:     /* SIN2M* -> SIN2M*  */
-	  case XA_AUDIO_SIGNED_2ML:
-	  case XA_AUDIO_LINEAR_2SB:     /* LIN2S* -> SIN2M*  */
-	  case XA_AUDIO_LINEAR_2SL:
-	  case XA_AUDIO_SIGNED_2SB:     /* SIN2S* -> SIN2M*  */
-	  case XA_AUDIO_SIGNED_2SL:
-		  /* sign conversion? */
-		if ( (itype & XA_AUDIO_TYPE_MASK) == XA_AUDIO_SIGNED)
-			new_snd->spec = 0x10;
-		else	new_snd->spec = 0x02;
-		  /* src endian? */
-		new_snd->spec |= (itype & XA_AUDIO_BIGEND_MSK)?(0):(1);
-		  /* dst endian? */
-		new_snd->spec |= 
-			(xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)?(0):(4);
-		  /* stereo? */
-		new_snd->spec |= (itype & XA_AUDIO_STEREO_MSK)?(8):(0); 
-		new_snd->delta = XA_Audio_PCM2X_PCM2M;
-		break;
-	  case XA_AUDIO_ADPCM_M:
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 0;
-		else	new_snd->spec = 1;
-		new_snd->delta = XA_Audio_ADPCMM_PCM2M;
-		break;
-	  case XA_AUDIO_NOP:
-		new_snd->delta = XA_Audio_Silence;
-		new_snd->spec = 0x00;
-		break;
-	  case XA_AUDIO_ULAWS:
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 0;
-		new_snd->delta = XA_Audio_ULAWS_PCM2M;
-		break;
-	  case XA_AUDIO_ULAW:
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 0;
-		new_snd->delta = XA_Audio_ULAWM_PCM2M;
-		break;
-	  default:
-		FREE(new_snd,0x504); new_snd = 0;
-	fprintf(stderr,"AUDIO_SIN2M: Unsupported Software Type(%lx)\n",
-			itype);
-		return(xaFALSE);
-		break;
-
-	}
-      }
-      break;
-
-    case XA_AUDIO_LINEAR_1M:
-      {
-	switch(itype)
-	{
-	  case XA_AUDIO_SIGNED_1M:
-	  case XA_AUDIO_SIGNED_2MB:
-	  case XA_AUDIO_SIGNED_2ML:
-	  case XA_AUDIO_LINEAR_1M:
-	  case XA_AUDIO_LINEAR_2ML:
-	  case XA_AUDIO_LINEAR_2MB:
-	  case XA_AUDIO_SIGNED_1S:
-	  case XA_AUDIO_SIGNED_2SB:
-	  case XA_AUDIO_SIGNED_2SL:
-	  case XA_AUDIO_LINEAR_1S:
-	  case XA_AUDIO_LINEAR_2SL:
-	  case XA_AUDIO_LINEAR_2SB:
-		new_snd->spec = 
-		    ((itype & XA_AUDIO_TYPE_MASK)==XA_AUDIO_LINEAR)?(0):(1);
-		if (itype & XA_AUDIO_BPS_2_MSK)
-		  new_snd->spec |= (itype & XA_AUDIO_BIGEND_MSK)?(2):(4);
-		if (itype & XA_AUDIO_STEREO_MSK)
-			new_snd->delta = XA_Audio_PCMXS_PCM1M;
-		else
-			new_snd->delta = XA_Audio_PCMXM_PCM1M;
-		break;
-	  case XA_AUDIO_ADPCM_M:
-		new_snd->spec = 2 | 4;  /* 1 byte output */
-		new_snd->delta = XA_Audio_ADPCMM_PCM2M;
-		break;
-	  case XA_AUDIO_NOP:
-		new_snd->delta = XA_Audio_Silence;
-		new_snd->spec = 0x00;
-		break;
-	  default:
-		FREE(new_snd,0x505); new_snd = 0;
-		fprintf(stderr,"AUDIO_LIN1M: Unsupported Software Type\n");
-		return(xaFALSE);
-		break;
-	}
-      }
-      break;
-
-    case XA_AUDIO_LINEAR_2ML:
-    case XA_AUDIO_LINEAR_2MB:
-      {
-	switch(itype)
-	{
-	  case XA_AUDIO_LINEAR_1M:      /* LIN1M -> LIN2M*  */
-		new_snd->spec = 0;
-		new_snd->delta = XA_Audio_PCM1M_PCM2M;
-		break;
-	  case XA_AUDIO_SIGNED_1M:      /* SIN1M -> LIN2M*  */
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 1;
-		else    new_snd->spec = 2;
-		new_snd->delta = XA_Audio_PCM1M_PCM2M;
-		break;
-	  case XA_AUDIO_LINEAR_2MB:     /* LIN2M* -> LIN2M*  */
-	  case XA_AUDIO_LINEAR_2ML:
-	  case XA_AUDIO_SIGNED_2MB:     /* SIN2M* -> LIN2M*  */
-	  case XA_AUDIO_SIGNED_2ML:
-	  case XA_AUDIO_LINEAR_2SB:     /* LIN2S* -> LIN2M*  */
-	  case XA_AUDIO_LINEAR_2SL:
-	  case XA_AUDIO_SIGNED_2SB:     /* SIN2S* -> LIN2M*  */
-	  case XA_AUDIO_SIGNED_2SL:
-		  /* sign conversion? */
-		if ( (itype & XA_AUDIO_TYPE_MASK) == XA_AUDIO_SIGNED)
-			new_snd->spec = 0x12;
-		else	new_snd->spec = 0;
-		  /* src endian? */
-		new_snd->spec |= (itype & XA_AUDIO_BIGEND_MSK)?(0):(1);
-		  /* dst endian? */
-		new_snd->spec |= 
-			(xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)?(0):(4);
-		  /* stereo? */
-		new_snd->spec |= (itype & XA_AUDIO_STEREO_MSK)?(8):(0); 
-		new_snd->delta = XA_Audio_PCM2X_PCM2M;
-		break;
-	  case XA_AUDIO_ADPCM_M:
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 2;
-		else	new_snd->spec = 3;
-		new_snd->delta = XA_Audio_ADPCMM_PCM2M;
-		break;
-	  case XA_AUDIO_NOP:
-		new_snd->delta = XA_Audio_Silence;
-		new_snd->spec = 0x00;
-		break;
-	  default:
-		FREE(new_snd,0x506); new_snd = 0;
-		fprintf(stderr,"AUDIO_LIN2M: Unsupported Software Type\n");
-		return(xaFALSE);
-		break;
-	}
-      }
-      break;
+void  Towns_Audio_Init();
+void  Towns_Audio_Kill();
+void  Towns_Audio_Off();
+void  Towns_Audio_Prep();
+void  Towns_Audio_On();
+void  Towns_Adjust_Volume();
+xaULONG Towns_Closest_Freq();
+void Towns_Set_Output_Port();
+void Towns_Speaker_Toggle();
+void Towns_Headphone_Toggle();
 
 
-    default: 
-      FREE(new_snd,0x507); new_snd = 0;
-      fprintf(stderr,"AUDIO: Unknown Hardware Type: %lx\n",xa_audio_hard_type);
-      return(xaFALSE);
-      break;
-  }
+static int devAudio;
 
-  /** Set up prev pointer */
-  if (anim_hdr->first_snd==0) new_snd->prev = 0;
-  else new_snd->prev = anim_hdr->last_snd;
 
-  /** Set up next pointer */
-  if (anim_hdr->first_snd == 0)	anim_hdr->first_snd = new_snd;
-  if (anim_hdr->last_snd)	anim_hdr->last_snd->next = new_snd;
-  anim_hdr->last_snd = new_snd;
-  return(xaTRUE);
-#endif
+/********** XA_Audio_Setup **********************
+ * 
+ * Also defines Towns Specific variables.
+ *
+ *****/
+void XA_Audio_Setup()
+{
+
+  XA_Audio_Init		= Towns_Audio_Init;
+  XA_Audio_Kill		= Towns_Audio_Kill;
+  XA_Audio_Off		= Towns_Audio_Off;
+  XA_Audio_Prep		= Towns_Audio_Prep;
+  XA_Audio_On		= Towns_Audio_On;
+  XA_Closest_Freq	= Towns_Closest_Freq;
+  XA_Set_Output_Port	= (void *)(0);
+  XA_Speaker_Tog	= Towns_Speaker_Toggle;
+  XA_Headphone_Tog	= Towns_Headphone_Toggle;
+  XA_LineOut_Tog	= Towns_Headphone_Toggle;
+  XA_Adjust_Volume	= Towns_Adjust_Volume;
+
+  xa_snd_cur = 0;
+  xa_audio_present = XA_AUDIO_UNK;
+  xa_audio_status  = XA_AUDIO_STOPPED;
+  xa_audio_ring_size  = 8;
 }
 
+
+/********** Towns_Audio_Init **********************
+ * Open /dev/pcm16 for Towns's.
+ *
+ *****/
+void Towns_Audio_Init()
+{ int ret;
+  int type;
+
+  DEBUG_LEVEL2 fprintf(stderr,"Towns_Audio_Init\n");
+  if (xa_audio_present != XA_AUDIO_UNK) return;
+  devAudio = open("/dev/pcm16",O_WRONLY | O_NDELAY);
+  if (devAudio == -1)
+  {
+    if (errno == EBUSY) fprintf(stderr,"Audio_Init: Audio device is busy. - ");
+    else fprintf(stderr,"Audio_Init: Error %x opening audio device. - ",errno);
+    fprintf(stderr,"Will continue without audio\n");
+    xa_audio_present = XA_AUDIO_ERR;
+    return;
+  }
+
+    ioctl(devAudio,PCM16_CTL_SNDWAV,0);  /* select  wav */
+
+    /***** 8000 Hz : cnt == 8 *****/
+    /***** 22050 Hz : cnt == 3 *****/
+    ioctl(devAudio,PCM16_CTL_RATE,3); /* sampling rate  set */
+
+    /***** monoral *****/
+    ioctl(devAudio,PCM16_CTL_STMONO,0); /* monoral=0 */
+
+    ioctl(devAudio,PCM16_CTL_BITS,1);   /* 16bit data */
+
+    xa_audio_hard_freq  = 22050;
+    xa_audio_hard_type  = XA_AUDIO_SIGNED_2ML;
+    xa_audio_hard_buff  = XA_HARD_BUFF_1K;             /* default buffer size */
+    xa_audio_hard_bps   = 2;
+    xa_audio_hard_chans = 1;
+
+  xa_interval_id = 0;
+  xa_audio_present = XA_AUDIO_OK;
+  DEBUG_LEVEL2 fprintf(stderr,"   success \n");
+  Init_Audio_Ring(xa_audio_ring_size,
+			(XA_AUDIO_MAX_RING_BUFF * xa_audio_hard_bps) );
+}
+
+/********** Towns_Audio_Kill **********************
+ * Close /dev/pcm16
+ *
+ *****/
+void Towns_Audio_Kill()
+{ 
+  /* TURN AUDIO OFF */
+  Towns_Audio_Off(0);
+  xa_audio_present = XA_AUDIO_UNK;
+  /* SHUT THINGS DOWN  */
+  close(devAudio);
+  Kill_Audio_Ring();
+}
+
+/********** Towns_Audio_Off **********************
+ * Stop Audio Stream
+ *
+ *****/
+void Towns_Audio_Off(flag)
+xaULONG flag;
+{ long ret;
+
+  if (xa_audio_status != XA_AUDIO_STARTED) return;
+
+  /* SET FLAG TO STOP OUTPUT ROUTINE */
+  xa_audio_status = XA_AUDIO_STOPPED;
+
+  /* TURN OFF SOUND ??? */
+  /*
+  Towns_Adjust_Volume(XA_AUDIO_MINVOL);
+  */
+
+  /* FLUSH AUDIO DEVICE */
+  /***** none *****/
+
+
+  xa_time_audio = -1;
+  xa_audio_flushed = 0;
+
+  /* FLUSH AUDIO DEVICE AGAIN */
+  /***** none *****/
+
+  /* RESTORE ORIGINAL VOLUME */
+  /*
+  if (XAAUD->mute != xaTRUE) Towns_Adjust_Volume(XAAUD->volume);
+  */
+}
+
+/********** Towns_Audio_Prep **********************
+ * Turn On Audio Stream.
+ *
+ *****/
+void Towns_Audio_Prep()
+{ 
+  DEBUG_LEVEL2 
+  {
+    fprintf(stderr,"Towns_Audio_Prep \n");
+  }
+  if (xa_audio_status == XA_AUDIO_STARTED) return;
+  else if (xa_audio_present != XA_AUDIO_OK) return;
+  else if (xa_snd_cur)
+  { int ret;
+
+    /* CHANGE FREQUENCY IF NEEDED */
+    if (xa_audio_hard_freq != xa_snd_cur->hfreq)
+    {
+       int i_;
+
+       ret = -1;
+       for(i_=0; i_<12; i_++){
+	  if (xa_snd_cur->hfreq == auTownsSamplingRate[i_]) {
+	     ret = i_;
+	  }
+       }
+       if (ret == -1) fprintf(stderr,"audio setfreq: freq %x can't set\n",
+			      xa_snd_cur->hfreq);
+       xa_audio_hard_freq = xa_snd_cur->hfreq;
+    }
+
+    /* xa_snd_cur gets changes in Update_Ring() */
+    xa_out_time = 500;  /* keep audio fed 500ms ahead of video */
+    xa_out_init = xa_audio_ring_size - 1;
+    xa_interval_time = xa_snd_cur->ch_time / XAAUD->divtest;
+    if (xa_interval_time == 0) xa_interval_time = 1;
+
+    XA_Flush_Ring();
+    XA_Update_Ring(1000);
+    xa_audio_status = XA_AUDIO_PREPPED;
+  }
+}
+
+/****-------------------------------------------------------------------****
+ *
+ ****-------------------------------------------------------------------****/
+void Towns_Audio_On()
+{
+  if (   (xa_snd_cur)
+      && (xa_audio_present == XA_AUDIO_OK)
+      && (xa_audio_status == XA_AUDIO_PREPPED) )
+  { 
+    xa_audio_status = XA_AUDIO_STARTED;
+    xa_time_now = XA_Read_AV_Time();  /* get new time */
+    New_Merged_Audio_Output();
+  }
+}
+
+
+/********** Towns_Closest_Freq **********************************************
+ *
+ * Global Variable Affect:
+ *   xaULONG xa_audio_hard_buff		must set but not larger than
+ *					XA_AUDIO_MAX_RING_BUF size
+ ****************************************************************************/
+xaULONG Towns_Closest_Freq(ifreq)
+xaLONG ifreq;
+{
+
+   static int valid[] = {5512, 8000, 9600,
+			  11025, 12000, 16000, 19200,
+			  22050, 24000, 32000, 44100, 48000,
+			  0};
+
+    xaLONG i = 0;
+    xaLONG best = 22050;
+
+    xa_audio_hard_buff = XA_HARD_BUFF_1K;
+    while(valid[i])
+    { 
+      if (xaABS(valid[i] - ifreq) < xaABS(best - ifreq)) best = valid[i];
+      i++;
+    }
+    return(best);
+}
+
+/************* Towns_Speaker_Toggle *****************************************
+ *
+ * flag = 0  turn speaker off
+ * flag = 1  turn speaker on
+ * flag = 2  toggle speaker
+ ****************************************************************************/
+void Towns_Speaker_Toggle(flag)
+xaULONG flag;
+{ 
+   return;
+}
+
+/************* Towns_Headphone_Toggle *****************************************
+ *
+ * flag = 0  turn headphones off
+ * flag = 1  turn headphones on
+ * flag = 2  toggle headphones
+ ****************************************************************************/
+void Towns_Headphone_Toggle(flag)
+xaULONG flag;
+{ 
+   return;
+}
+
+
+/********** Towns_Adjust_Volume **********************
+ * Routine for Adjusting Volume on a Towns
+ *
+ * Volume is in the range [0,XA_AUDIO_MAXVOL]
+ ****************************************************************************/
+void Towns_Adjust_Volume(volume)
+xaULONG volume;
+{
+   return;
+}
+#endif
+/****************************************************************************/
+/******************* END OF TOWNS SPECIFIC ROUTINES *************************/
+/****************************************************************************/
+
+/****************************************************************************/
+/**************** TOWNS 8 bit SPECIFIC ROUTINES *****************************/
+/****************************************************************************/
+#ifdef XA_TOWNS8_AUDIO
+
+/*
+ * FUJITSU FM-TOWNS  port provided by Osamu KURATI,
+ *	kurati@bigfoot.com
+ * Heavily stolen from the Sparc port
+ * Sun Sep. 2, 1997
+ *
+ */
+
+void  Towns8_Audio_Init();
+void  Towns8_Audio_Kill();
+void  Towns8_Audio_Off();
+void  Towns8_Audio_Prep();
+void  Towns8_Audio_On();
+void  Towns8_Adjust_Volume();
+xaULONG Towns8_Closest_Freq();
+void Towns8_Set_Output_Port();
+void Towns8_Speaker_Toggle();
+void Towns8_Headphone_Toggle();
+
+
+static int devAudio;
+
+
+/********** XA_Audio_Setup **********************
+ * 
+ * Also defines Towns8 Specific variables.
+ *
+ *****/
+void XA_Audio_Setup()
+{
+
+  XA_Audio_Init		= Towns8_Audio_Init;
+  XA_Audio_Kill		= Towns8_Audio_Kill;
+  XA_Audio_Off		= Towns8_Audio_Off;
+  XA_Audio_Prep		= Towns8_Audio_Prep;
+  XA_Audio_On		= Towns8_Audio_On;
+  XA_Closest_Freq	= Towns8_Closest_Freq;
+  XA_Set_Output_Port	= (void *)(0);
+  XA_Speaker_Tog	= Towns8_Speaker_Toggle;
+  XA_Headphone_Tog	= Towns8_Headphone_Toggle;
+  XA_LineOut_Tog	= Towns8_Headphone_Toggle;
+  XA_Adjust_Volume	= Towns8_Adjust_Volume;
+
+  xa_snd_cur = 0;
+  xa_audio_present = XA_AUDIO_UNK;
+  xa_audio_status  = XA_AUDIO_STOPPED;
+  xa_audio_ring_size  = 8;
+}
+
+
+/********** Towns8_Audio_Init **********************
+ * Open /dev/pcm for Towns 8 bit PCM
+ *
+ *****/
+void Towns8_Audio_Init()
+{ int ret;
+  int type;
+
+  DEBUG_LEVEL2 fprintf(stderr,"Towns8_Audio_Init\n");
+  if (xa_audio_present != XA_AUDIO_UNK) return;
+  devAudio = open("/dev/pcm",O_WRONLY | O_NDELAY);
+  if (devAudio == -1)
+  {
+    if (errno == EBUSY) fprintf(stderr,"Audio_Init: Audio device is busy. - ");
+    else fprintf(stderr,"Audio_Init: Error %x opening audio device. - ",errno);
+    fprintf(stderr,"Will continue without audio\n");
+    xa_audio_present = XA_AUDIO_ERR;
+    return;
+  }
+
+  /***** 19200 Hz *****/
+  {
+     short s_;
+     s_ = 1920;
+     write(devAudio,&s_,sizeof(s_));
+  }
+
+    xa_audio_hard_freq  = 19200;
+    xa_audio_hard_type  = XA_AUDIO_SIGNED_2MB;
+    xa_audio_hard_buff  = XA_HARD_BUFF_1K;             /* default buffer size */
+    xa_audio_hard_bps   = 2;
+    xa_audio_hard_chans = 1;
+
+  xa_interval_id = 0;
+  xa_audio_present = XA_AUDIO_OK;
+  DEBUG_LEVEL2 fprintf(stderr,"   success \n");
+  Init_Audio_Ring(xa_audio_ring_size,
+			(XA_AUDIO_MAX_RING_BUFF * xa_audio_hard_bps) );
+}
+
+/********** Towns8_Audio_Kill **********************
+ * Close /dev/pcm
+ *
+ *****/
+void Towns8_Audio_Kill()
+{ 
+  /* TURN AUDIO OFF */
+  Towns8_Audio_Off(0);
+  xa_audio_present = XA_AUDIO_UNK;
+  /* SHUT THINGS DOWN  */
+  close(devAudio);
+  Kill_Audio_Ring();
+}
+
+/********** Towns8_Audio_Off **********************
+ * Stop Audio Stream
+ *
+ *****/
+void Towns8_Audio_Off(flag)
+xaULONG flag;
+{ long ret;
+
+  if (xa_audio_status != XA_AUDIO_STARTED) return;
+
+  /* SET FLAG TO STOP OUTPUT ROUTINE */
+  xa_audio_status = XA_AUDIO_STOPPED;
+
+  /* TURN OFF SOUND ??? */
+  /*
+  Towns8_Adjust_Volume(XA_AUDIO_MINVOL);
+  */
+
+  /* FLUSH AUDIO DEVICE */
+  /***** none *****/
+
+
+  xa_time_audio = -1;
+  xa_audio_flushed = 0;
+
+  /* FLUSH AUDIO DEVICE AGAIN */
+  /***** none *****/
+
+  /* RESTORE ORIGINAL VOLUME */
+  /*
+  if (XAAUD->mute != xaTRUE) Towns8_Adjust_Volume(XAAUD->volume);
+  */
+}
+
+/********** Towns8_Audio_Prep **********************
+ * Turn On Audio Stream.
+ *
+ *****/
+void Towns8_Audio_Prep()
+{ 
+  DEBUG_LEVEL2 
+  {
+    fprintf(stderr,"Towns8_Audio_Prep \n");
+  }
+  if (xa_audio_status == XA_AUDIO_STARTED) return;
+  else if (xa_audio_present != XA_AUDIO_OK) return;
+  else if (xa_snd_cur)
+  { int ret;
+
+    /* CHANGE FREQUENCY IF NEEDED */
+  /***** cant change *****/
+
+    /* xa_snd_cur gets changes in Update_Ring() */
+    xa_out_time = 500;  /* keep audio fed 500ms ahead of video */
+    xa_out_init = xa_audio_ring_size - 1;
+    xa_interval_time = xa_snd_cur->ch_time / XAAUD->divtest;
+    if (xa_interval_time == 0) xa_interval_time = 1;
+
+    XA_Flush_Ring();
+    XA_Update_Ring(1000);
+    xa_audio_status = XA_AUDIO_PREPPED;
+  }
+}
+
+/****-------------------------------------------------------------------****
+ *
+ ****-------------------------------------------------------------------****/
+void Towns8_Audio_On()
+{
+  if (   (xa_snd_cur)
+      && (xa_audio_present == XA_AUDIO_OK)
+      && (xa_audio_status == XA_AUDIO_PREPPED) )
+  { 
+    xa_audio_status = XA_AUDIO_STARTED;
+    xa_time_now = XA_Read_AV_Time();  /* get new time */
+    New_Merged_Audio_Output();
+  }
+}
+
+/********** Towns8_Closest_Freq **********************************************
+ *
+ * Global Variable Affect:
+ *   xaULONG xa_audio_hard_buff		must set but not larger than
+ *					XA_AUDIO_MAX_RING_BUF size
+ ****************************************************************************/
+xaULONG Towns8_Closest_Freq(ifreq)
+xaLONG ifreq;
+{
+    xa_audio_hard_buff = XA_HARD_BUFF_1K;
+    return(19200);
+}
+
+/************* Towns8_Speaker_Toggle *****************************************
+ *
+ * flag = 0  turn speaker off
+ * flag = 1  turn speaker on
+ * flag = 2  toggle speaker
+ ****************************************************************************/
+void Towns8_Speaker_Toggle(flag)
+xaULONG flag;
+{ 
+   return;
+}
+
+/************* Towns8_Headphone_Toggle *****************************************
+ *
+ * flag = 0  turn headphones off
+ * flag = 1  turn headphones on
+ * flag = 2  toggle headphones
+ ****************************************************************************/
+void Towns8_Headphone_Toggle(flag)
+xaULONG flag;
+{ 
+   return;
+}
+
+
+/********** Towns8_Adjust_Volume **********************
+ * Routine for Adjusting Volume on a Towns8
+ *
+ * Volume is in the range [0,XA_AUDIO_MAXVOL]
+ ****************************************************************************/
+void Towns8_Adjust_Volume(volume)
+xaULONG volume;
+{
+   return;
+}
+#endif
+/****************************************************************************/
+/******************* END OF Towns8 SPECIFIC ROUTINES *********************/
+/****************************************************************************/
+
+
+/* NEW CODE */
 XA_SND *XA_Audio_Next_Snd(snd_hdr)
 XA_SND *snd_hdr;
-{ 
-DEBUG_LEVEL2 fprintf(stderr,"XA_Audio_Next_Snd: snd_hdr %lx \n",snd_hdr);
+{ DEBUG_LEVEL2 fprintf(stderr,"XA_Audio_Next_Snd: snd_hdr %x \n",
+							(xaULONG)snd_hdr);
   xa_snd_cur = snd_hdr->next;
   /* brief clean up of old header */
   snd_hdr->inc_cnt = 0;
@@ -5382,7 +5485,8 @@ int fd;
 xaLONG fpos;
 xaULONG fsize;
 char *buf;
-{ int ret = lseek(fd,fpos,SEEK_SET);
+{ int ret;
+  ret  = lseek(fd,fpos,SEEK_SET);
   if (ret != fpos) TheEnd1("XA_Read_Audio_Delta:seek err");
   ret = read(fd, buf, fsize);
   if (ret != fsize) TheEnd1("XA_Read_Audio_Delta:read err");
@@ -5394,7 +5498,7 @@ char *buf;
  *  May not be needed
  *
  *****/
-xaUBYTE XA_Signed_To_Ulaw(ch)
+xaUBYTE XA_Signed_To_uLaw(ch)
 xaLONG ch;
 {
   xaLONG mask;
@@ -5412,14 +5516,14 @@ xaLONG ch;
   return (mask & ch);
 }
 
-void Gen_Signed_2_Ulaw()
+void Gen_Signed_2_uLaw()
 {
   xaULONG i;
   for(i=0;i<256;i++)
   { xaUBYTE d;
     xaBYTE ch = i;
     xaLONG chr = ch;
-    d = XA_Signed_To_Ulaw(chr * 16);
+    d = XA_Signed_To_uLaw(chr * 16);
     xa_sign_2_ulaw[i] = d;
   }
 }
@@ -5441,7 +5545,7 @@ void Gen_Signed_2_Ulaw()
 ** Output: signed 16 bit linear sample
 */
 
-xaLONG XA_Ulaw_to_Signed( ulawbyte )
+xaLONG XA_uLaw_to_Signed( ulawbyte )
 xaUBYTE ulawbyte;
 {
   static int exp_lut[8] = { 0, 132, 396, 924, 1980, 4092, 8316, 16764 };
@@ -5457,17 +5561,40 @@ xaUBYTE ulawbyte;
   return sample;
 }
 
-/**************************************
+/****-----------------------------------------------------------------****
  *
- *************************************/
-void Gen_Ulaw_2_Signed()
+ ****-----------------------------------------------------------------****/
+void Gen_uLaw_2_Signed()
 { xaULONG i;
   for(i=0;i<256;i++)
   { xaUBYTE data = (xaUBYTE)(i);
-    xaLONG d = XA_Ulaw_to_Signed( data );
+    xaLONG d = XA_uLaw_to_Signed( data );
     xa_ulaw_2_sign[i] = (xaULONG)((xaULONG)(d) & 0xffff);
   }
 }
+
+/****-----------------------------------------------------------------****
+ *
+ ****-----------------------------------------------------------------****/
+void Gen_aLaw_2_Signed()
+{ xaULONG i;
+  for(i=0;i<256;i++)
+  { xaUBYTE data = (xaUBYTE)(i);
+    xaLONG d, t, seg;
+
+    data ^= 0x55;
+
+    t = (data & 0xf) << 4;
+    seg = (data & 0x70) >> 4;
+    if (seg == 0)	t += 8;
+    else if (seg == 1)	t += 0x108;
+    else	{ t += 108; t <<= seg - 1; }
+
+    d =  (data & 0x80)?(t):(-t);
+    xa_alaw_2_sign[i] = (xaULONG)((xaULONG)(d) & 0xffff);
+  }
+}
+
 
 
 /* Pod this was 4096, I changed to 32768 */
@@ -5487,7 +5614,7 @@ xaULONG arm_dac_to_val[XA_ARM_DAC_LIMIT];     /* obsolete */
  * hacked by Mark Podlipec
  *************************************/
 void Gen_Arm_2_Signed()
-{ int c, p, lx, ux, step, curval, max;
+{ int c, p, ux, step, curval, max;
   double adjust;
 
   ux = 0; curval = 0;
@@ -5580,7 +5707,7 @@ void Kill_Audio_Ring()
 void XA_Update_Ring(cnt)
 xaULONG cnt;
 { 
-DEBUG_LEVEL1 fprintf(stderr,"UPDATE RING %ld\n",cnt);
+DEBUG_LEVEL1 fprintf(stderr,"UPDATE RING %d\n",cnt);
   while( (xa_audio_ring_t->len == 0) && (xa_snd_cur) && cnt)
   { xaULONG tmp_time, tmp_timelo; xaLONG i,xx;
     cnt--;
@@ -5591,9 +5718,6 @@ DEBUG_LEVEL1 fprintf(stderr,"UPDATE RING %ld\n",cnt);
     /* NOTE: the following delta call may modify xa_snd_cur */
     xx = xa_snd_cur->delta(xa_snd_cur,xa_audio_ring_t->buf,0,
 							xa_snd_cur->ch_size);
-
-DEBUG_LEVEL1 if (xa_snd_cur) fprintf(stderr,"UPDATE RING ret: snd %lx i %ld xx %ld bps %ld chszi %ld\n",xa_snd_cur,i,xx,xa_audio_hard_bps,xa_snd_cur->ch_size);
-
     i -= xx * xa_audio_hard_bps;
     if (i > 0) /* Some system need fixed size chunks */
     { xaUBYTE *dptr = xa_audio_ring_t->buf;
@@ -5603,7 +5727,6 @@ DEBUG_LEVEL1 if (xa_snd_cur) fprintf(stderr,"UPDATE RING ret: snd %lx i %ld xx %
     xa_audio_ring_t->timelo = tmp_timelo;
     xa_audio_ring_t = xa_audio_ring_t->next; 
   }
-DEBUG_LEVEL1 fprintf(stderr,"UPDATE exit\n");
 }
 
 /***************************************************************8
@@ -5612,1440 +5735,17 @@ DEBUG_LEVEL1 fprintf(stderr,"UPDATE exit\n");
  */
 
 void XA_Flush_Ring()
-{ XA_AUDIO_RING_HDR *tring = xa_audio_ring_t;
+{ XA_AUDIO_RING_HDR *tring = xa_audio_ring;
 
 DEBUG_LEVEL1 fprintf(stderr,"FLUSH_RING\n");
   do
-  {
-    if (xa_audio_ring->len)
-    {
-      xa_audio_ring->len = 0;
-      xa_audio_ring = xa_audio_ring->next;
-    } else break;
+  { xa_audio_ring->len = 0;
+    xa_audio_ring = xa_audio_ring->next;
   } while(xa_audio_ring != tring);
+  xa_audio_ring_t = xa_audio_ring;	/* resync  fill and empty */
   xa_audio_flushed = 1;
 }
 
-/*************************************************************************/
-/********** Audio Codec Conversion Routines ******************************/
-/*************************************************************************/
-
-/********** XA_Audio_1M_1M ************************************
- * NOP extract the next chunk and puts into audio ring for 1 byte samples.
- *
- * Global Variables:
- *   xaUBYTE xa_sign_2_ulaw[256]	conversion table.
- *   XA_Audio_Next_Snd()	routine to move to next sound header.
- ***************************************************************/
-xaULONG XA_Audio_1M_1M(snd_hdr,obuf,ocnt,buff_size)
-XA_SND *snd_hdr;
-xaUBYTE *obuf;
-xaULONG ocnt,buff_size;
-{ xaULONG byte_cnt,samp_cnt;
-  xaUBYTE *ibuf;
-
-  if (snd_hdr==0) return(ocnt);
-  byte_cnt = snd_hdr->byte_cnt;
-  samp_cnt = snd_hdr->samp_cnt;
-  ibuf = snd_hdr->snd;		ibuf += byte_cnt;
-
-  while(ocnt < buff_size)
-  { *obuf++ = *ibuf++;
-    samp_cnt--;		ocnt++;	byte_cnt++;
-
-    if (samp_cnt <= 0)
-    {
-	if ( (snd_hdr = XA_Audio_Next_Snd(snd_hdr)) != 0)
-	  ocnt = snd_hdr->delta(snd_hdr,obuf,ocnt,buff_size);
-	return(ocnt);
-    }
-  }
-  snd_hdr->byte_cnt = byte_cnt;
-  return(ocnt);
-}
-
-
-/********** XA_Audio_PCM1M_PCM2M *********************************
- * Convert PCM 1 BPS Mono Samples into PCM 2 BPS Mono Samples
- * The order flag takes care of the various linear/signed/endian
- * conversions
- *  Input        Ouput       Order  1st  2nd
- *  -----------------------------------------
- *  Linear to Linear Big       0    D     D
- *  Linear to Linear Little    0    D     D
- *  Signed to Linear Big       1    D^80  D
- *  Signed to Linear Little    2    D     D^80
- *  Linear to Signed Big       1    D^80  D
- *  Linear to Signed Little    2    D     D^80
- *  Signed to Signed Big       2    D     D^80
- *  Signed to Signed Little    1    D^80  D
- *
- * Global Variables:
- *   xaUBYTE xa_sign_2_ulaw[256]	conversion table.
- *   XA_Audio_Next_Snd()	routine to move to next sound header.
- ***************************************************************/
-xaULONG XA_Audio_PCM1M_PCM2M(snd_hdr,obuf,ocnt,buff_size)
-XA_SND *snd_hdr;
-xaUBYTE *obuf;
-xaULONG ocnt,buff_size;
-{ xaULONG byte_cnt,inc,inc_cnt,spec,samp_cnt;
-  xaUBYTE *ibuf;
-
-  if (snd_hdr==0) return(ocnt);
-  spec = snd_hdr->spec;
-  inc = snd_hdr->inc;		inc_cnt = snd_hdr->inc_cnt;
-  byte_cnt = snd_hdr->byte_cnt;
-  samp_cnt = snd_hdr->samp_cnt;
-  ibuf = snd_hdr->snd;		ibuf += byte_cnt;
-
-  while(ocnt < buff_size)
-  { register xaULONG data = *ibuf;
-    if (spec==1) { *obuf++ = data ^ 0x80; *obuf++ = data; }
-    else if (spec==2) { *obuf++ = data; *obuf++ = data ^ 0x80; }
-    else { *obuf++ = data; *obuf++ = data; }
-    ocnt++;			inc_cnt += inc;
-    while(inc_cnt >= (1<<24) )
-    { inc_cnt -= (1<<24);
-      samp_cnt--;	ibuf++;		byte_cnt++;
-      if (samp_cnt <= 0)
-      { 
-        if ( (snd_hdr = XA_Audio_Next_Snd(snd_hdr)) != 0)
-	  ocnt = snd_hdr->delta(snd_hdr,obuf,ocnt,buff_size);
-	return(ocnt);
-      }
-    }
-  }
-  snd_hdr->inc_cnt = inc_cnt;
-  snd_hdr->byte_cnt = byte_cnt;
-  snd_hdr->samp_cnt = samp_cnt;
-  return(ocnt);
-}
-
-/********** XA_Audio_PCM1S_PCM2M *********************************
- * Convert PCM 1 BPS Stereo Samples into PCM 2 BPS Mono Samples
- * The order flag takes care of the various linear/signed/endian
- * conversions
- *  Input        Ouput       Order  1st  2nd
- *  -----------------------------------------
- *  Linear to Linear Big       0    D     D
- *  Linear to Linear Little    0    D     D
- *  Signed to Linear Big       1 5  D^80  D
- *  Signed to Linear Little    2 6  D     D^80
- *  Linear to Signed Big       1    D^80  D
- *  Linear to Signed Little    2    D     D^80
- *  Signed to Signed Big       2 6  D     D^80
- *  Signed to Signed Little    1 5  D^80  D
- *
- *  bit 3 indicates incoming is signed(necessary for proper averaging)
- *
- * Global Variables:
- *   xaUBYTE xa_sign_2_ulaw[256]	conversion table.
- *   XA_Audio_Next_Snd()	routine to move to next sound header.
- ***************************************************************/
-xaULONG XA_Audio_PCM1S_PCM2M(snd_hdr,obuf,ocnt,buff_size)
-XA_SND *snd_hdr;
-xaUBYTE *obuf;
-xaULONG ocnt,buff_size;
-{ xaULONG byte_cnt,inc,inc_cnt,spec,samp_cnt;
-  xaUBYTE *ibuf;
-
-  if (snd_hdr==0) return(ocnt);
-  spec = snd_hdr->spec;
-  inc = snd_hdr->inc;		inc_cnt = snd_hdr->inc_cnt;
-  byte_cnt = snd_hdr->byte_cnt;
-  samp_cnt = snd_hdr->samp_cnt;
-  ibuf = snd_hdr->snd;		ibuf += byte_cnt;
-
-  while(ocnt < buff_size)
-  { register xaULONG data;
-
-    if (spec & 4)   /* signed averaging */
-    { xaLONG td0,td1;  td0 = ibuf[0]; td1 = ibuf[1];
-      if (td0 & 0x80) td0 -= 0x100;
-      if (td1 & 0x80) td1 -= 0x100;
-      data = (((xaULONG)(td0 + td1)) >> 1) & 0xffff;
-    }
-    else	/* linear averaging */
-    { data = *ibuf;
-      data = (data + (xaULONG)(ibuf[1])) >> 1;
-    }
-
-    if (spec & 1)	{ *obuf++ = data ^ 0x80; *obuf++ = data; }
-    else if (spec & 2)	{ *obuf++ = data;	 *obuf++ = data ^ 0x80; }
-    else		{ *obuf++ = data;	 *obuf++ = data; }
-    ocnt++;			inc_cnt += inc;
-    while(inc_cnt >= (1<<24) )
-    { inc_cnt -= (1<<24);
-      samp_cnt--;	ibuf+=2;	byte_cnt += 2;
-      if (samp_cnt <= 0)
-      { 
-        if ( (snd_hdr = XA_Audio_Next_Snd(snd_hdr)) != 0)
-	  ocnt = snd_hdr->delta(snd_hdr,obuf,ocnt,buff_size);
-	return(ocnt);
-      }
-    }
-  }
-  snd_hdr->inc_cnt = inc_cnt;
-  snd_hdr->byte_cnt = byte_cnt;
-  snd_hdr->samp_cnt = samp_cnt;
-  return(ocnt);
-}
-
-/********** XA_Audio_PCM2X_PCM2M *********************************
- * Convert PCM 2 BPS (mono/stereo little/big endian) Samples 
- * into PCM 2 BPS Mono (little/big endian) Samples.
- * The flag "spec' takes care of the various linear/signed/endian/stereo
- * conversions.
- * 
- * bit   mask  meaning
- * -----------------------------------------
- * bit 0:  1  src endian  0 = big  1 = little
- * bit 1:  2  linear/signed conversion.  0 = none  1 = ^0x8000
- * bit 2:  4  dst endian  0 = big  1 = little
- * bit 3:  8  src stereo  0 = no   1 = yes
- * bit 4: 10  src signed  0 = no   1 = yes
- *
- * Global Variables:
- *   XA_Audio_Next_Snd()	routine to move to next sound header.
- ***************************************************************/
-xaULONG XA_Audio_PCM2X_PCM2M(snd_hdr,obuf,ocnt,buff_size)
-XA_SND *snd_hdr;
-xaUBYTE *obuf;
-xaULONG ocnt,buff_size;
-{ xaULONG byte_cnt,inc,inc_cnt,spec,samp_cnt,binc;
-  xaUBYTE *ibuf;
-
-  if (snd_hdr==0) return(ocnt);
-  spec = snd_hdr->spec;
-  binc = (spec & 0x08)?(4):(2);
-  inc = snd_hdr->inc;		inc_cnt = snd_hdr->inc_cnt;
-  byte_cnt = snd_hdr->byte_cnt;
-  samp_cnt = snd_hdr->samp_cnt;
-  ibuf = snd_hdr->snd;		ibuf += byte_cnt;
-  
-
-  while(ocnt < buff_size)
-  { register xaULONG d0,d1;
-
-    if (spec & 1)   /* Read Samples */
-    { d0 = (xaULONG)(ibuf[0]) | ((xaULONG)(ibuf[1]) << 8);
-      if (spec & 8) 
-      {
-        d1 = (xaULONG)(ibuf[2]) | ((xaULONG)(ibuf[3]) << 8); 
-        if (spec & 0x10)
-        { xaLONG da,db;
-	  da = (d0 & 0x8000)?(d0 - 0x10000):(d0);
-	  db = (d1 & 0x8000)?(d1 - 0x10000):(d1);
-	  d0 = ((da + db) >> 1) & 0xffff;
-        } else { d0 += d1; d0 >>=1; }
-      }
-    }
-    else
-    { d0 = (xaULONG)(ibuf[1]) | ((xaULONG)(ibuf[0]) << 8);  
-      if (spec & 8) 
-      {
-        d1 = (xaULONG)(ibuf[3]) | ((xaULONG)(ibuf[2]) << 8);
-        if (spec & 0x10)
-        { xaLONG da,db;
-	  da = (d0 & 0x8000)?(d0 - 0x10000):(d0);
-	  db = (d1 & 0x8000)?(d1 - 0x10000):(d1);
-	  d0 = ((da + db) >> 1) & 0xffff;
-        } else { d0 += d1; d0 >>=1; }
-      }
-    }
-    if (spec & 2) d0 ^= 0x8000; /* sign conversion */
-    if (spec & 4)	{ d1 = d0 >> 8;   d0 &= 0xff; }
-    else		{ d1 = d0 & 0xff; d0 >>= 8; }
-    *obuf++ = d0;	
-    *obuf++ = d1;
-    ocnt ++;			inc_cnt += inc;
-    while(inc_cnt >= (1<<24) )
-    { inc_cnt -= (1<<24);
-      samp_cnt--;	ibuf += binc;	byte_cnt += binc;
-      if (samp_cnt <= 0)
-      { 
-        if ( (snd_hdr = XA_Audio_Next_Snd(snd_hdr)) != 0)
-	  ocnt = snd_hdr->delta(snd_hdr,obuf,ocnt,buff_size);
-	return(ocnt);
-      }
-    }
-  }
-  snd_hdr->inc_cnt = inc_cnt;
-  snd_hdr->byte_cnt = byte_cnt;
-  snd_hdr->samp_cnt = samp_cnt;
-  return(ocnt);
-}
-
-/********** XA_Audio_PCMXM_PCM1M *********************************
- * Convert PCM 1+2 BPS Mono Samples into PCM 1 BPS Mono Samples
- * The order flag takes care of the various linear/signed/endian
- * conversions
- *  Input        order 1st  2nd
- *  -----------------------------------------
- *  Linear1M      0   D     -
- *  Signed1M      1   D^80  -
- *  Linear2MBig   2   D     skip
- *  Signed2MBig   3   D^80  skip
- *  Linear2MLit   4   skip  D
- *  Signed2MLit   5   skip  D^80
- *
- *  bit 3 (& 0x08) AU output instead of PCM.
- *
- * Global Variables:
- *   XA_Audio_Next_Snd()	routine to move to next sound header.
- ***************************************************************/
-xaULONG XA_Audio_PCMXM_PCM1M(snd_hdr,obuf,ocnt,buff_size)
-XA_SND *snd_hdr;
-xaUBYTE *obuf;
-xaULONG ocnt,buff_size;
-{ xaULONG byte_cnt,inc,inc_cnt,spec,bps,samp_cnt;
-  xaUBYTE *ibuf;
-
-  if (snd_hdr==0) return(ocnt);
-  spec = snd_hdr->spec;
-  bps = ((spec & 2) | (spec & 4))?(2):(1);
-  inc = snd_hdr->inc;		inc_cnt = snd_hdr->inc_cnt;
-  byte_cnt = snd_hdr->byte_cnt;
-  samp_cnt = snd_hdr->samp_cnt;
-  ibuf = snd_hdr->snd;		ibuf += byte_cnt;
-
-  while(ocnt < buff_size)
-  { register xaULONG data;
-    data = (spec & 4)?(ibuf[1]):(*ibuf);
-    if (spec & 8)
-    { /* note: ulaw takes signed input */
-       if (spec & 1) *obuf++ = xa_sign_2_ulaw[ data ];
-       else *obuf++ = xa_sign_2_ulaw[ (data ^ 0x80) ];
-    }
-    else *obuf++ = (spec & 1)?(data^0x80):(data);
-    ocnt++;			inc_cnt += inc;
-    while(inc_cnt >= (1<<24) )
-    { inc_cnt -= (1<<24);	
-      samp_cnt--;	ibuf += bps;		byte_cnt += bps;
-      if (samp_cnt <= 0)
-      { 
-        if ( (snd_hdr = XA_Audio_Next_Snd(snd_hdr)) != 0)
-	  ocnt = snd_hdr->delta(snd_hdr,obuf,ocnt,buff_size);
-	return(ocnt);
-      }
-    }
-  }
-  snd_hdr->inc_cnt = inc_cnt;
-  snd_hdr->byte_cnt = byte_cnt;
-  snd_hdr->samp_cnt = samp_cnt;
-  return(ocnt);
-}
-
-/********** XA_Audio_PCMXS_PCM1M *********************************
- * Convert PCM 1+2 BPS Stereo Samples into PCM 1 BPS Mono Samples
- * The spec flag takes care of the various linear/signed/endian
- * conversions
- *  Input        flag 1st  2nd    3rd  4th
- *  -----------------------------------------
- *  Linear1M      0   D     D)    -    -
- *  Signed1M      1   D     D     -    -      ^80
- *  Linear2MBig   2   D     skip  D    skip
- *  Signed2MBig   3   D     skip  D    skip   ^80
- *  Linear2MLit   4   skip  D     skip D
- *  Signed2MLit   5   skip  D     skip D      ^80
- *
- *  bit 3 (& 0x08) AU output instead of PCM.
- *
- * Global Variables:
- *   XA_Audio_Next_Snd()	routine to move to next sound header.
- ***************************************************************/
-xaULONG XA_Audio_PCMXS_PCM1M(snd_hdr,obuf,ocnt,buff_size)
-XA_SND *snd_hdr;
-xaUBYTE *obuf;
-xaULONG ocnt,buff_size;
-{ xaULONG byte_cnt,inc,inc_cnt,spec,bps,samp_cnt;
-  xaUBYTE *ibuf;
-
-  if (snd_hdr==0) return(ocnt);
-  spec = snd_hdr->spec;
-  bps = ((spec & 2) | (spec & 4))?(4):(2);
-  inc = snd_hdr->inc;		inc_cnt = snd_hdr->inc_cnt;
-  byte_cnt = snd_hdr->byte_cnt;
-  samp_cnt = snd_hdr->samp_cnt;
-  ibuf = snd_hdr->snd;		ibuf += byte_cnt;
-
-  while(ocnt < buff_size)
-  { register xaLONG d0,d1; xaULONG data;
-    if (spec & 2) {d0 = ibuf[0]; d1 = ibuf[2];}
-    else if (spec & 4) {d0 = ibuf[1]; d1 = ibuf[3];}
-    else {d0 = ibuf[0]; d1 = ibuf[1];}
-    if (spec & 1) 
-    { 
-      if (d0 & 0x80) d0 = d0 - 0x100;
-      if (d1 & 0x80) d1 = d1 - 0x100;
-    }
-    data = (xaULONG)((d0 + d1) >> 1) & 0xff;
-    if (spec & 8)
-    { /* note: ulaw takes signed input */
-       if (spec & 1) *obuf++ = xa_sign_2_ulaw[ data ];
-       else *obuf++ = xa_sign_2_ulaw[ (data ^ 0x80) ];
-    }
-    else *obuf++ = (spec & 1)?(data^0x80):(data);
-    ocnt++;			inc_cnt += inc;
-    while(inc_cnt >= (1<<24) )
-    { inc_cnt -= (1<<24);	
-      samp_cnt--;		byte_cnt += bps;	ibuf += bps;
-      if (samp_cnt <= 0)
-      { 
-        if ( (snd_hdr = XA_Audio_Next_Snd(snd_hdr)) != 0 )
-	  ocnt = snd_hdr->delta(snd_hdr,obuf,ocnt,buff_size);
-	return(ocnt);
-      }
-    }
-  }
-  snd_hdr->inc_cnt = inc_cnt;
-  snd_hdr->byte_cnt = byte_cnt;
-  snd_hdr->samp_cnt = samp_cnt;
-  return(ocnt);
-}
-
-
-typedef struct 
-{
-  xaULONG bpred;
-  xaLONG delta;
-  xaLONG samp1;
-  xaLONG samp2;
-  xaULONG nyb_flag;
-  xaLONG nyb1;
-  xaULONG flag;       /* 0 don't output samples, 1 output samp1, 2 output both */
-                    /* 4 un-init */
-} XA_MSADPCM_HDR;
-XA_MSADPCM_HDR xa_msadpcm;
-
-void XA_Audio_Init_Snd(snd_hdr)
-XA_SND *snd_hdr;
-{
-  snd_hdr->inc_cnt  = 0;
-  snd_hdr->byte_cnt = 0;
-  snd_hdr->samp_cnt = snd_hdr->tot_samps;
-  if (snd_hdr->type == XA_AUDIO_ADPCM_M) xa_msadpcm.flag = 4;
-  Gen_Ulaw_2_Signed();
-  Gen_Arm_2_Signed();
-}
-
-#define MSADPCM_NUM_COEF        (7)
-#define MSADPCM_MAX_CHANNELS    (2)
-
-#define MSADPCM_PSCALE          (8)
-#define MSADPCM_PSCALE_NUM      (1 << MSADPCM_PSCALE)
-#define MSADPCM_CSCALE          (8)
-#define MSADPCM_CSCALE_NUM      (1 << MSADPCM_CSCALE)
-
-#define MSADPCM_DELTA4_MIN      (16)
-
-static xaLONG  gaiP4[] = { 230, 230, 230, 230, 307, 409, 512, 614,
-                          768, 614, 512, 409, 307, 230, 230, 230 };
-static xaLONG gaiCoef1[] = { 256,  512,  0, 192, 240,  460,  392 };
-static xaLONG gaiCoef2[] = {   0, -256,  0,  64,   0, -208, -232 };
-
-
-/********** XA_Audio_ADPCMM_PCM2M *********************************
- * Convert Microsoft ADPCM Mono Samples into PCM 2 BPS Mono Samples
- * The spec flag takes care of the various linear/signed/endian
- * conversions
- *  Input        Ouput        Spec  1st  2nd
- *  -----------------------------------------
- *  MSADPCM to Signed Big       0    D1    D0
- *  MSADPCM to Signed Little    1    D0    D1  
- *  MSADPCM to Linear Big       2    D1^80 D0
- *  MSADPCM to Linear Little    3    D0    D1^80
- *
- *  bit 2 (& 0x04) 1 byte output.
- *  bit 3 (& 0x08) AU output instead of linear PCM.
- *
- * Global Variables:
- *   xaUBYTE xa_sign_2_ulaw[256]	conversion table.
- *   XA_Audio_Next_Snd()	routine to move to next sound header.
- ***************************************************************/
-xaULONG XA_Audio_ADPCMM_PCM2M(snd_hdr,obuf,ocnt,buff_size)
-XA_SND *snd_hdr;
-xaUBYTE *obuf;
-xaULONG ocnt,buff_size;
-{ xaULONG byte_cnt,inc,inc_cnt,spec,tbytes,samp_cnt;
-  xaULONG bpred,nyb_flag,tsamps;
-  xaLONG delta,coef1,coef2,samp1,samp2,nyb1;
-  xaUBYTE *ibuf;
-
-  if (snd_hdr==0) return(ocnt);
-  inc = snd_hdr->inc;		inc_cnt = snd_hdr->inc_cnt;
-  tbytes = snd_hdr->tot_bytes;	byte_cnt = snd_hdr->byte_cnt;
-  ibuf = snd_hdr->snd;		ibuf += byte_cnt;
-  samp_cnt = snd_hdr->samp_cnt;	tsamps = snd_hdr->tot_samps;
-  spec = snd_hdr->spec;
-
-DEBUG_LEVEL1 fprintf(stderr,"snd %lx buff_size %lx  bcnt %lx\n",snd_hdr,buff_size,byte_cnt);
-
-  if (xa_msadpcm.flag==4)
-  {
-    bpred = *ibuf++;
-    if (bpred >= MSADPCM_NUM_COEF) 
-	{ fprintf(stderr,"MSADPC bpred %lx ERR 0\n",bpred); return(ocnt); }
-    delta = *ibuf++; delta |= (*ibuf++)<<8;
-    if (delta & 0x8000) delta = delta - 0x10000;
-    samp1 = *ibuf++; samp1 |= (*ibuf++)<<8;
-    if (samp1 & 0x8000) samp1 = samp1 - 0x10000;
-    samp2 = *ibuf++; samp2 |= (*ibuf++)<<8; 
-    if (samp2 & 0x8000) samp2 = samp2 - 0x10000;
-    byte_cnt += 7;
-    samp_cnt = tsamps - 1;
-    xa_msadpcm.flag = 2;
-    nyb_flag = 1;
-  }
-  else
-  {
-    bpred = xa_msadpcm.bpred;
-    delta = xa_msadpcm.delta;
-    samp1 = xa_msadpcm.samp1;
-    samp2 = xa_msadpcm.samp2;
-    nyb_flag = xa_msadpcm.nyb_flag;
-    nyb1     = xa_msadpcm.nyb1;
-  }
-  coef1 = gaiCoef1[bpred];
-  coef2 = gaiCoef2[bpred];
-  
-  while(ocnt < buff_size)
-  { xaLONG idelta,predict,lsamp;
-    xaLONG nyb0;
-    xaULONG data;
-
-    data = samp2;
-
-DEBUG_LEVEL1 fprintf(stderr,"ADPCM: data %05lx samp1 %05lx samp2 %05lx  samp_cnt %lx byte_cnt %lx\n",data,(samp1 &0x1ffff),(samp2&0x1ffff),samp_cnt,byte_cnt);
-
-    /* data output munging */
-    if (spec & 4)  /* 1 byte output */
-    {  xaUBYTE d0 = ((xaULONG)(data) >> 8) & 0xff;
-       if (spec & 8)	*obuf++ = xa_sign_2_ulaw[ (xaULONG)(d0) ];
-       else		*obuf++ = d0;
-    }
-    else
-    { xaUBYTE d1,d0; d1 = (data>>8) & 0xff; d0 = data & 0xff;
-      if (spec & 0x02) d1 ^= 0x80;
-      if (spec & 0x01) {*obuf++ = d0; *obuf++ = d1; }
-      else {*obuf++ = d1; *obuf++ = d0; }
-    }
-    ocnt++;		inc_cnt += inc;
-    while(inc_cnt >= (1<<24) )
-    { inc_cnt -= (1<<24);	
-
-      if (samp_cnt > 1) /* are there samples left? */
-      { 
-        /* assuming even number of samples */
-        if ((byte_cnt < tbytes) || (nyb_flag==0))
-	{
-	  if (nyb_flag) /* get four bit sample */
-	  {
-	    nyb1 = *ibuf++;  byte_cnt++;
-	    nyb0 = (nyb1 >> 4) & 0x0f;
-	    nyb1 &= 0x0f;
-	    nyb_flag = 0;
-	  }
-	  else { nyb0 = nyb1; nyb_flag = 1; }
-	  /* Comput next Adaptive Scale Factor(ASF) */
-	  idelta = delta;
-	  delta = (gaiP4[nyb0] * idelta) >> MSADPCM_PSCALE;
-	  if (delta < MSADPCM_DELTA4_MIN) delta = MSADPCM_DELTA4_MIN;
-	  if (nyb0 & 0x08) nyb0 = nyb0 - 0x10;
-	  /* Predict next sample */
-	  predict = ((samp1 * coef1) + (samp2 * coef2)) >>  MSADPCM_CSCALE;
-	  /* reconstruct original PCM */
-	  lsamp = (nyb0 * idelta) + predict;
-	  if (lsamp > 32767) lsamp = 32767;
-	  else if (lsamp < -32768) lsamp = -32768;
-	  samp2 = samp1; samp1 = lsamp;
-          xa_msadpcm.flag = 2;
-	  samp_cnt--;
-        }
-	/* no more bytes left, but we have 1 sample remaing */
-	/* SHOULD THIS EVERY OCCUR?? */
-	else 
-	{  samp_cnt = 1; xa_msadpcm.flag = 1; samp2 = samp1; 
-	   fprintf(stderr,"test\n");
-	}
-      }
-      else if (samp_cnt == 1) { xa_msadpcm.flag = 1; samp2 = samp1; samp_cnt--;}
-      else /* no more samples in that Block */
-      { 
-        if (byte_cnt >= tbytes)
-        {
-	  xa_msadpcm.flag = 4;
-	  if ( (snd_hdr = XA_Audio_Next_Snd(snd_hdr)) != 0)
-			ocnt = snd_hdr->delta(snd_hdr,obuf,ocnt,buff_size);
-	  return(ocnt);
-        }
-	tsamps = snd_hdr->tot_samps;
-	bpred = *ibuf++;
-	if (bpred > MSADPCM_NUM_COEF) 
-	    { fprintf(stderr,"MSADPC bpred %lx ERR 1\n",bpred); return(ocnt); }
-	delta = *ibuf++; delta |= (*ibuf++)<<8;
-	if (delta & 0x8000) delta = delta - 0x10000;
-	samp1 = *ibuf++; samp1 |= (*ibuf++)<<8;
-	if (samp1 & 0x8000) samp1 = samp1 - 0x10000;
-	samp2 = *ibuf++; samp2 |= (*ibuf++)<<8; 
-	if (samp2 & 0x8000) samp2 = samp2 - 0x10000;
-	byte_cnt += 7;
-	samp_cnt = tsamps - 1;
-	xa_msadpcm.flag = 2;
-	coef1 = gaiCoef1[bpred];
-	coef2 = gaiCoef2[bpred];
-	nyb_flag = 1;
-      } /* end of valid next chunk */
-    } /* end of while inc input loop */
-  } /* end of still need output loop */
-  snd_hdr->inc_cnt = inc_cnt;
-  snd_hdr->byte_cnt = byte_cnt;
-  snd_hdr->samp_cnt = samp_cnt;
-  xa_msadpcm.bpred = bpred;
-  xa_msadpcm.delta = delta;
-  xa_msadpcm.samp1 = samp1;
-  xa_msadpcm.samp2 = samp2;
-  xa_msadpcm.nyb_flag = nyb_flag;
-  xa_msadpcm.nyb1     = nyb1;
-  return(ocnt);
-}
-
-
-/********** XA_Audio_ULAWM_PCM2M *********************************
- * Convert Sun's ULAW Mono Samples into PCM 2 BPS Mono Samples
- * The spec flag takes care of the various linear/signed/endian
- * conversions
- *  Input        Ouput      Spec  1st  2nd
- *  -----------------------------------------
- *  ULAW to Signed Big       0    D1    D0
- *  ULAW to Signed Little    1    D0    D1  
- *  ULAW to Linear Big       2    D1^80 D0
- *  ULAW to Linear Little    3    D0    D1^80
- *
- *  bit 2 (& 0x04) 1 byte output.
- *
- * Global Variables:
- *   xaUBYTE xa_sign_2_ulaw[256]	conversion table.
- *   XA_Audio_Next_Snd()	routine to move to next sound header.
- ***************************************************************/
-xaULONG XA_Audio_ULAWM_PCM2M(snd_hdr,obuf,ocnt,buff_size)
-XA_SND *snd_hdr;
-xaUBYTE *obuf;
-xaULONG ocnt,buff_size;
-{ xaULONG byte_cnt,inc,inc_cnt,spec,samp_cnt;
-  xaUBYTE *ibuf;
- 
-  if (snd_hdr==0) return(ocnt);
-  spec = snd_hdr->spec;
-  inc = snd_hdr->inc;           inc_cnt = snd_hdr->inc_cnt;
-  byte_cnt = snd_hdr->byte_cnt;
-  samp_cnt = snd_hdr->samp_cnt;
-  ibuf = snd_hdr->snd;          ibuf += byte_cnt;
- 
-  while(ocnt < buff_size)
-  { register xaULONG data = xa_ulaw_2_sign[ (*ibuf) ];
-    /* data output munging */
-    if (spec & 4)  /* 1 byte output */
-    {  xaUBYTE d0 = ((xaULONG)(data) >> 8) & 0xff;
-       if (spec & 2)	*obuf++ = d0;
-       else             *obuf++ = d0 ^ 0x80;
-    }
-    else
-    { xaUBYTE d1,d0; d1 = (data>>8) & 0xff; d0 = data & 0xff;
-      if (spec & 0x02) d1 ^= 0x80;
-      if (spec & 0x01) {*obuf++ = d0; *obuf++ = d1; }
-      else {*obuf++ = d1; *obuf++ = d0; }
-    }
-    ocnt++;		inc_cnt += inc;
-    while(inc_cnt >= (1<<24) )
-    { inc_cnt -= (1<<24);
-      samp_cnt--;       ibuf++;         byte_cnt++;
-      if (samp_cnt <= 0)
-      {
-        if ( (snd_hdr = XA_Audio_Next_Snd(snd_hdr)) != 0)
-          ocnt = snd_hdr->delta(snd_hdr,obuf,ocnt,buff_size);
-        return(ocnt);
-      }
-    }
-  }
-  snd_hdr->inc_cnt = inc_cnt;
-  snd_hdr->byte_cnt = byte_cnt;
-  snd_hdr->samp_cnt = samp_cnt;
-  return(ocnt);
-}
-
-/********** XA_Audio_ULAWS_PCM2M *********************************
- * Convert Sun's ULAW Stereo Samples into PCM 2 BPS Mono Samples
- * The spec flag takes care of the various linear/signed/endian
- * conversions
- *  Input        Ouput      Spec  1st  2nd
- *  -----------------------------------------
- *  ULAW to Signed Big       0    D1    D0
- *  ULAW to Signed Little    1    D0    D1  
- *  ULAW to Linear Big       2    D1^80 D0
- *  ULAW to Linear Little    3    D0    D1^80
- *
- *  bit 2 (& 0x04) 1 byte output.
- *
- * Global Variables:
- *   xaUBYTE xa_sign_2_ulaw[256]	conversion table.
- *   XA_Audio_Next_Snd()	routine to move to next sound header.
- ***************************************************************/
-xaULONG XA_Audio_ULAWS_PCM2M(snd_hdr,obuf,ocnt,buff_size)
-XA_SND *snd_hdr;
-xaUBYTE *obuf;
-xaULONG ocnt,buff_size;
-{ xaULONG byte_cnt,inc,inc_cnt,spec,samp_cnt;
-  xaUBYTE *ibuf;
- 
-  if (snd_hdr==0) return(ocnt);
-  spec = snd_hdr->spec;
-  inc = snd_hdr->inc;           inc_cnt = snd_hdr->inc_cnt;
-  byte_cnt = snd_hdr->byte_cnt;
-  samp_cnt = snd_hdr->samp_cnt;
-  ibuf = snd_hdr->snd;          ibuf += byte_cnt;
- 
-  while(ocnt < buff_size)
-  { register xaULONG dat0 = xa_arm_2_signed[ (ibuf[0]) ];
-    register xaULONG dat1 = xa_arm_2_signed[ (ibuf[1]) ];
-    register xaLONG da,db;
-    da = (dat0 & 0x8000)?(dat0 - 0x10000):(dat0);
-    db = (dat1 & 0x8000)?(dat1 - 0x10000):(dat1);
-    dat0 = (xaULONG)(((da + db) >> 1)) & 0xffff;
-    /* data output munging */
-    if (spec & 4)  /* 1 byte output */
-    {  xaUBYTE d0 = ((xaULONG)(dat0) >> 8) & 0xff;
-       if (spec & 2)	*obuf++ = d0;
-       else             *obuf++ = d0 ^ 0x80;
-    }
-    else
-    { xaUBYTE d1,d0; d1 = (dat0>>8) & 0xff; d0 = dat0 & 0xff;
-      if (spec & 0x02) d1 ^= 0x80;
-      if (spec & 0x01) {*obuf++ = d0; *obuf++ = d1; }
-      else {*obuf++ = d1; *obuf++ = d0; }
-    }
-    ocnt++;		inc_cnt += inc;
-    while(inc_cnt >= (1<<24) )
-    { inc_cnt -= (1<<24);
-      samp_cnt--;       ibuf += 2;	byte_cnt += 2;
-      if (samp_cnt <= 0)
-      {
-        if ( (snd_hdr = XA_Audio_Next_Snd(snd_hdr)) != 0)
-          ocnt = snd_hdr->delta(snd_hdr,obuf,ocnt,buff_size);
-        return(ocnt);
-      }
-    }
-  }
-  snd_hdr->inc_cnt = inc_cnt;
-  snd_hdr->byte_cnt = byte_cnt;
-  snd_hdr->samp_cnt = samp_cnt;
-  return(ocnt);
-}
-
-
-/********** XA_Audio_ARMLAWM_PCM2M *********************************
- * Convert ARM's MU_LAW Mono Samples into PCM 2 BPS Mono Samples
- * The spec flag takes care of the various linear/signed/endian
- * conversions
- *  Input        Ouput      Spec  1st  2nd
- *  -----------------------------------------
- *  ARMLAW to Signed Big       0    D1    D0
- *  ARMLAW to Signed Little    1    D0    D1  
- *  ARMLAW to Linear Big       2    D1^80 D0
- *  ARMLAW to Linear Little    3    D0    D1^80
- *
- *  bit 2 (& 0x04) 1 byte output.
- *
- * Global Variables:
- *   xaUBYTE xa_sign_2_ulaw[256]	conversion table.
- *   XA_Audio_Next_Snd()	routine to move to next sound header.
- ***************************************************************/
-xaULONG XA_Audio_ARMLAWM_PCM2M(snd_hdr,obuf,ocnt,buff_size)
-XA_SND *snd_hdr;
-xaUBYTE *obuf;
-xaULONG ocnt,buff_size;
-{ xaULONG byte_cnt,inc,inc_cnt,spec,samp_cnt;
-  xaUBYTE *ibuf;
- 
-  if (snd_hdr==0) return(ocnt);
-  spec = snd_hdr->spec;
-  inc = snd_hdr->inc;           inc_cnt = snd_hdr->inc_cnt;
-  byte_cnt = snd_hdr->byte_cnt;
-  samp_cnt = snd_hdr->samp_cnt;
-  ibuf = snd_hdr->snd;          ibuf += byte_cnt;
- 
-  while(ocnt < buff_size)
-  { register xaULONG data = xa_arm_2_signed[ (*ibuf) ];
-    /* data output munging */
-    if (spec & 4)  /* 1 byte output */
-    {  xaUBYTE d0 = ((xaULONG)(data) >> 8) & 0xff;
-       if (spec & 2)	*obuf++ = d0;
-       else             *obuf++ = d0 ^ 0x80;
-    }
-    else
-    { xaUBYTE d1,d0; d1 = (data>>8) & 0xff; d0 = data & 0xff;
-      if (spec & 0x02) d1 ^= 0x80;
-      if (spec & 0x01) {*obuf++ = d0; *obuf++ = d1; }
-      else {*obuf++ = d1; *obuf++ = d0; }
-    }
-    ocnt++;		inc_cnt += inc;
-    while(inc_cnt >= (1<<24) )
-    { inc_cnt -= (1<<24);
-      samp_cnt--;       ibuf++;         byte_cnt++;
-      if (samp_cnt <= 0)
-      {
-        if ( (snd_hdr = XA_Audio_Next_Snd(snd_hdr)) != 0)
-          ocnt = snd_hdr->delta(snd_hdr,obuf,ocnt,buff_size);
-        return(ocnt);
-      }
-    }
-  }
-  snd_hdr->inc_cnt = inc_cnt;
-  snd_hdr->byte_cnt = byte_cnt;
-  snd_hdr->samp_cnt = samp_cnt;
-  return(ocnt);
-}
-
-/********** XA_Audio_ARMLAWS_PCM2M *********************************
- * Convert ARM's mu-Law Stereo Samples into PCM 2 BPS Mono Samples
- * The spec flag takes care of the various linear/signed/endian
- * conversions
- *  Input        Ouput      Spec  1st  2nd
- *  -----------------------------------------
- *  ARMLAW to Signed Big       0    D1    D0
- *  ARMLAW to Signed Little    1    D0    D1  
- *  ARMLAW to Linear Big       2    D1^80 D0
- *  ARMLAW to Linear Little    3    D0    D1^80
- *
- *  bit 2 (& 0x04) 1 byte output.
- *
- * Global Variables:
- *   xaUBYTE xa_sign_2_ulaw[256]	conversion table.
- *   XA_Audio_Next_Snd()	routine to move to next sound header.
- ***************************************************************/
-xaULONG XA_Audio_ARMLAWS_PCM2M(snd_hdr,obuf,ocnt,buff_size)
-XA_SND *snd_hdr;
-xaUBYTE *obuf;
-xaULONG ocnt,buff_size;
-{ xaULONG byte_cnt,inc,inc_cnt,spec,samp_cnt;
-  xaUBYTE *ibuf;
- 
-  if (snd_hdr==0) return(ocnt);
-  spec = snd_hdr->spec;
-  inc = snd_hdr->inc;           inc_cnt = snd_hdr->inc_cnt;
-  byte_cnt = snd_hdr->byte_cnt;
-  samp_cnt = snd_hdr->samp_cnt;
-  ibuf = snd_hdr->snd;          ibuf += byte_cnt;
- 
-  while(ocnt < buff_size)
-  { register xaULONG dat0 = xa_ulaw_2_sign[ (ibuf[0]) ];
-    register xaULONG dat1 = xa_ulaw_2_sign[ (ibuf[1]) ];
-    register xaLONG da,db;
-    da = (dat0 & 0x8000)?(dat0 - 0x10000):(dat0);
-    db = (dat1 & 0x8000)?(dat1 - 0x10000):(dat1);
-    dat0 = (xaULONG)(((da + db) >> 1)) & 0xffff;
-    /* data output munging */
-    if (spec & 4)  /* 1 byte output */
-    {  xaUBYTE d0 = ((xaULONG)(dat0) >> 8) & 0xff;
-       if (spec & 2)	*obuf++ = d0;
-       else             *obuf++ = d0 ^ 0x80;
-    }
-    else
-    { xaUBYTE d1,d0; d1 = (dat0>>8) & 0xff; d0 = dat0 & 0xff;
-      if (spec & 0x02) d1 ^= 0x80;
-      if (spec & 0x01) {*obuf++ = d0; *obuf++ = d1; }
-      else {*obuf++ = d1; *obuf++ = d0; }
-    }
-    ocnt++;		inc_cnt += inc;
-    while(inc_cnt >= (1<<24) )
-    { inc_cnt -= (1<<24);
-      samp_cnt--;       ibuf += 2;	byte_cnt += 2;
-      if (samp_cnt <= 0)
-      {
-        if ( (snd_hdr = XA_Audio_Next_Snd(snd_hdr)) != 0)
-          ocnt = snd_hdr->delta(snd_hdr,obuf,ocnt,buff_size);
-        return(ocnt);
-      }
-    }
-  }
-  snd_hdr->inc_cnt = inc_cnt;
-  snd_hdr->byte_cnt = byte_cnt;
-  snd_hdr->samp_cnt = samp_cnt;
-  return(ocnt);
-}
-
-
-/********** XA_Audio_Silence *********************************
- * Provides so many samples of silence( value of silence is in ->spec ).
- *
- * Global Variables:
- *   XA_Audio_Next_Snd()	routine to move to next sound header.
- ***************************************************************/
-xaULONG XA_Audio_Silence(snd_hdr,obuf,ocnt,buff_size)
-XA_SND *snd_hdr;
-xaUBYTE *obuf;
-xaULONG ocnt,buff_size;
-{ xaULONG inc,inc_cnt,spec,samp_cnt;
-  if (snd_hdr==0) return(ocnt);
-  spec = snd_hdr->spec;
-  samp_cnt = snd_hdr->samp_cnt;
-  inc = snd_hdr->inc;		inc_cnt = snd_hdr->inc_cnt;
-
-  while(ocnt < buff_size)
-  {
-    *obuf++ = 0x00;
-    if (spec == 1) *obuf++ = 0x00;  /* two byte cases */
-    
-    ocnt++;			inc_cnt += inc;
-    while(inc_cnt >= (1<<24) )
-    { inc_cnt -= (1<<24);	samp_cnt--;
-      if (samp_cnt <= 0)
-      { 
-        if ( (snd_hdr = XA_Audio_Next_Snd(snd_hdr)) != 0)
-	  ocnt = snd_hdr->delta(snd_hdr,obuf,ocnt,buff_size);
-	return(ocnt);
-      }
-    }
-  }
-  snd_hdr->inc_cnt = inc_cnt;
-  snd_hdr->samp_cnt = samp_cnt;
-  return(ocnt);
-}
-
-/*************************************************************************/
-/********** Audio Codec Conversion Buffer Routines ***********************/
-/*************************************************************************/
-
-/**************************************************************************
- *
- * Microsoft ADPCM code.
- *
- * NO xaLONGER USED
- *
- *************************************************************************/
-
-xaULONG ms_adpcm_decode(src, dst, slen, dlen, SampPerBlock)
-xaUBYTE *src;
-xaSHORT *dst;
-xaLONG slen;		/* size in bytes of src */
-xaLONG dlen;		/* size in sample of dst */
-xaLONG SampPerBlock;
-{ xaULONG ocnt;
-
-  ocnt = 0; 
-  while(ocnt < dlen)
-  { xaULONG bpred,nyb_flag;
-    xaLONG coef1,coef2,samp1,samp2,idelta,delta,predict,lsamp;
-    xaLONG samp_cnt,nyb0,nyb1;
-    /**** READ BLOCK HEADER ************/
-    /*POD NOTE: check dlen < 7 */
-    bpred = *src++;
-    if (bpred > MSADPCM_NUM_COEF) return(0);
-    coef1 = gaiCoef1[bpred];
-    coef2 = gaiCoef2[bpred];
-    delta = *src++; delta |= (*src++)<<8;
-    if (delta & 0x8000) delta = delta - 0x10000;
-    samp1 = *src++; samp1 |= (*src++)<<8;
-    if (samp1 & 0x8000) samp1 = samp1 - 0x10000;
-    samp2 = *src++; samp2 |= (*src++)<<8; slen -= 7;
-    if (samp2 & 0x8000) samp2 = samp2 - 0x10000;
-    *dst++ = (xaSHORT)samp1;
-    *dst++ = (xaSHORT)samp2; ocnt += 2;
-
-    samp_cnt = SampPerBlock - 2;
-    nyb_flag = 1;
-    while(samp_cnt)
-    {
-      /* get four bit sample */
-      if (nyb_flag)
-      {
-        nyb1 = *src++;  slen--;
-        nyb0 = (nyb1 >> 4) & 0x0f;
-        nyb1 &= 0x0f;
-        nyb_flag = 0;
-      }
-      else { nyb0 = nyb1; nyb_flag = 1; }
-    
-      /* Comput next Adaptive Scale Factor(ASF) */
-      idelta = delta;
-      delta = (gaiP4[nyb0] * idelta) >> MSADPCM_PSCALE;
-      if (delta < MSADPCM_DELTA4_MIN) delta = MSADPCM_DELTA4_MIN;
-      if (nyb0 & 0x08) nyb0 = nyb0 - 0x10;
-
-      /* Predict next sample */
-      predict = ((samp1 * coef1) + (samp2 * coef2)) >>  MSADPCM_CSCALE;
-      /* reconstruct original PCM */
-      lsamp = (nyb0 * idelta) + predict;
-      if (lsamp > 32767) lsamp = 32767;
-      else if (lsamp < -32768) lsamp = -32768;
-
-      *dst++ = (xaSHORT)lsamp; ocnt++;
-      samp2 = samp1; samp1 = lsamp;
-      samp_cnt--;
-    }
-  }
-  return(ocnt);
-}
-
-
-/* The following copyright pertains only to the MS_APDCM code routine
- * above and nothing else. - Podlipec
- */
-
-/***********************************************************
-Copyright 1992 by Stichting Mathematisch Centrum, Amsterdam, The
-Netherlands.
-
-                        All Rights Reserved
-
-Permission to use, copy, modify, and distribute this software and its 
-documentation for any purpose and without fee is hereby granted, 
-provided that the above copyright notice appear in all copies and that
-both that copyright notice and this permission notice appear in 
-supporting documentation, and that the names of Stichting Mathematisch
-Centrum or CWI not be used in advertising or publicity pertaining to
-distribution of the software without specific, written prior permission.
-
-STICHTING MATHEMATISCH CENTRUM DISCLAIMS ALL WARRANTIES WITH REGARD TO
-THIS SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
-FITNESS, IN NO EVENT SHALL STICHTING MATHEMATISCH CENTRUM BE LIABLE
-FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
-OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-******************************************************************/
-
-
-#ifdef XA_FORK
-
-extern XA_AUD_FLAGS *vaudiof;
-extern xaULONG xa_vaudio_present;
-
-/********* XA_Fork_Add_Sound ****************************************
- * IMPORTANT: THIS ROUTINE IS IN THE VIDEO DOMAIN
- *
- * Global Variables Used:
- *   double XAAUD->scale	linear scale of frequency
- *   xaULONG  xa_audio_hard_buff	size of sound chunk - set by XA_Closest_Freq().
- *   xaULONG  XAAUD->bufferit	xaTRUE if this routine is to convert and buffer
- * 				the audio data ahead of time.
- *   xaULONG  xa_audio_hard_type	Audio Type of Current Hardware
- *
- * Add sound double checks xa_audio_present. 
- *   If UNK then it calls XA_Audio_Init().
- *   If OK adds the sound, else returns false.
- *****/
-xaULONG XA_Fork_Add_Snd(anim_hdr,isnd,itype,fpos,ifreq,ilen,stime,stimelo)
-XA_ANIM_HDR *anim_hdr;
-xaUBYTE *isnd;
-xaULONG itype;	/* sound type */
-xaULONG fpos;	/* file position */
-xaULONG ifreq;	/* input frequency */
-xaULONG ilen;	/* length of snd sample chunk in bytes */
-xaLONG *stime;	/* start time of sample */
-xaULONG *stimelo;	/* fractional start time of sample */
-{
-  XA_SND *new_snd;
-  xaULONG bps,isamps,totsamps,hfreq,inc,ret;
-  double finc,ftime,fadj_freq;
-
-  /* If audio hasn't been initialized, then init it */
-  if (xa_vaudio_present == XA_AUDIO_UNK)
-  {
-    if (xa_forkit == xaTRUE) xa_forkit =
-	XA_Video_Send2_Audio(XA_IPC_AUD_INIT,NULL,0,0,2000,&xa_vaudio_present);
-    if (xa_forkit==xaFALSE) xa_vaudio_present = XA_AUDIO_ERR;
-  }
-  /* Return xaFALSE if it's not OK */
-  if (xa_vaudio_present != XA_AUDIO_OK)
-  {
-    if (xa_forkit == xaTRUE)
-    {
-      xa_forkit = XA_Video_Send2_Audio(XA_IPC_EXIT,NULL,0,0,2000,0);
-      xa_forkit = xaFALSE;
-    }
-    return(xaFALSE);
-  }
-
-
-  new_snd = (XA_SND *)malloc(sizeof(XA_SND));
-  if (new_snd==0) TheEnd1("snd malloc err");
-
-  bps = 1;
-  if (itype == XA_AUDIO_ADPCM_M)
-  { xaLONG SampPerBlock,w,BytesPerBlock,tmp_len;
-    /* compute number of ms_adpcm out samples and SampPerBlock */
-    BytesPerBlock = (256 * 1); /* 256 * chans */
-    if (ifreq > 11025) BytesPerBlock *= (ifreq / 11000);
-    w = 8 * (BytesPerBlock - (7 * 1));  /* - (7 * chans) */
-    SampPerBlock = (w / (4 * 1)) + 2;
-
-    /* for MSADPCM tot_samps is total sample in a block, not for chunk */
-    isamps = SampPerBlock;
-    /* need to calculate total samples in entire chunk for timing purposes */
-    w = (ilen / BytesPerBlock);  
-    tmp_len = SampPerBlock * w;  /* out len based on full blocks */
-
-    w = ilen - (w * BytesPerBlock); /* bytes remaining */
-    w -= (7 * 1);  /* subtract header */
-    if (w >= 0)  /* if anything left */
-    {
-      w = (8 * w) / ( 4 * 1); /* extra samples */
-      w += 2; /* plus samples in header */
-      tmp_len += w;
-    }
-    totsamps = tmp_len;
-  }
-  else
-  {
-    if (itype & XA_AUDIO_STEREO_MSK) bps *= 2;
-    if (itype & XA_AUDIO_BPS_2_MSK) bps *= 2;
-    totsamps = isamps = ilen / bps;
-  }
-
-  new_snd->tot_samps = new_snd->samp_cnt = isamps;
-  new_snd->tot_bytes = ilen;
-  new_snd->byte_cnt = 0;
-
-  new_snd->fpos = fpos;
-  new_snd->type = itype;
-  new_snd->flag = 0;
-  new_snd->ifreq = ifreq;
-  hfreq = (vaudiof->playrate)?(vaudiof->playrate):(ifreq);
-
-  if (xa_forkit == xaTRUE) xa_forkit = XA_Video_Send2_Audio(XA_IPC_GET_CFREQ,
-					NULL,0,hfreq,2000,&hfreq);
-  else hfreq = 0;
-  if (xa_forkit == xaTRUE) xa_forkit = XA_Video_Send2_Audio(XA_IPC_GET_BSIZE,
-					NULL,0,0,2000,&xa_vaudio_hard_buff);
-  if (xa_forkit == xaFALSE) return(xaFALSE);
-
-  new_snd->hfreq = hfreq;
-  new_snd->ch_size = xa_vaudio_hard_buff;
-
-
-  /* Setup and return Chunk Start Time */
-  new_snd->snd_time = *stime;
-  { xaULONG tint;
-    ftime = ((double)(totsamps) * 1000.0) / (double)(ifreq);
-    tint = (xaULONG)(ftime);   /* get integer time */
-    *stime += tint;
-    ftime -= (double)(tint); /* get fraction time */
-    *stimelo += (xaULONG)( ftime * (double)(1<<24) );
-    while( (*stimelo) > (1<<24)) { *stime += 1; *stimelo -= (1<<24); }
-  }
-
-  /* Determine f2f inc */
-  fadj_freq = (double)(ifreq) * vaudiof->scale;
-  finc = (double)(fadj_freq)/ (double)(hfreq);
-  new_snd->inc = inc = (xaULONG)( finc * (double)(1<<24) );
-  new_snd->inc_cnt = 0;
-
-  /* Determine Chunk Time */
-  ftime = ((double)(xa_vaudio_hard_buff) * 1000.0) / (double)(hfreq);
-  new_snd->ch_time = (xaLONG)ftime;
-  ftime -= (double)(new_snd->ch_time);
-  new_snd->ch_timelo = (xaULONG)(ftime * (double)(1<<24));
-
-  new_snd->prev = 0;
-  new_snd->next = 0;
-
-/* POD
-fprintf(stderr,"Fork_Add_Sound itype %lx\n",new_snd->type);
-*/
-
-  /* Send SND HDR */
-  if (xa_forkit == xaTRUE) xa_forkit = XA_Video_Send2_Audio(XA_IPC_SND_ADD,
-	new_snd, (sizeof(XA_SND)), anim_hdr->file_num, 2000, &ret);
-  if (xa_forkit == xaFALSE) return(xaFALSE);
-  if (ret == xaFALSE) return(xaFALSE);
-
-  if (isnd==0) ilen = 0;
-
-  /* Send SND Buffer */
-  if (xa_forkit == xaTRUE) xa_forkit = XA_Video_Send2_Audio(XA_IPC_SND_BUF,
-	isnd, ilen, anim_hdr->file_num, 2000, &ret);
-  if (xa_forkit == xaFALSE) return(xaFALSE);
-  if (ret == xaFALSE) return(xaFALSE);
-
-/* new_snd->snd = isnd; */
-/* new_snd->spec  */
-/* new_snd->delta */
-
-  return(xaTRUE);
-}
-
-
-/*******************************
- *
- ******************/
-xaULONG XA_IPC_Sound(aud_hdr,new_snd)
-XA_AUD_HDR *aud_hdr;
-XA_SND *new_snd;
-{ 
-  xaULONG itype = new_snd->type;
-
-/*POD
-fprintf(stderr,"XA_IPC_Sound itype %lx\n",itype);
-*/
-  /* Figure out which conversion routine to use */
-  switch(xa_audio_hard_type)
-  {
-    case XA_AUDIO_SUN_AU:
-      {
-	switch(itype)
-	{
-	  case XA_AUDIO_SIGNED_1M:
-	  case XA_AUDIO_SIGNED_2MB:
-	  case XA_AUDIO_SIGNED_2ML:
-	  case XA_AUDIO_LINEAR_1M:
-	  case XA_AUDIO_LINEAR_2ML:
-	  case XA_AUDIO_LINEAR_2MB:
-	  case XA_AUDIO_SIGNED_1S:
-	  case XA_AUDIO_SIGNED_2SB:
-	  case XA_AUDIO_SIGNED_2SL:
-	  case XA_AUDIO_LINEAR_1S:
-	  case XA_AUDIO_LINEAR_2SL:
-	  case XA_AUDIO_LINEAR_2SB:
-		new_snd->spec = 
-		    ((itype & XA_AUDIO_TYPE_MASK)==XA_AUDIO_LINEAR)?(0):(1);
-		if (itype & XA_AUDIO_BPS_2_MSK)
-		  new_snd->spec |= (itype & XA_AUDIO_BIGEND_MSK)?(2):(4);
-		new_snd->spec |= 8; /* SUN AU bit */
-		if (itype & XA_AUDIO_STEREO_MSK)
-			new_snd->delta = XA_Audio_PCMXS_PCM1M;
-		else
-			new_snd->delta = XA_Audio_PCMXM_PCM1M;
-		break;
-	  case XA_AUDIO_SUN_AU:
-		new_snd->delta = XA_Audio_1M_1M;
-		break;
-	  case XA_AUDIO_ADPCM_M:
-	        new_snd->spec = 2 | 4 | 8;
-		new_snd->delta = XA_Audio_ADPCMM_PCM2M;
-		break;
-	  case XA_AUDIO_NOP:
-		new_snd->delta = XA_Audio_Silence;
-		new_snd->spec = 0x00;
-		break;
-	  default: 
-	    fprintf(stderr,"SUN_AU_AUDIO: Unsupported Software Type %lx\n",
-				itype);
-		return(xaFALSE);
-		break;
-	}
-      }
-      break;
-
-    case XA_AUDIO_SIGNED_2ML:
-    case XA_AUDIO_SIGNED_2MB:
-      {
-	switch(itype)
-	{
-	  case XA_AUDIO_LINEAR_1M:      /* LIN1M -> SIN2M*  */
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 1;
-		else    new_snd->spec = 2;
-		new_snd->delta = XA_Audio_PCM1M_PCM2M;
-		break;
-	  case XA_AUDIO_LINEAR_1S:      /* LIN1S -> SIN2M*  */
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 1;
-		else    new_snd->spec = 2;
-		new_snd->delta = XA_Audio_PCM1S_PCM2M;
-		break;
-	  case XA_AUDIO_SIGNED_1S:      /* SIN1S -> SIN2M*  */
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 6;
-		else    new_snd->spec = 5;
-		new_snd->delta = XA_Audio_PCM1S_PCM2M;
-		break;
-	  case XA_AUDIO_SIGNED_1M:      /* SIN1M -> SIN2M*  */
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 2;
-		else    new_snd->spec = 1;
-		new_snd->delta = XA_Audio_PCM1M_PCM2M;
-		break;
-	  case XA_AUDIO_LINEAR_2MB:     /* LIN2M* -> SIN2M*  */
-	  case XA_AUDIO_LINEAR_2ML:
-	  case XA_AUDIO_SIGNED_2MB:     /* SIN2M* -> SIN2M*  */
-	  case XA_AUDIO_SIGNED_2ML:
-	  case XA_AUDIO_LINEAR_2SB:     /* LIN2S* -> SIN2M*  */
-	  case XA_AUDIO_LINEAR_2SL:
-	  case XA_AUDIO_SIGNED_2SB:     /* SIN2S* -> SIN2M*  */
-	  case XA_AUDIO_SIGNED_2SL:
-		  /* sign conversion? */
-		if ( (itype & XA_AUDIO_TYPE_MASK) == XA_AUDIO_SIGNED)
-			new_snd->spec = 0x10;
-		else	new_snd->spec = 0x02;
-		  /* src endian? */
-		new_snd->spec |= (itype & XA_AUDIO_BIGEND_MSK)?(0):(1);
-		  /* dst endian? */
-		new_snd->spec |= 
-			(xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)?(0):(4);
-		  /* stereo? */
-		new_snd->spec |= (itype & XA_AUDIO_STEREO_MSK)?(8):(0); 
-		new_snd->delta = XA_Audio_PCM2X_PCM2M;
-		break;
-	  case XA_AUDIO_ADPCM_M:
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 0;
-		else	new_snd->spec = 1;
-		new_snd->delta = XA_Audio_ADPCMM_PCM2M;
-		break;
-	  case XA_AUDIO_NOP:
-		new_snd->delta = XA_Audio_Silence;
-		new_snd->spec = 0x00;
-		break;
-	  case XA_AUDIO_ULAWS:
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 0;
-		new_snd->delta = XA_Audio_ULAWS_PCM2M;
-		break;
-	  case XA_AUDIO_ULAW:
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 0;
-		new_snd->delta = XA_Audio_ULAWM_PCM2M;
-		break;
-	  case XA_AUDIO_ARMLAWS:
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 0;
-		new_snd->delta = XA_Audio_ARMLAWS_PCM2M;
-		break;
-	  case XA_AUDIO_ARMLAW:
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 0;
-		new_snd->delta = XA_Audio_ARMLAWM_PCM2M;
-		break;
-	  default:
-	fprintf(stderr,"F_AUDIO_SIN2M: Unsupported Software Type(%lx)\n",
-			itype);
-		return(xaFALSE);
-		break;
-
-	}
-      }
-      break;
-
-    case XA_AUDIO_LINEAR_1M:
-      {
-	switch(itype)
-	{
-	  case XA_AUDIO_SIGNED_1M:
-	  case XA_AUDIO_SIGNED_2MB:
-	  case XA_AUDIO_SIGNED_2ML:
-	  case XA_AUDIO_LINEAR_1M:
-	  case XA_AUDIO_LINEAR_2ML:
-	  case XA_AUDIO_LINEAR_2MB:
-	  case XA_AUDIO_SIGNED_1S:
-	  case XA_AUDIO_SIGNED_2SB:
-	  case XA_AUDIO_SIGNED_2SL:
-	  case XA_AUDIO_LINEAR_1S:
-	  case XA_AUDIO_LINEAR_2SL:
-	  case XA_AUDIO_LINEAR_2SB:
-		new_snd->spec = 
-		    ((itype & XA_AUDIO_TYPE_MASK)==XA_AUDIO_LINEAR)?(0):(1);
-		if (itype & XA_AUDIO_BPS_2_MSK)
-		  new_snd->spec |= (itype & XA_AUDIO_BIGEND_MSK)?(2):(4);
-		if (itype & XA_AUDIO_STEREO_MSK)
-			new_snd->delta = XA_Audio_PCMXS_PCM1M;
-		else
-			new_snd->delta = XA_Audio_PCMXM_PCM1M;
-		break;
-	  case XA_AUDIO_ADPCM_M:
-		new_snd->spec = 2 | 4;  /* 1 byte output */
-		new_snd->delta = XA_Audio_ADPCMM_PCM2M;
-		break;
-	  case XA_AUDIO_NOP:
-		new_snd->delta = XA_Audio_Silence;
-		new_snd->spec = 0x00;
-		break;
-	  default:
-		fprintf(stderr,"AUDIO_LIN1M: Unsupported Software Type\n");
-		return(xaFALSE);
-		break;
-	}
-      }
-      break;
-
-    case XA_AUDIO_LINEAR_2ML:
-    case XA_AUDIO_LINEAR_2MB:
-      {
-	switch(itype)
-	{
-	  case XA_AUDIO_LINEAR_1M:      /* LIN1M -> LIN2M*  */
-		new_snd->spec = 0;
-		new_snd->delta = XA_Audio_PCM1M_PCM2M;
-		break;
-	  case XA_AUDIO_SIGNED_1M:      /* SIN1M -> LIN2M*  */
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 1;
-		else    new_snd->spec = 2;
-		new_snd->delta = XA_Audio_PCM1M_PCM2M;
-		break;
-	  case XA_AUDIO_LINEAR_2MB:     /* LIN2M* -> LIN2M*  */
-	  case XA_AUDIO_LINEAR_2ML:
-	  case XA_AUDIO_SIGNED_2MB:     /* SIN2M* -> LIN2M*  */
-	  case XA_AUDIO_SIGNED_2ML:
-	  case XA_AUDIO_LINEAR_2SB:     /* LIN2S* -> LIN2M*  */
-	  case XA_AUDIO_LINEAR_2SL:
-	  case XA_AUDIO_SIGNED_2SB:     /* SIN2S* -> LIN2M*  */
-	  case XA_AUDIO_SIGNED_2SL:
-		  /* sign conversion? */
-		if ( (itype & XA_AUDIO_TYPE_MASK) == XA_AUDIO_SIGNED)
-			new_snd->spec = 0x12;
-		else	new_snd->spec = 0;
-		  /* src endian? */
-		new_snd->spec |= (itype & XA_AUDIO_BIGEND_MSK)?(0):(1);
-		  /* dst endian? */
-		new_snd->spec |= 
-			(xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)?(0):(4);
-		  /* stereo? */
-		new_snd->spec |= (itype & XA_AUDIO_STEREO_MSK)?(8):(0); 
-		new_snd->delta = XA_Audio_PCM2X_PCM2M;
-		break;
-	  case XA_AUDIO_ADPCM_M:
-		if (xa_audio_hard_type & XA_AUDIO_BIGEND_MSK)
-			new_snd->spec = 2;
-		else	new_snd->spec = 3;
-		new_snd->delta = XA_Audio_ADPCMM_PCM2M;
-		break;
-	  case XA_AUDIO_NOP:
-		new_snd->delta = XA_Audio_Silence;
-		new_snd->spec = 0x00;
-		break;
-	  default:
-		fprintf(stderr,"AUDIO_LIN2M: Unsupported Software Type\n");
-		return(xaFALSE);
-		break;
-	}
-      }
-      break;
-
-
-    default: 
-      FREE(new_snd,0x507); new_snd = 0;
-      fprintf(stderr,"AUDIO: Unknown Hardware Type\n");
-      return(xaFALSE);
-      break;
-  }
-
-  /** Set up prev pointer */
-  if (aud_hdr->first_snd==0) new_snd->prev = 0;
-  else new_snd->prev = aud_hdr->last_snd;
-
-  /** Set up next pointer */
-  if (aud_hdr->first_snd == 0)	aud_hdr->first_snd = new_snd;
-  if (aud_hdr->last_snd)	aud_hdr->last_snd->next = new_snd;
-  aud_hdr->last_snd = new_snd;
-  return(xaTRUE);
-}
-
-
-#ifdef XA_AUD_OUT_MERGED
-
-extern XtAppContext  theAudContext;
 
 /********** New_Merged_Audio_Output **********************
  * Set Volume if needed and then write audio data to audio device.
@@ -7053,10 +5753,10 @@ extern XtAppContext  theAudContext;
  * IS 
  *****/
 void New_Merged_Audio_Output()
-{ xaLONG time_diff;
-
+{ xaLONG time_diff, loop_cnt = xa_audio_ring_size;
 
   /* normal exit is when audio gets ahead */
+  while(loop_cnt--)
   {
     if (xa_audio_status != XA_AUDIO_STARTED) { return; }
     time_diff = xa_time_audio - xa_time_now; /* how far ahead is audio */
@@ -7065,7 +5765,8 @@ void New_Merged_Audio_Output()
       xa_time_now = XA_Read_AV_Time();  /* get new time */
       time_diff = xa_time_audio - xa_time_now;
       if (time_diff > xa_out_time)  /* definitely ahead */
-      {
+      { /* If we're ahead, update the ring. */
+        XA_Update_Ring(2);
 	xa_interval_id = XtAppAddTimeOut(theAudContext,xa_interval_time,
 		(XtTimerCallbackProc)New_Merged_Audio_Output,(XtPointer)(NULL));
         return;
@@ -7075,7 +5776,6 @@ void New_Merged_Audio_Output()
 
     if (xa_audio_ring->len)
     { 
-
       /* If audio buffer is full, write() can't write all of the data. */
       /* So, next routine checks the rest length in buffer.            */
 #ifdef XA_SONY_AUDIO
@@ -7103,7 +5803,6 @@ void New_Merged_Audio_Output()
       }
 #endif
 
-
 #ifdef XA_MMS_AUDIO
       {
         mmeProcessCallbacks();
@@ -7117,6 +5816,15 @@ void New_Merged_Audio_Output()
 	}
       }
 #endif
+
+#ifdef XA_HP_AUDIO
+      if (hp_audio_paused == xaTRUE)
+      { DEBUG_LEVEL1 fprintf(stderr,"HP-out-unpause\n");
+        AResumeAudio( audio_connection, hp_trans_id, NULL, NULL );
+        hp_audio_paused = xaFALSE;
+      }
+#endif
+
 
 /*---------------- Now for the Write Segments -------------------------------*/
 
@@ -7170,6 +5878,11 @@ void New_Merged_Audio_Output()
       }
 #endif
 
+#ifdef XA_HP_AUDIO
+      write(streamSocket,xa_audio_ring->buf,xa_audio_ring->len);
+/* Some way to flush streamsocket???? */
+#endif
+
 #ifdef XA_HPDEV_AUDIO
       write (devAudio, xa_audio_ring->buf, xa_audio_ring->len);
 #endif
@@ -7210,6 +5923,31 @@ void New_Merged_Audio_Output()
       }
 #endif
 
+#ifdef XA_TOWNS_AUDIO
+      write(devAudio,xa_audio_ring->buf,xa_audio_ring->len);
+#endif
+
+#ifdef XA_TOWNS8_AUDIO
+      { int i_;
+	char *cp_,*cp2_;
+
+	i_=0;
+	cp_ = cp2_ = xa_audio_ring->buf;
+
+	while (i_<xa_audio_ring->len)
+	{ int i1_,i2_;
+	  i1_ = *cp_++;
+	  cp_++;
+	  if (i1_ < 0) { i1_ += 256; }
+	  if (i1_ >= 128) { i1_ = 128 - i1_; }
+	  *cp2_++ = (char) i1_;
+	  i_+=2;
+        }
+        write(devAudio,xa_audio_ring->buf,xa_audio_ring->len/2);
+      }
+#endif
+
+
       /* Don't adjust volume until after write. If we're behind
        * the extra delay could cause a pop. */
       if (XAAUD->newvol==xaTRUE)
@@ -7224,16 +5962,14 @@ void New_Merged_Audio_Output()
       xa_audio_ring->len = 0; 
       xa_audio_ring = xa_audio_ring->next;  /* move to next */
       if (xa_audio_status != XA_AUDIO_STARTED) { return;}
+
       if (xa_out_init) xa_out_init--;
-      else if (xa_update_ring_sem==0)	/*semaphores aren't really used since */
-      {					/*XtAppTimeOut is sequential */
-        xa_update_ring_sem = 1;
-        XA_Update_Ring(2);  /* only allow two to be updated */
-        xa_update_ring_sem = 0;
-      }
+      else XA_Update_Ring(2);  /* only allow two to be updated */
+/* NOT HERE - loop first
       xa_interval_id = XtAppAddTimeOut(theAudContext,xa_interval_time,
 	    (XtTimerCallbackProc)New_Merged_Audio_Output,(XtPointer)(NULL));
       return;
+*/
     } 
     else  /* Audio Sample finished */
     { xa_time_now = XA_Read_AV_Time();
@@ -7241,8 +5977,9 @@ void New_Merged_Audio_Output()
 	/* Is audio still playing buffered samples? */
       if (xa_time_now < xa_time_audio) 
       { xaULONG diff = xa_time_audio - xa_time_now;
+	/* POD note 50ms is arbitrarily chosen to be long, but not noticeable*/
         if (xa_audio_status != XA_AUDIO_STARTED) {return;}
-	xa_interval_id = XtAppAddTimeOut(theAudContext,xa_interval_time,
+	xa_interval_id = XtAppAddTimeOut(theAudContext,diff,
 		(XtTimerCallbackProc)New_Merged_Audio_Output,(XtPointer)(NULL));
         return;
       }
@@ -7250,11 +5987,10 @@ void New_Merged_Audio_Output()
       { XA_Audio_Off(0);
 	return;
       }
-    }
-  }
-}
-#endif
-
-#endif
-
+    } /* end of ring_len */
+  } /* end of while ring */
+  xa_interval_id = XtAppAddTimeOut(theAudContext,xa_interval_time,
+	    (XtTimerCallbackProc)New_Merged_Audio_Output,(XtPointer)(NULL));
+  return;
+}  /* end of function */
 

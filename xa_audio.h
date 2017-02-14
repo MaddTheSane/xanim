@@ -2,15 +2,15 @@
 /*
  * xa_audio.h
  *
- * Copyright (C) 1994,1995 by Mark Podlipec.
+ * Copyright (C) 1994-1998,1999 by Mark Podlipec.
  * All rights reserved.
  *
- * This software may be freely copied, modified and redistributed without
- * fee for non-commerical purposes provided that this copyright notice is
- * preserved intact on all copies and modified copies.
+ * This software may be freely used, copied and redistributed without
+ * fee for non-commerical purposes provided that this copyright
+ * notice is preserved intact on all copies.
  *
  * There is no warranty or other guarantee of fitness of this software.
- * It is provided solely "as is". The author(s) disclaim(s) all
+ * It is provided solely "as is". The author disclaims all
  * responsibility and liability with respect to this software's usage
  * or its effect upon hardware or computer systems.
  *
@@ -23,10 +23,10 @@
 #include <Shell.h>
 
 #include "xa_x11.h"
-#ifdef XA_FORK
 #include "xa_ipc.h"
+#include "xa_ipc_cmds.h"
+
 extern xaULONG xa_forkit;
-#endif
 
 /* Rather than spend time figuring out which ones are common
  * across machine types, just redo them all each time.
@@ -69,6 +69,9 @@ extern xaULONG xa_forkit;
 #endif
 */
 #include <mme/mme_api.h>
+#ifdef XA_MMS_160
+#include <mme/mmsystem.h>
+#endif
 #endif
 
 
@@ -119,13 +122,30 @@ extern xaULONG xa_forkit;
 #include <sys/time.h>
 /* POD NOTE: possibly <machine/soundcard.h> ???*/
 
+#if defined(__bsdi__) && _BSDI_VERSION < 199510
+#include <i386/isa/sblast.h>
+#define SNDCTL_DSP_SYNC DSP_IOCTL_FLUSH
+#define SNDCTL_DSP_STEREO DSP_IOCTL_STEREO
+#define SNDCTL_DSP_SPEED DSP_IOCTL_SPEED
+  /* #define SNDCTL_DSP_SAMPLESIZE */
+  /* #define SNDCTL_DSP_GETBLKSIZE this value is ignored anyway */
+#define SOUND_MIXER_READ_DEVMASK MIXER_IOCTL_READ_PARAMS
+#define SOUND_MIXER_PCM 10 /* to make sure it's ignored */
+#define SOUND_MIXER_VOLUME MIXER_IOCTL_SET_LEVELS
+#define MIXER_WRITE(n) n
+#define _FILE_DSP "/dev/sb_dsp"
+#define _FILE_MIXER "/dev/sb_mixer"
+#else
+#define _FILE_DSP "/dev/dsp"
+#define _FILE_MIXER "/dev/mixer"
 #ifdef __FreeBSD__
 #include <machine/soundcard.h>
 #else
 #include <sys/soundcard.h>
 #endif
+#endif  /* end __bsdi__ */
 
-#endif
+#endif /* end LINUX */
 
 /*********************** SGI INCLUDES **********************************/
 #ifdef XA_SGI_AUDIO
@@ -144,8 +164,13 @@ extern xaULONG xa_forkit;
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <errno.h>
+#ifdef XA_HP10
+#include <Alib.h>
+#include <CUlib.h>
+#else /* HPUX 9.x */
 #include <audio/Alib.h>
 #include <audio/CUlib.h>
+#endif
 #endif
 
 #ifdef XA_HPDEV_AUDIO
@@ -172,6 +197,16 @@ extern xaULONG xa_forkit;
 #include <audio/soundlib.h>
 #include <audio/Xtutil.h>
 #endif
+
+/*********************** TOWNS Linux INCLUDES **************************/
+#ifdef XA_TOWNS_AUDIO
+#include <linux/fmmidi.h>
+#endif
+
+/*********************** TOWNS Linux 8 bit PCM INCLUDES *****************/
+#ifdef XA_TOWNS8_AUDIO
+#endif
+
 
 /*********************** END   INCLUDES ********************************/
 

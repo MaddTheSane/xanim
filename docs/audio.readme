@@ -1,0 +1,221 @@
+
+This file has some specific information about which workstations
+are supported.
+
+
+ XAnim supports audio on the following machines:
+
+        Sun Sparcs
+        Sun x86 Solaris machines
+        NEC EWS workstations
+        Sony NEWS 5000 series workstations
+        SGI Indigo
+        PC  with soundcards running unix/linux/QNX
+        HP 9000/715 - sort of working - still has problems.
+        IBM AIX S6000 machines with audio.
+        DEC Alpha workstations running Multimedia Services
+        Any machine running AudioFile(AF)
+        Any machine(or Xterminal) running Net Audio (NAS)
+
+
+--------------------------------------------------------------
+Sun Specific Audio Info
+--------------------------------------------------------------
+
+  Because SunOS 4.1.3 and Solaris have slightly different ioctl()
+  calls, if you need to use the XA_AUDIO* defines with the -DSVR4 
+  switch.
+
+  Sun x86 Solaris machines with a SB16 sound card are
+  supported. The code relies on a _LITTLE_ENDIAN being
+  defined. You might have to specifically add -D_LITTLE_ENDIAN
+  to the Solaris XA_AUDIO* define in the Makefile if you
+  system doesn't automatically set that.
+
+--------------------------------------------------------------
+Linux(soundcard) Specific Info
+--------------------------------------------------------------
+
+  Compiles and runs on 8 bit and 16 bit sound cards(sound driver 2.5 and 2.99).
+  Some video/audio syncing problem with driver 2.5 that got better with 2.99.
+
+  NOTE: There is a bug in the 3.5-beta2 release of the VoxWare/TASD.
+  This often causes the audio to hang when using XAnim.
+
+  This is fixed in the 3.5-beta4 release.  See
+
+		http://personal.eunet.fi/pp/voxware
+
+  for the latest VoxWare.
+
+--------------------------------------------------------------
+QNX 4.2 on PC's
+--------------------------------------------------------------
+
+  This has a separate XA_AUDIO_DEF than linux. See Makefile.
+
+--------------------------------------------------------------
+NetBSD on PC's
+--------------------------------------------------------------
+
+  This also has a separate XA_AUDIO_DEF than linux. See Makefile.
+
+--------------------------------------------------------------
+SGI Specific Info
+--------------------------------------------------------------
+
+  If you see errors similiar to the following during compilation:
+
+    > cfe: Error: xa_audio.c, line 2252: Syntax Error
+    >  static ALport port;
+
+  You need to install SGI's audio include and lib files from
+  the IRIS 5.3 CDROM onto your machine before you can compile *any*
+  application that uses audio. See below.
+
+
+  NEWSFLASH. The audio stuff should be included now in Irix 5.3.
+  If you still have 5.1 or 5.2 and you owned the development CD
+  under a previous release of Irix, you can complain about 
+  "loss of functionality" and get the new copy.
+
+  If you have Irix 5.1 or greater then make sure you have installed 
+  the digital media development subsystem (dmedia_dev.sw.audio) off
+  of the CD-ROM.  
+
+  If this isn't on your CD_ROM then read on...
+
+  "according to the 5.2 readme first page, it says
+   that the Audio Development software has been moved from
+   the IDO to a purchasable option, IRIS media libraries. "
+
+  And you either have to contact SGI and buy it($495) OR
+
+  In the meantime, you can compile XAnim on an Irix 4.0.5 machine
+  and the XAnim binary should work back on the original Irix 5.1
+  or 5.2 machine. 
+
+  NOTE: I don't have nor can I legally distribute the SGI audio 
+  libraries and include files.
+
+
+--------------------------------------------------------------
+DEC specific info
+--------------------------------------------------------------
+Audio support for all machines supported by Multimedia Services for Digital
+UNIX including both the DEC 3000 and AlphaStation lines.  XAnim should build
+and run on anything from Digital UNIX V3.2c or later and MMS V1.6 or later.
+Multimedia Services is factory installed on all Digital UNIX workstations,
+so you shouldn't have to do anything special to install it or start it up.
+
+Digital workstations can also run the AF audio system and XAnim can be built
+with support for that as well.
+
+
+--------------------------------------------------------------
+HP Specific Info
+--------------------------------------------------------------
+
+  There are two ways to compile in HP audio support into XAnim.
+
+  The highly recommended way is to use the XA_AUDIO_DEFS = -DXA_HPDEV_AUDIO
+  defines.  This talks directly to the HP audio device and doesn't
+  have the problems, delays and overhead with going through HP's
+  audio server. NOTE: you can not have the Audio Server running
+  on your machine if you choose this method.
+
+
+  The other method isn't fully stable yet and is incapable of producing
+  decently audio/video synchronization. Plus you need to do the
+  following on you system in order to get the Audio Server up 
+  and running.
+
+  With HP's you need to start up the system Audio Server before
+  you can use ANY audio program. Here's how(from the Audio.man
+  page on an HP 700/915):
+
+           Step 1.   Start the NCS Local Location Broker Daemon.
+                     Task 1.   If you are not already superuser, log in as
+                               superuser.
+                     Task 2.   Enter the command line /usr/etc/ncs/llbd&&&&.
+                               To make llbd start automatically at boot
+                               time, edit the file /etc/netncsrc and change
+                               the line START_LLBD=0 to START_LLBD=1.
+           Step 2.   Reboot.
+           Step 3.   Set the AUDIO environment variable to specify the node
+                     where the audio client should look for the audio
+                     server.  If AUDIO is not set or if it is set to :0, the
+                     client connects with a server on the same node.
+
+                     To specify that the client should connect to a server
+                     on another node, set
+
+                          AUDIO = node_name: (Korn, Bourne, and POSIX
+                          shells)
+                          export AUDIO
+
+                     or
+
+                          setenv AUDIO node_name: (C shell)
+
+           Step 4.   Normally, the audio server starts whenever the system
+                     is booted.  Check for the existence of the Aserver
+                     processes by typing
+
+                     ps -e | grep Aserver
+
+           You should see two Aserver processes.  If the server is not
+           running, start the audio server by hand by typing
+
+                /usr/audio/bin/Aserver
+
+           Then type
+
+                ps -e | grep Aserver
+
+           and check that there are two active server processes.
+
+
+--------------------------------------------------------------
+IBM AIX Specific Info
+--------------------------------------------------------------
+
+  With AIX machines there can be currently three different
+  audio devices.  
+
+	/dev/acpa0/1	3.2 machines with the older ACPA(Audio Capture
+							and Playback Adapters)
+
+	/dev/baud0/1	4.1 machines with the UltiMedia Sound system
+
+	/dev/paud0/1    4.1 machines with built in UltiMedia Sound Systems.
+
+  You need to determine which one and the change the
+
+      DEFAULT_AUDIO_DEVICE_NAME
+
+ in the xa_config.h file and recompile.
+
+--------------------------------------------------------------
+AudioFile (AF) Specific Info
+--------------------------------------------------------------
+
+  I haven't brought up AF yet on my machine, but have gotten
+  reports that it works okay.
+
+--------------------------------------------------------------
+Net Audio (NAS) Specific Info
+--------------------------------------------------------------
+
+  I have brought NAS up on my machine but still need to
+  fine tuned the code.
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=
+Any comments, questions, bugs, fixes, etc  email me at 
+
+                                       podlipec@ici.net
+
+If you make changes to the audio code, please send entire 
+xanim_audio.c file unless the patches are minor.
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-==-=-=-=
