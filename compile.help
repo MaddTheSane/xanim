@@ -1,0 +1,260 @@
+
+Here's a help file I've been working on that describes how to obtain, unarchive
+and compile XAnim.  Let me know if this helps or if you have any questions
+this doesn't answer.
+
+Thanks,
+
+Mark
+
+--------------------------------------------------------------------------
+
+         Compiling the Audio Revisions of XAnim(2.69.* and up)
+
+In the following help section,  the "26978" part is variable and
+depends on the rev. For example: Rev 2.88.3 would be "2883".
+
+--------------------------------------------------------------------------
+Section I    Obtaining XAnim
+--------------------------------------------------------------------------
+
+Obtaining the XAnim archive through ftp:
+	1) ftp ftp.shell.portal.com
+	2) Enter "anonymous" as user(don't include quotes)
+	3) Enter your full email address as the password.
+	4) "cd /pub/podlipec"
+	5) "type binary"
+        6a) "get xanim26978.tar.Z"     For the unix compressed version
+                OR
+        6b) "get xanim26978.tar.gz"    For the gnu zipped version
+	7) by
+
+Obtaining XAnim through mosaic or a browser:
+  If you obtained the xanim archive through mosaic or another www browser,
+  then you need to be aware of whether or not it was automatically
+  uncompressed as it was transferred. Different browsers do different things.
+
+	A) If your browser uncompressed XAnim then save the file
+	   as "xanim26978.tar" and skip the uncompress steps in
+	   sections I) or II).
+	B) If your browers didn't uncompress XAnim then save the file
+	   as "xanim26978.tar.Z".
+        C) If you're not sure then: 
+	     1) save the file as "xanim26978"
+             2) "ls -l xanim26978"
+                 a) if the size is < 600K, then it's compressed and you
+		    should "mv xanim26978 xanim26978.tar.Z".
+	         b) else it's not compressed and you should
+		    "mv xanim26978 xanim26978.tar". NOTE: skip the
+		    uncompress steps below.
+
+--------------------------------------------------------------------------
+Section II    Unarchiving and Compiling
+--------------------------------------------------------------------------
+
+Now that you've got it, what do you do?  
+
+I) If you are using OpenWindows(with SunOS 4.1.3) goto section II. 
+   OpenWindows with SunOS 5.x should be okay here, but not positive.
+   If you know that Imake is NOT setup on your system, goto section II.
+   If you're not sure about Imake, try it anyways and on any failure
+   goto II) and skip any initial steps you've already done.
+   
+    1a) uncompress xanim26978.tar.Z    For the unix compressed version
+               OR
+    1b) gunzip xanim26978.tar.gz       For the gnu zipped version
+    2) tar xvof xanim26978.tar
+    3) cd xanim26978
+    4) Edit the Imakefile and: 
+          a) indicate which XA_AUDIO_DEFS/LIBS/etc is correct for you
+	     machine and OS.
+	  b) Indicate whether you wish to use Athena, Athena 3d or Motif
+             Widgets for the Remote Control window.(XA_REMOTE_DEFS/INCS/etc)
+	     NOTE: You need the Motif library in order to compile XAnim
+             for Motif. Check to make sure you have the libXm.* library
+             in your X11 libs diretory before selecting Motif.
+    5) xmkmf
+    6) make xanim
+
+    If steps 5) or 6) failed, then your system most likely isn't setup up
+    properly for Imake(xmkmf). Either talk to your System Administrator 
+    or goto II).
+
+
+II) IF  I) ABOVE FAILED, OR Imake ISN'T PROPERLY SETUP OR YOU'RE USING
+    Sun OpenWindows INSTEAD OF X11
+
+    1a) uncompress xanim26978.tar.Z    NOTE: mosaic usually does this for you.
+               OR
+    1b) gunzip xanim26978.tar.gz       For the gnu zipped version
+    2) tar xvof xanim26978.tar
+    3) cd xanim26978
+    4) cp Makefile.unx Makefile
+    5) Edit the Makefile and: 
+          a) indicate which XA_AUDIO_DEFS/LIBS/etc is correct for you
+	     machine and OS.
+	  b) Indicate whether you wish to use Athena, Athena 3d or Motif
+             Widgets for the Remote Control window.(XA_REMOTE_DEFS/INCS/etc)
+	     NOTE: You need the Motif library in order to compile XAnim
+             for Motif. Check to make sure you have the libXm.* library
+             in your X11 libs diretory before selecting Motif.
+	  c) Indicate where the X11 includes are on your machine(INCLUDE)
+	  d) Indicate where the X11 libs are on your machine(LIBS)
+          e) If you're using OpenWindows, follow the directions at the
+             top of the Makefile to work around the bugs in OpenWindows.
+    6) On Suns you need to have your LD_LIBRARY_PATH match your the XLIBDIR
+       define inside the Makefile. If it doesn't, you might end up mismatching
+       different revs of X11 includes and libraries, causing all sorts of
+       failures(usually undefined symbols). NOTE: This also has to match
+       when you try executing XAnim, or it may not be able to find the 
+       proper libraries.
+
+	To find out what you LD_LIBRARY_PATH is set to: 
+
+        	"env | grep LD"
+
+	The following examples are for OpenWindows(XLIBDIR = /usr/openwin/lib) 
+	To set it up properly for OpenWindows in the (C shell):
+
+        	"setenv LD_LIBRARY_PATH /usr/lib:/usr/openwin/lib"
+
+	To set it up properly for OpenWindows in the (Korn, Bourne and 
+	POSIX shells):
+
+        	"LD_LIBRARY_PATH = /usr/lib:/usr/openwin/lib"
+        	"export LD_LIBRARY_PATH"
+
+    7) make xanim
+
+    If your not sure where your X11 libs or includes are, your SysAdm should
+    know or I can help as well.
+
+Mark Podlipec
+podlipec@wellfleet.com
+podlipec@shell.portal.com
+
+
+--------------------------------------------------------------------------
+Section III    Common Compiling Problems
+--------------------------------------------------------------------------
+
+1) 
+ Problem:
+
+     Compiler reports following symbols as undefined
+     >   ld: Undefined symbol
+     >      _XtStrings
+     >      _XtShellStrings
+
+ Possible Reason:  
+
+   Your LD_LIBRARY_PATH doesn't match the XLIBDIR that is in the Makefile. 
+   This is because you're using the /usr/openwin/X11/includes, and some
+   unrelated X11 library release(usually /usr/lib/X11).
+
+
+2)
+ Problem:
+
+     Compiler reports following symbols as undefined
+     > .XShmDetach
+     > .XShmPutImage
+     > .XShmAttach
+     > .XShmCreateImage
+     > .XShmQueryExtension
+     > compile FAILED.
+
+ Probable Reason: 
+
+   Your machine doesn't support X11 Shared Memory Extension.
+     
+   These are all X11 Shared memory extensions and NOT all machines
+   supports them.  So, you'll want to edit Imakefile or Makefile and
+   comment out the following line:
+
+   XA_SHARED = -DXSHM
+
+   If you're using Imakfile you need to "xmkmf" and "make xanim"
+   or if you're using Makefile.unx, just "make xanim".
+
+3) 
+ Problem:
+
+     Compiler reports following symbols as undefined
+
+     ld: Undefined symbol
+        _get_wmShellWidgetClass
+        _get_applicationShellWidgetClass
+
+
+ Probable Reason:  
+
+     Certain revs of the OpenWindow's shared libXmu.a are missing
+     those symbols. The solution is the use the Makefile.unx and
+     use the following for the XA_REMOTE_LIBS:
+
+     XA_REMOTE_LIBS = -lXaw /usr/openwin/lib/libXmu.a
+
+     The static libXmu.a library has these symbols defined.
+
+4)
+ Problem:
+
+     Compiler reports the following:
+
+     ld: fatal: library -l/usr/openwin/lib/libXmu.a: not found
+
+ Reason:
+
+     XA_REMOTE_LIBS is using "-l/usr/openwin/lib/libXmu.a" instead
+     of "/usr/openwin/lib/libXmu.a". The "-l" should be removed.
+
+     
+5)
+ Problem:
+
+     Compiler reports following symbols as undefined
+         _gethostname   (first ref`d in /usr/openwin/lib/libXmu.a)
+         _gethostbyname 
+
+ Reason: 
+
+    You are using Solaris/SunOS 5.x and the -lnsl -lsockets haven't
+    been included in the link phase.  Use the Makefile.unx and
+    uncomment out the following line:
+
+    XA_SOLARIS_LIBS = -lsocket -lnsl
+
+    and the recompile.
+ 
+5)
+ Problem:
+
+     Compiler reports following symbols as undefined
+         _Xm*
+
+ Reason:
+
+    You have set the XA_REMOTE_* to use Motif and your system doesn't
+    have the Motif library(libXm.a).  Talk to your sysadm about getting
+    the Motif library OR use the Athena Widgets instead. The Athena
+    widgets are the default X11 widgets. Motif you pay extra for.
+
+6)
+ Problem:  
+
+    Compiler reports the following on HP machines:
+
+     anyfilename: too much defining - use -H option
+     anyfilename: no space
+
+    The solution is uncomment out the following line in the Makefile
+
+     XA_HPUX_DEFS = -Wp,-H150000
+
+    and then recompile
+
+
+
+---------------------------------------------------------------------------
+

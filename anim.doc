@@ -1,0 +1,156 @@
+
+This describes(rather roughly) the animation types supported and some
+of their special features. It's more of an organized rambling but
+might give insight into what's going on.
+
+FLI/FLC Animations:
+
+  FLI is by Autodesk Animator for the PC's. Support is for the 320x200
+  images. The file is composed of a series of images and deltas(a delta
+  is data that can generate the next image given a previous image) to
+  be played in sequence. An FLI animation can also change the color map
+  during the anim. FLC's have a few additional chunks and has support
+  for larger image sizes.
+
+IFF Animations and Images:
+
+  IFF files were developed for the Amiga. Sound chunks are currently
+  ignored. Most IFF Animation files are meant to be double buffered.
+  The deltas refer not to the previous image, but the image before the
+  previous(two back). I know of 11 types of compressions 0 thru 8, J,
+  l and scala 32.
+
+  I've only included types 3, 5, 7, J and l because those are the only
+  ones I could test. The J type compression has an ANSI chunk at the
+  end which includes the order in which the deltas are to be applied
+  and they can be used more than once.  Type l (small L) type anim is
+  also supported in revs 229 and higher. It's a compression type I've only
+  found in older animations.
+
+  IFF animations can be looping or non-looping. Looping means the last
+  two deltas produce images that are the same as the 1st two images. To
+  continuously loop an animation, you would not jump back to the beginning
+  but to the 2nd image instead. In order to loop non-looping animations
+  you would need to jump to the 1st image. There's no way to know ahead
+  of time which is which so the default is looping and if you have a
+  non-looping animation use the -c switch.
+
+  The Amiga has a couple of weird display modes, EHB and HAM. XAnim fully 
+  supports EHB animations. HAM can produce 4096 colors(4 bits each red,
+  green, and blue) from 6 bits per pixel. One True and Direct Color
+  displays this is no problem. On lesser display, you have your choice
+  of 332 or Grayscale. 332 means the  8 bits(for 256 color display, less
+  for others) is divided into 3 bits of red, 3 bits of green and 2 bits
+  of blue and the HAM images are mapped to fit.
+  Surprisingly enough, it's not too bad for most anims.
+  NOTE: HAM8 is recently out and that is supported the same way.
+
+  IFF supports color cycling chunks that specify color ranges to be
+  cycled at specified intervals. Since there's no obvious end to this
+  type of animation, I just display the image for a set interval(see
+  xanim_config.h) and then move on. Early Amiga software totally
+  screwed up by saving color cycling chunks enabled in a lot of
+  images that were never meant to be cycled. This goes for animations
+  as well. 
+
+  Single IFF images are supported as well. Uncompressed and 
+  compression type 1 are supported. (XAnim makes use of the public domain
+  unpacker routine by Jerry Morrison and Steve Shaw). see unpacker.c.
+
+GIF Images/Animations.
+
+  The GIF file consists of a screen color map and then a series of images,
+  each with their own optional color map. The images don't have to be at
+  the origin and can be any size smaller than the screen size. This allows
+  GIF animations to be created that only update the part of the screen
+  that changes. I don't have a program that does this yet but txtmerge is
+  a step in that direction. Also the GIF89a spec has included some extensions
+  that are animation specific.  Rev 2.29.1 and up has limited support for 
+  these.  Comment fields in GIF files are displayed if you use the -v (verbose)
+  option.
+
+  GIF images are automatically uncompressed when read in. This might
+  change in the future.
+
+TXT files
+
+  Probably should be called something else. Basically it is a ascii text
+  file that lists a number of GIF files to be displayed. Optionally, you
+  can specify the sequence the files are displayed in.  Comments aren't
+  supported. I need to put a lot of work and thought into improving this
+  one.
+
+  TXT format needs to have txt91 as the 1st 5 characters in the file.
+  Following that there are a series of fields. Fields just have to be
+  separated from each other by white space. No extraneous characters
+  (ie comments) are supported, yet.
+
+     txt91    <--- header so XAnim knows what kind of file it is
+     4        <--- number of GIF filenames that follow
+     a.gif    <--- gif file to be read in. 1st file is number 0.
+     b.gif    
+     c.gif
+     d.gif    
+     6	  <--- number of frames that follow. 
+     0 1 2 3  <--- display images in this order.
+     2 1
+
+  The sequence will be a.gif b.gif c.gif d.gif c.gif b.gif. Most likely
+  this anim will be looped and the last b.gif will flow smoothly into
+  a.gif as it starts over.
+ 
+  I like to improve upon this by adding timing and specialty fade/wipes.
+  Also it'd be nice if images could be unloaded and load on the fly to
+  conserve memory. If this happens it'll probably be a different format.
+
+DL files
+
+  I only threw these in because it was easy and intense pressure from
+  friends.  As far as I know, they come in three resolutions, 320x200,
+  160x100 and 80x50. They consist of a series of images with a frame
+  list at the end that gives the order they are displayed in. The frame
+  list also specifies nested looping of images. There's also a field for
+  Author and Title that is displayed if you specify
+   -v (verbose) option.
+  
+PageFlipper Plus F/X Amiga files
+
+  A series of deltas with a play list at the end. Supports color
+  map changes, nested loops and dynamic timing.
+
+GoldDisk MovieSetter Animations.
+
+  Probably the most flexible animation format I've seen. Animations are
+  stored as a bunch of backgrounds, sounds and sets. Sets are smaller
+  images that get placed on top of the background(with transparent pixels).
+  A frame list at the end that  describes each frame. Each frame
+  specifies which background to use(backgrounds can also scroll in
+  different directions and speeds), and a list of sets to put on that
+  background with depth information so characters can pass behind or
+  in front of each other. Sound information if contained here as well
+  to sync it up to the action. There is also color cycling and specialty
+  fades and wipes.
+
+  NOTE: This animation can come as one file or as three directories
+  and a control file. The three directories are usually Moviesets,
+  Moviebacks and Moviesounds. You might have to create the links
+  moviesets -> Moviesets  and moviebacks -> Moviebacks or vice-versa
+  because the Amiga is case insensitive. Sounds are ignored for now.
+
+  Eric Schwartz has created several of these animations that are
+  worth checking out.
+
+AVI Animations.
+
+  TBD
+
+Quicktime Animations.
+
+  TBD
+
+
+Mark Podlipec
+podlipec@wellfleet.com
+podlipec@shell.portal.com
+
+

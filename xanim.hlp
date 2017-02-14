@@ -1,0 +1,746 @@
+1 xanim
+XAnim Beta Audio Rev 2.69.7.8
+	02May95 
+	Mark Podlipec - podlipec@wellfleet.com
+http://www.portal.com/~podlipec/home.html  "The XAnim Home Page"
+
+xanim - multiformat animation viewer for X
+
+xanim [+V num][+A aopts][+C copts][+G gopts][+M mopts][+S sopts]
+      [+Z zopts][+ opts] animfile [ [+ opts][animfile] ... ]
+
+  NOTE: since VMS is case insensitve, all options to xanim must be
+  enclosed in double quotes in order for them to be proper recognized.
+  Example:
+		xanim "+bCn" anim1 anim2
+2 DESCRIPTION
+XAnim is a program that can display animations of various formats on systems
+running X11.  XAnim currently supports the following animation types:
+	  +  FLI animations.
+	  +  FLC animations.
+	  +  IFF animations.  The  following  features  are  sup-
+	     ported:
+	       -> Compressions 3,5,7,J(movies) and l(small L).
+	       -> Color cycling during single images and anims.
+	       -> Display Modes: depth 1-8, EHB, HAM and HAM8.
+	  +  GIF87a and GIF89a files.
+	       -> single and multiple images supported.
+	       -> GIF89a animation extensions supported.
+	  +  GIF89a animation extension support.
+	  +  a kludgy text file listing gifs and  what  order  to
+	     show them in.
+	  +  DL animations. Formats 1, 2 and 3. TEMPORARILY DISABLED.
+	  +  Amiga PFX(PageFlipper Plus F/X) animations. DISABLED TEMPORARILY.
+	  +  Amiga MovieSetter animations(For those Eric Schwartz
+	     fans).
+	  +  Utah Raster Toolkit RLE images and anims.
+	  +  AVI animations. Currently supported are
+	       ->*IBM Ultimotion     (ULTI) depth 16.
+               -> JPEG               (JPEG) depth 24.
+               -> Motion JPEG        (MJPG) depth 24.
+               -> Intergraph JPEG    (IJPG) depth 24.
+	       -> Microsoft Video 1  (CRAM) depth 8 and 16.
+	       -> SuperMac Cinepak   (CVID) depth 24.
+	       -> Uncompressed       (RGB ) depth 8.
+	       -> Uncompressed       (RGB ) depth 24.
+	       -> Run length encoded (RLE8) depth 8.
+	       -> Editable MPEG      (XMPG) depth 24.
+	  +  Quicktime Animations.  The  following  features  are
+	     supported:
+	       -> Uncompressed     (RAW ) depth 4,8,16,24,24+ and GRAY 4,8.
+	       -> Apple Graphics   (RLE ) depth 1,8,16 and 24 and GRAY 8.
+	       -> Apple Animation  (SMC ) depth 8 and GRAY.
+	       -> Apple Video      (RPZA) depth 16.
+	       -> SuperMac Cinepak (CVID) depth 24 and GRAY 8.
+	       -> Component Video  (YUV2) depth 24.
+	       -> Photo JPEG       (JPEG) depth 8 and 24.
+	       -> Supports multiple video trak's.
+	       -> Supports animations with multiple codecs.
+	       -> Supports single-fork and separate .rsrc and .data forks.
+	  +  JFIF images. NOTE: use XV for single images. This is more
+	     for animation of a sequence of JPEG images.
+          +  MPEG animations. Currently only Type  I  Frames  are
+             displayed.  Type  B  and Type P frames are currently
+             ignored, but will be added in future revs.
+	  +  WAV audio files may have their sound added to any animation
+	     type that doesn't already have audio, by specifying the .wav
+	     file after the animation file on the command line. Currently
+	     only the PCM audio codec is supported.
+	  +  any combination of the above  on  the  same  command
+	     line.
+
+---------------------------------------------------------------------------
+* The following copyright applies to all Ultimotion segments of the code:
+
+  "Copyright International Business Machines Corporation 1994, All rights
+   reserved. This product uses Ultimotion(tm) IBM video technology."
+---------------------------------------------------------------------------
+ 
+     XAnim also provides various options that allow the  user  to
+     alter colormaps, playback speeds, looping modes and can pro-
+     vide on-the-fly scaling of animations with the mouse.
+2 OPTIONS
+A "+" will generally turn an option on and a "-" will turn an option off.
+This can be reversed at compile time. (see  xanim_config.h ).
+
+In each SubMenu, the options can be run together with no intervening spaces.
+In the list of SubMenu options presented below, the first letter given is
+the letter that specifies the SubMenu and should NOT be repeated  if several
+SubMenu options are to be run together. 
+
+For example, "+Cn +Cs10 +CF4" can also be written as "+Cns10F4" or
+"+CF4s10n".
+
+A "+" or a "-" within a SubMenu will be an exit from that submenu. Options
+will affect all animations following the invocation of that option. Some
+options may be changed in between animations without affecting previous
+animations.
+
+In the following sections, a "num" represents an integer number and a "fnum"
+represents a floating point number. If a floating point number is of an
+integer amount, the "." need not be specified. There should be no spaces
+between the option and the numbers.
+
+  NOTE: since VMS is case insensitve, all options to xanim must be
+  enclosed in double quotes in order for them to be proper recognized.
+  Example:
+		xanim "+bCn" anim1 anim2
+3 aopts-Audio_Options
+	  +Ae		Audio Enable. XAnim will ignore audio data if
+			this option is not used.
+
+	  +Ak		This option allows XAnim to skip video frames
+			in order to help keep video in sync with audio.
+			default is on.
+
+	  +As"fnum"	Scale Audio playback speed by "fnum". Only the
+			range 0.125 to 8.00 is allowed.
+			NOTE: CURRENTLY VIDEO DOESN'T SCALE WITH AUDIO.
+
+	  +Ap"num"	This turns a hardware specific Audio port on or off.
+			   Port 0 - main speaker (on  by default)
+			   Port 1 - headphones   (off by default)
+			   Port 2 - line out     (off by default)
+
+	  +Av"num"	Sets the inital Audio Volume(0-100) with 0
+			the lowest. default is 40.
+3 copts-Color_Options
+	  +C1		Create a colormap from the  first  frame  of  a
+			TrueColor  anim  and  then  remap the remaining
+			frames to this colormap. This  can  potentially
+			add  significant time to the startup of an ani-
+			mation but usually results  in  better  colors.
+			The  animation  needs  to  be buffered for this
+			option to work.  Not  valid  for  TrueColor  or
+			DirectColor displays(nor is it needed).
+ 
+	  +C3		Convert TrueColor  anims  to  332(StaticColor).
+			TrueColor  anims  are  animations  that provide
+			separate RGB info for each pixel,  rather  than
+			each  pixel being an index into a global color-
+			map. AVI(16bit CRAM), QT(RPZA and RLE depth  16
+			and  24)  and URT RLE 24 bit anims are examples
+			of TrueColor anims. This option is ignored  for
+			TrueColor or DirectColor displays.
+ 
+	  +CA     	Create  a  colormap  from  each  frame   of   a
+			TrueColor  anim.  This  can  be  useful  if the
+			colors radically change during  the  course  of
+			the  animation.  This can take a VERY,VERY long
+			time at start up. Animation must  be  buffered.
+			This   option   is  ignored  for  TrueColor  or
+			DirectColor displays.
+ 
+	  +Ca     	Remap all images to  single  new  cmap  created
+			from all of the colormaps.
+ 
+	  +Cd     	Use Floyd-Steinberg  dithering  if  needed  for
+			non-monochrome  displays.   This  will  cause a
+			reduction in playback speed.
+ 
+	  +Cf     	Forcibly remap to all  frames  to  1st  frame's
+			cmap.
+
+	  +CF0	  	Turns off CF4 option.
+
+	  +CF4	  	This option samples the colors of true color
+			animations ahead of time and forms a color
+			lookup table.  Beats the just truncating to a
+			RGB 332 color table and IMHO beats dithering.
+			See the +s option below(also in copts submenu).
+			Currently ONLY Work with unbuffered animations
+ 
+	  +Cg     	Convert TrueColor anims  to  gray  scale.  This
+			option is ignored for TrueColor and DirectColor
+			displays.
+ 
+	  +Ch     	Use histogram to aid in color  reduction.  His-
+			trogramming  is  only  done  on frames that are
+			buffered.
+ 
+	  +Cm     	This option is currently needed if you want  to
+			dither  TrueColor anims to a 332 colormap. Ani-
+			mation must be buffered.  Typically  +bC3dm  is
+			the  option  to  use. This can take a VERY long
+			time at start up.
+ 
+	  +Cn     	Don't create new colormap but instead  allocate
+			colors from the X11 Display's default cmap.
+
+	  +Cs"num"	This is the number of frames the +CF4 option looks
+			at ahead of time. More frames potentially yields
+			better colors results, but takes more time at
+			start up.  default is 5.
+3 gopts-Gamma_Options
+	  +Ga"fnum"	Set gamma of animation to be displayed.
+ 
+	  +Gd"fnum"	Set gamma of display. 1.0 is no change. gamma's
+			greater  than 1.0 typically brighten the anima-
+			tion.
+3 mopts-Median_Cut_Quantization_Options
+	  +Ma		compute box color from average of box.
+ 
+	  +Mc		compute box color as center of box.
+ 
+	  +Mb"num"	Truncate rgb to "num" bits before quantizing.
+3 sopts-Scaling_Options
+	  +Si		Half the  height  of  IFF  anims  if  they  are
+			interlaced.(Not  completely  reliable since not
+			all IFF anims correctly identify themselves  as
+			interlaced).
+ 
+	  +Sn		Prevents X11  window  from  resizing  to  match
+			animations's size.
+ 
+	  +Sr		Allow user to  resize  animation  on  the  fly.
+			Enlarging an animation can greatly reduce play-
+			back speed depending on the power of the cpu.
+ 
+	  +Ss"fnum"	Scale the size  of  animation  by  "fnum"  before
+			displaying.
+ 
+	  +Sh"fnum"	Scale the horizontal size of the  animation  by
+			"fnum" before displaying.
+ 
+	  +Sv"fnum"	Scale the vertical size  of  the  animation  by
+			"fnum" before displaying.
+ 
+	  +Sx"num"	Scale the animation to have  width  "num"  before
+			displaying.
+ 
+	  +Sy"num"	Scale the animation to have height  "num"  before
+			displaying.
+ 
+	  +Sc		Copy display scaling factors to display buffer-
+			ing factors.
+ 
+	  +SS"fnum"	Scale the size of the animation by "fnum"  before
+			buffering it.
+ 
+	  +SH"fnum"	Scale the horizontal size of the  animation  by
+			"fnum" before buffering it.
+ 
+	  +SV"fnum"	Scale the vertical size  of  the  animation  by
+			"fnum" before buffering it.
+ 
+	  +SX"num"	Scale the animation to have  width  "num"  before
+			buffering it.
+ 
+	  +SY"num"	Scale the animation to have height  "num"  before
+			buffering it.
+ 
+	  +SC		Copy buffer scaling factors to display  scaling
+			factors.
+3 zopts-Special_Options	
+	  +Ze		XAnim will exit after playing  through  command
+			line once.
+
+	  +Zp"num"	XAnim pause at frame "num" and then wait for user
+			input.  Several  pauses  may be specified. Each
+			group of pauses will only affect the  animation
+			immediately following them on the command line.
+			Pauses will occur at least once.
+
+	  +Zr		This option enables the Remote Control  Window.
+			This  overrides  the  default  condition set in
+			xanim_config.h. Remote Control support must  be
+			compiled into XAnim for this to work.
+3 Normal_Options
+	  +b		Uncompress and buffer images before displaying.
+			This only applies to AVI,QT, IFF,FLI,FLC anima-
+			tions. The rest(GIF87a,GIF89a,DL,PFX  and  RLE)
+			are currently always uncompressed and buffered.
+			This is cleared by the +f option.
+
+	  +B		Used X11 Shared Memory(if present)for unbuffered
+			animations only.(This is mutually exclusive with
+			+b above).
+ 
+	  +f		Don't load anim into memory, but read each sec-
+			tion  only  when needed. This is supported only
+			for AVI,QT,IFF,FLI  and  FLC  animations.  This
+			option  is cleared by the +b option. This saves
+			memory at the cost of speed.
+ 
+	  +c		let xanim know that iff anim  is  a  nonlooping
+			one.
+ 
+	  +d"num"	debug switch. "num" can be from 0(off) to 5(most)
+			for level of detail.
+ 
+	  +F		Floyd-Steinberg dithering when needed(monochrome
+			and Cinepak Video compressions only)
+ 
+	  +j"num"	"num"  is  the  number  of  milliseconds  between
+			frames.  if  0  then  the time specified in the
+			animation is used for timing purposes.
+ 
+	  +l"num"	loop animation "num" number of times before  mov-
+			ing on to next animation.
+ 
+	  +lp"num"	ping-pong animation "num" number of times  before
+			moving on to next animation.
+ 
+	  +N		don't display images. Useful for benchmarking.
+ 
+	  +o		turns    on    certain    optimizations.    See
+			xanim.readme.
+ 
+	  +p		Use Pixmap instead of Image in X11. This option
+			has    no    effect   if   the   animation   is
+			buffered(either  by  default  or  with  the  +b
+			option).
+ 
+	  +q		Quiet mode. Doesn't print header to output tty.
+
+	  +r		Allow color cycling for IFF single images.
+ 
+	  +R		Allow color cycling  for  IFF  anims.  (default
+			should be off)
+ 
+	  +T0		Title option 0. Title is just XAnim.
+ 
+	  +T1		Title option 1. Title  is  current  anim  name.
+			When  anim is stopped, the current frame number
+			is included.
+ 
+	  +T2		Title option 2. Title is current anim name  and
+			current frame number.
+ 
+	  +v		Verbose mode. Gives some information about ani-
+			mation such as size, number of frames, etc.
+ 
+	  +V"num"	Select X11 Visual to use when displaying anima-
+			tion.  The  "num"  is  obtained  by  using the +X
+			option of xanim.
+ 
+	  +Vclass	Select the best X11 Visual of Class class  when
+			displaying  the  animation. class can be anyone
+			of the following strings and is  case  insensi-
+			tive. (ie StaTicGraY is same as staticgray).
+ 
+			staticgray    Select best StaticGray Visual.
+			grayscale     Select best GrayScale Visual.
+			staticcolor   Select best StaticColor Visual.
+			pseudocolor   Select best PseudoColor Visual.
+			truecolor     Select best TrueColor Visual.
+			directcolor   Select best DirectColor Visual.
+ 
+	  +X		X11 verbose mode. Display information about the
+			support X11 visuals.
+2 WINDOW_COMMANDS
+     Once the animation is up and running there are various  com-
+     mands  that  can  be entered into that animation window from
+     the keyboard.
+ 
+     q         quit.
+ 
+     Q         Quit.
+ 
+     g         Stop color cycling.
+ 
+     r         Restore original Colors(useful after g).
+ 
+     w         Restore original window size(useful after resizing).
+
+     z         This pops up or removes the Remote Control Window.
+               Remote Control support must be compiled into XAnim
+               for this to work.
+ 
+     <space>   Toggle. starts/stops animation.
+ 
+     ,         Single step back one frame.
+ 
+     .         Single step forward one frame.
+ 
+     <         Go back to start of previous anim.
+ 
+     >         Go forward to start of next anim.
+ 
+     m         Single step back one frame staying within anim.
+ 
+     /         Single step forward one frame staying within anim.
+ 
+     -         Increase animation playback speed.
+ 
+     =         Decrease animation playback speed.
+ 
+     0         Reset animation playback speed to original values.
+
+3 AUDIO_RELATED_WINDOW_COMMANDS
+     1	       Decrement volume by 10.
+ 
+     2	       Decrement volume by 1.
+ 
+     3	       Increment volume by 1.
+ 
+     4	       Increment volume by 10.
+ 
+     s	       Toggle. Audio Volume(MUTE). on/off.
+ 
+     8	       Toggle. Main Speaker. on/off.
+ 
+     9	       Toggle. Headphones. on/off.
+2 MOUSE_BUTTONS
+     Once the animation is up and running the mouse buttons  have
+     the following functions.
+ 
+     <Left_Button>
+	       Single step back one frame.
+ 
+     <Middle_Button>
+	       Toggle. starts/stops animation.
+ 
+     <Right_Button>
+	       Single step forward one frame.
+2 BUFFERING,_PIXMAPS,_and_READ_FROM_FILE_Options
+XAnim by default will read the entire animation into memory. DL, PFX,
+Moviesetter, GIF or URT RLE type animations are always uncompressed and
+stored in memory as individual images. 
+
+For the AVI, QT, IFF, FLI/FLC, JPEG, MPEG and DL animations, only the 
+compressed delta is stored. These deltas are then uncompressed each time 
+they need to be displayed. The buffer option(+b) may be used to potentially
+speed up playback by uncompressing and storing these images ahead of time. 
+But more memory is used up in the process.
+
+When an XPutImage is called, the image typically gets copied twice, once
+to memory and then from there onto the display. A pixmap is directly
+copied onto the display without the first copy. This is why it is 
+sometimes much faster to use the pixmap option(+p).  Each image isn't
+converted into a pixmap until the first time it is displayed. This is why
+the first loop of an animation using this option is sometimes slower than
+subsequent loops. While the pixmap option may improve playback speed, it
+will slow things down if on-the-fly scaling needs to be performed. This is
+because XAnim no longer has direct access to the image and needs to get a
+copy of it before it can be scaled.
+
+The read from file option(+f) causes XAnim not to store the compressed
+deltas in memory. Instead as each image is to be displayed, XAnim reads
+the corresponding compressed delta from the file, expands it and then
+displays it. While this can dramatically cut down on memory usage, the
+necessary reads from disk(or whatever) can slow down playback speed. XAnim
+still needs to allocate one to three image buffers depending on the type
+of animation and the scaling options used. This option is only supported
+for AVI, QT, FLI/FLC, JPEG, MPEG, DL and IFF animations. The BODY chunk 
+of IFF animations is not included in this. As a result, an IFF animation 
+that is made up of several BODY chunks will not currently benefit from 
+this option.
+2 SCALING_Options
+There are two sets of scaling options. One set, the display scaling
+factors, affects the size of the animation as it is displayed. The other
+set, the buffer scaling factors, affect the size of the images as they are
+stored in memory(buffered). The buffer scaling factors only affect
+animations that are buffered and can greatly increase or decrease memory
+usage.
+
+These two sets are completely independent of each other. You can set the
+buffer scaling factors to 20 times the normal animation size and not
+affect the size at which that animation is displayed. The images are
+stored at 20 times the normal size(and at 400 times the memory usage), but
+then get scaled back down to normal size before being displayed. NOTE:
+that an animation must be buffered in order for the buffer scaling factors
+to have any affect on it. The display scaling factors affect all
+animations.
+
+You can create pixellation like affects by buffering the animation at 1/8
+it's normal size, but keeping the display scaling factors at the original
+size. (IE "xanim +bSS0.125 anim.anim").
+
+Many times it's faster to store and display an animation with large
+dimensions at half-size. The option "+bSS0.5C" or "+bSS0.5s0.5" both will
+accomplish this. To save memory, you could even store the animation at
+half size and yet display it at full size. "+bSS0.5" will accomplish this.
+2 FORWARDS,_BACKWARDS_and_OPTIMIZATION
+Many type of animations(FLI/FLC/IFF/some AVI and QTs) are compressed with
+forward playback in mind only. Each delta only stores the difference
+between the current frame and the previous frame. As a results, most of
+these animations don't display correctly when played backwards. Even when
+buffered up, these may not work, since XAnim only stores the smallest
+rectangle that encompasses the changes from the previous frame. You can
+force XAnim to store the entire frame by specifying the "-o" option to
+turn this optimization off. This will most likely use more memory and slow
+down the animation, since more of the image needs to be stored and/or
+displayed.
+2 COLOR_OPTIONS
+Most of this will be a TBD for a future rev and what's here might be
+sketchy, incomplete or just plain confusing.
+
+TrueColor and DirectColor displays don't need to worry about most of these
+options, as the animations can be displayed in their original
+colors(ignoring monitor variations etc). However, TrueColor and
+DirectColor displays can't display animations that employ color cycling
+techniques where the colormap changes from frame to frame. DirectColor
+could potentially support this, but not TrueColor.
+
+For the rest of the displays, the problem becomes matching the colors in
+the animations to the available colors of the Display. For most
+PseudoColor displays this means 256 colors. Many of which are already in
+use by various other programs. XAnim defaults to creating it's own
+colormap and using all the colors from that. The window manager then
+installs this new colormap, whenever the mouse pointer is inside the XAnim
+animation window(Sometimes a specific action is required to change the
+ColorMap Focus, like clicking in the window or pressing a specific key).
+In any case, this action usually causes all the other colors on the screen
+to be temporarily "messed-up" until the mouse is moved out of the
+animation window. The alternative, is to use the "+Cn" option. Now XAnim
+tries allocating all the colors it needs from the current colormap. If it
+can't get a certain color, then XAnim choose one that is "close" to this
+certain color. Close is completely arbitrary. The animation is now
+displayed in colors that are different than the original colors. This
+difference may or may not be noticeable.
+
+Another big problem is when the animations are what I called TrueColor
+animations. Where each pixel is stored as RGB triplets. For example, AVI
+ 16 bit CRAM animations. Each pixel has 5 bits of Red, 5 bits of Green and
+ 5 bits of Blue info associated with it. This means there can be up to
+ 32768 unique colors in each image. And on most PseudoColor displays we
+can only display 256 unique colors. Beside getting better displays, what
+can we do? XAnim defaults to truncating the RGB information from 555 to
+332. That is to 3 bits of Red, 3 bits of Green and 2 bits of Blue. Less on
+Blue because the human eye is more sensitive to Red and Green than Blue.
+This 332 colormap happens to be 256 colors in size, which nicely fits in
+with our display. If our display only had 64 colors, then XAnim is smart
+enough to truncate things down to 222. Now the problem is the colors of
+the displayed anim are noticeably different than the original colors.
+Typically you can see color banding etc. While this is fine to get a feel
+for the animation, we can do better. One of the solutions XAnim currently
+offers is the "+bC1" option. What this does is choose the the best 256
+colors from the first image of the animation. Then each pixel of each
+subsequent image is remapped to one of these 256 colors. This takes up
+some CPU time up front and more memory since each image needs to be
+buffered, but results in a colors that are closer to the originals. 
+Another option, "+bCA", chooses the best 256 from each image, then 256
+colors from all these colormaps are chosen as the final colormap.  This is
+useful if the colors in the first image aren't representative of the rest
+of the animation. This can be very slow.  Another option that is
+supported, but not really optimized for yet is "+bC3dm". This causes XAnim
+to use a 332 colormap and then apply a Floyd-Steinberg dither algorithm to
+each image.  Currently this is very slow. Different dithers(like Ordered)
+and better optimizations might speed this up in future revs. In general,
+handling of TrueColor animations in XAnim needs to be improved.
+
+Another scenario where colors need to be remapped, is when several images
+or animations with different colormaps need to be displayed. Changing the
+colormap usually results in an annoying flicker. One solution to this is
+to remap all of the images/animations to the same colormap. The "+Ca"
+option chooses the best colors from all the colormaps and then remaps all
+the images to it. The "+Cf" option, simply remaps everything to the first
+colormap. The "+Ch" option is useful when an animation's colormap
+specifies a lot of colors that aren't used. XAnim looks through each
+buffered image of the animation and makes a histogram of the useage of
+each color. This information is then used to weedout unused or rarely used
+colors.
+2 QUICKTIME_ANIMATIONS
+Quicktime animations are usually stored in two separate files. One is call
+a data fork and ends with a ".data". The other is a resource fork and ends
+in a ".rsrc". Sometimes these animations are in a "flattened/merged fork"
+format, where everything is put into one file. There's no standard naming 
+format for these types of files.
+
+For example, if you have a quicktime animation made up of two files named:
+"spin.rsrc" and "spin.data", you can display them using Xanim with either
+of the following commands "xanim spin" or "xanim spin.rsrc". XAnim is
+smart enough to add/modfiy the ".rsrc" and ".data" endings as needed.
+
+If you use AUFS from the Columbia Appletalk Package, then Macintosh files
+have their data fork stored in the expected place, and the resource fork
+is in a file with the same name in a .resource subdirectory. Therefore, if
+the data fork is in "spin", and the resource fork is in ".resource/spin",
+the movie can be displayed with "xanim spin".
+
+For "flattened/merged fork" quicktime animations, you need to specify the
+entire file name.
+
+NOTE: XAnim may not support all SMC or RPZA quicktime animations. It'll
+print "unknown code variation XX" to the screen as it encounters these and
+move on to the next image of that animation.
+2 EXAMPLES
+  NOTE: since VMS is case insensitve, all options to xanim must be
+  enclosed in double quotes in order for them to be proper recognized.
+  Example:
+		xanim "+bCn" anim1 anim2
+
+	To display a single animation with Audio:
+		xanim +Ae car_race.avi
+
+	To display a audio animation on Sparc. main speakers off
+	and headphones on:
+		xanim +Aep1 -Ap0 car_race.avi
+
+	To display a single animation:
+		xanim iff3.anim
+
+	To display a nonlooping IFF animation:
+		xanim +c iff3.anim
+
+	To display A.fli 3 times, B.anim and C.movie 2 times each and D.fli
+	once before repeating:
+		xanim -l3 A.fli -l2 B.anim C.movie -l1 D.fli
+
+	To see A.anim real slow(2 seconds for each frame):
+		xanim +j2000 A.anim
+
+	To display title image for a while then run an animation at
+	normal speed:
+		xanim +j2000 title.gif +j0 anim.gifanim
+
+A series of GIF's can be displayed as:
+	xanim im_0.gif im_1.gif im_2.gif ... im_36.gif
+ or
+	xanim im_*.gif
+ or
+	xanim im.txt
+ or
+	xanim im.gifanim
+
+where "im.txt" is a txt file (a list of images, see xanim.doc for more
+details) and "im.gifanim" is one gif file composed of "im_0.gif" through
+"im_36.gif" (see txtmerge to create a single gif file from a txt file).
+2 Notes
+3 X11_Notes-Server_Options
+   When XAnim opens the display it passes the argument list to X11 which
+   then filters off the arguments it recognizes. XAnim won't even see
+   these arguments(which is sometimes a problem).
+
+   For instance
+   	xa -geom =+100+100 skier.fli
+   will play the anim skier.fli at pos <100,100> on the X11 screen.  Or
+   	xa -display nantucket:0.0 skier.fli
+   will display the anim skier.fli on the machine nantucket's display.
+
+   Sometimes this is a problem, because a valid XAnim option is stripped
+   by the X11 server. For instance if +r was being stripped, then use ++r
+   instead. Same goes with -r. Use --r instead if you believe it's being
+   filtered by X11.
+3 Machine_Specific_and_Compiler_Notes
+ Some PC's need you to uncomment the line below in Makefile.
+ #XA_INET_LIB = -linet
+
+ Depending on your window manager(mwm,uwm,olwm,twm etc), you might
+ want to have XAnim do a XInstallColormap. This shouldn't be necessary
+ for most workstations and can cause core dumps on some PCs.
+ There are usually user selectable options for each window manager
+ that selects the colormap focus policy(pointer,fixed,explicit etc).
+ Use -DNO_INSTALL in Makefile if you DON't want XAnim to install
+ the colormap.
+
+ Some X11's don't have support for multiple visuals.  An executable
+ compiled with such an X11 will not be able to correctly run on a
+ machine that does supports multiple visuals even if they're binary
+ compatible.
+
+ Hugh D.R. Evans has supplied make.com, xanim.opt and added VMS defines
+ so that VMS users may compile and run XAnim. Rick Dyson has provided
+ the descript.mms file and some VMS fixes. John Kneitz has also
+ provide some VMS fixes and suggestions.
+3 NOTES_ON_QUICKTIME_ANIMATIONS_WITH_XANIM
+  (these are just my notes and may contain some inconsistencies.
+   There's currently some question about the true meaning of
+   "flatten". It might just mean taking a quicktime file and
+   replacing a references to another files with those files
+   themselves.  But lately many people use it to mean collapsing
+   the *.data and *.rsrc forks into one *.data fork for export
+   to a non-mac computer. - Mark)
+4 EXTRACTING_Quicktime_Animations
+    Typically you will obtain the quicktime animations that have
+    been archived and then binhex'd. If the file you have ends
+    in a .hqx, then you need to run hexbin on it ("hexbin anim.hqx").
+    This will create a *.bin file(not necessarily anim.bin, it
+    could be anything.bin. The actual name is contained within
+    the *.hqx file).  
+
+    If the file you have ends in a .bin or you've just hexbin'd a file, 
+    now you need to unpack it. In other words extract the files that
+    are contained within it. These files can be programs/documents/
+    animations/images etc. They're not necessarily quicktime animations.
+
+    There is a program called macunpack that should be used to
+    accomplish this. You need to use the -f option, I recommend
+    the -lv options as well. (ie "macunpack -flv file.bin")
+
+    Macunpack doesn't support certain DiskDoubler or Stuffit Deluxe
+    archives. There is no unix/pc program that I know of that does(except 
+    for the Mac). In this case your only choice is to get a hold of a 
+    Macintosh computer and someone who knows how to use it and
+    hopefully some method of transferring files to/from it.
+
+    Once you've unpacked everything, you should have three files,
+    a *.info, a *.rsrc and a *.data. You can delete the *.info file.
+    XAnim doesn't need or use it.
+
+    The quicktime animation is made up of BOTH the *.rsrc and the
+    *.data files and therefore XAnim needs BOTH the *.rsrc and the 
+    *.data in order to recognize and display the animation.
+  
+    The only exception to this is if the animation has been "flattened".
+    Essentially, all that this means is that the .rsrc and .data files
+    were merged into one file for export to a non-mac computer.
+    This file doesn't have any real naming conventions, but it is
+    usually something like .mov, .mv, .qt, etc(it is never .bin or .hqx). 
+    And it is rarely .data. If XAnim can't play it, then it's 95%
+    likely to be a *.data fork(that's missing a *.rsrc fork) and not
+    a flattened quicktime animation.
+
+    Macunpack and hexbin can be found in the macutil archive. They
+    are available at the following locations:
+        sumex-aim.stanford.edu:/info-mac/unix/macutil-20b1.shar
+        ftp.cwi.nl:/pub/macutil2.0b3.shar.Z
+        solaris.ims.ac.jp:/pub/unix/mac/macutil-20b1.shar
+    Use archie to find other sites.
+
+    Here's a quick blurb on macutils from the readme.
+	        o hexbin - a program to convert BinHex 4.0 to MacBinary;
+		  it also converts uuencode (and UULite) files to their
+		  native binary format; support for .dl, .hex, and .hcx
+		  formats (all predecessors of BinHex 4.0) also exists
+	        o macunpack - a program to unpack PackIt, StuffIt,
+		  Diamond, Compactor/Compact Pro, most StuffIt Classic
+		  and StuffIt Deluxe, DiskDoubler, Zoom and LHarc/MacLHa
+		  archives.
+
+		  It also decodes BinHex 5.0, MacBinary, uuencode, and
+		  UNIX compress (ie: .Z suffix) files (as well as variants
+		  of compress implemented by various Macintosh compress
+		  programs).
+4 TRANSFERING_DIRECTLY_FROM_A_MACINTOSH
+    If you are transferring a quicktime animation directly from a 
+    Macintosh(ftp/fetch/gator/etc), you need to use the MacBinary mode.
+    This will archive all three resource forks(.info,.rsrc and .data) 
+    into a .bin file and transfer that. You must then use "macunpack -flv"
+    as described above.
+  
+    If you use Binary mode(as opposed to the MacBinary mode), ONLY the 
+    *.data file will be transferred. This *.data file is useless without
+    the *.rsrc file, unless it happens to be "flattened". If you don't
+    absolutely know this to be true, then use the MacBinary mode and 
+    extract with macunpack.
+4 OTHER_PROGRAMS
+    mcvert is also capable of extracting the *.rsrc and *.data files
+    form a MacBinary file(*.bin). It doesn't support all of the
+    archival compression formats that macunpack does and I'm not
+    as familiar with it. Archie should be able to find it.
+4 CREATING_A_QUICKTIME_FOR_EXPORT_ON_A_MACINTOSH
+    Movieconverter, part of Apple's Quicktime Starter Kit (a commercial
+    product) can do this.  Save the movie as BOTH "Make self-contained"
+    and "Playable on non-Apple computers." 

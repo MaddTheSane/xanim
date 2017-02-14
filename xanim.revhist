@@ -1,0 +1,331 @@
+
+XAnim List of Changes between Revisions. Not all revisions have been
+let loose.
+
+Rev 2.27
+	+ Initial beta test release.
+
+Rev 2.28/227a	
+	+ Fixed core dumps on Sun's and cmap screw up on Sun3's.
+
+Rev 2.29
+	+ removed big endian dependencies in code.
+	+ added support for IFF type l (small L not 1) anims.
+	+ redid options to make them more flexible.
+	+ GIF and TXT anims use all cmaps found. If a cmap is
+	  the same as the current cmap, it isn't changed.
+	+ Support for PseudoColor displays with less than 256 cmap
+	  entries put in but not tested.
+	+ Groundwork for TrueColor support put in, but not fully there yet.
+	  (finally got a TrueColor in my office, so that will help.)
+	+ added option to prevent window resizing.
+	+ added start,stop and single step keys while anim is running.
+	+ added reverse direction key. Most anims are meant to be played
+	  backwards do to compression schemes. But if anim if buffered
+	  1st with optimizations off, then it should work okay. Currently,
+	  only goes backwards with in an anim file.
+	+ added update option that only affects single stepping.
+	  Basically with this option on and single stepping, xanim will
+	  move forward until the image gets changed on the screen. Useful 
+	  if you don't want to treat a cmap change as a step.
+	+ removed Xt calls from signal handler routine.
+	+ codes getting cleaner and more commented but still a ways to go.
+
+Rev 2.29.1 (enough features added to prove useful but still a ways to go.)
+	+ some support for GIF89 anim extension blocks(not robust yet)
+	+ support for new FLI chunk types 4 and 7. (FLC ?)
+	+ improved single step code so that anim stops with key press
+	  instead of showing one more frame 1st.
+	+ xanim will try to remap each gif file into previous colormaps 
+	  in an attempt to minimize color flashing.(Need to add luma 
+	  sorting when new colormap is needed).
+	+ fixed bug in FLI color chunk code that effected color chunks
+	  of more than one packet.
+	+ fixed FLI COPY chunk bug.
+	+ internal structure is still changing rapidly.
+
+Rev 2.29.2
+	+ added luminance sorting for GIFs colormaps to minimize cmap
+	  flickering.
+	+ added pixmap options to speed up X11 performance.
+	+ fixed bug in size optimizations in FLI type 7 chunks.
+	+ fixed bug that effected Amiga anims with nonstandard sized 
+	  ANHD chunks.
+	+ redid cmap handling of IFF cmaps that cleared up some
+	  inconsistencies.
+	+ fixed bug in +i option with gifs or buffered anim chunks.
+
+Rev 2.29.3
+	+ experimented with cmaps. aborted.
+
+Rev 2.29.4
+	+ officially support True Color for GIF87s,FLIs,IFFs.
+
+Rev 2.29.5
+	+ added 1 bit Monochrome support for GIF87s,GIF89s,FLIs,IFFs.
+	+ added True Color support for GIF89s and HAM IFFs.
+	+ fixed GIF unlacing bug.
+	+ consolidated a lot of routines and redid internal structure
+	  to better handle different display types.
+	+ allow default condition of flags to be specified at compile time.
+	  see xanim_config.h
+	+ fixed bug in command line parser. Affected d,f,j,l flags that
+	  weren't immediately after a + or -.
+	+ fixed bug in luma sorting that caused incorrect colors to be 
+	  displayed.
+	+ Added options to turn luma sorting on or off.
+	+ Added cmap_try_to_1st options. This tries fitting each new cmap
+	  into the previous one. (see xanim.readme for more info).
+	+ Added cmap_map_to_1st options. This forcibly maps each new cmap
+	  into the 1st one. (see xanim.readme for more info).
+	+ fixed up interlace mode.
+
+Rev 2.29.6
+	+ fixed artificial limitation on number of files(was 50).
+	  this was an oversight. It's now dynamic.
+	+ changed  autoincrements on casts(ex:  *( (ULONG *)(ptr)) )++  )
+	  because it's not supported(or legal) on some compilers.
+
+Rev 2.29.7
+	+ More robust support for .FLC files.
+	+ Added support for .DL files.
+
+Rev 2.29.7d
+        + Makefile and includes changes help systems that don't put
+          the X11 includes into /usr/include/X11.
+        + Imakefile courtesy of Rich Thomson.
+        + XtOpenDisplay now gets argc and argv.
+        + colormap install problem.
+        + fixed problem with .DL version 2 large formats(wouldn't recognize)
+        + fixed cmap with multiple dl's. (it always used 1st cmap).
+
+Rev 2.29.8
+	+ added -display option.
+	+ Added Amiga PFX file support.
+	+ Added Amiga MovieSetter file support.
+	+ Added Amiga MovieSetter support of non-concatenated animatons.
+	  (ie. all the pieces are in separate directories - Moviebacks,
+	   Moviesets and Moviesounds).
+
+Rev 2.29.9
+	+ made actions dynamic.
+	+ frame list now contains timing info for more flexibility.
+
+On the Way to 3.00
+
+Rev 2.30
+        + redid internal image handling.
+        + with pixmap option, display Images as converting to pixmaps.
+	  1st time through might be slower than subsequent times, but
+	  there is less of a pause on start up.
+	+ added +Cn (nice cmap flag). Allocates colors from existing cmap.
+	+ added support for StaticColor,GrayScale and StaticGray Visuals.
+	+ added color quantizing, remapping and a little dithering.
+Rev 2.31
+        + some optimization on IFF delta decoding routines.
+	+ some optimization on HAM decoding routines.
+	+ XInstallColormap now an option.
+	+ X11 Visual selection now possible.
+	+ X11 Verbose command line selectable.
+Rev 2.50
+	+ Added nested loop support of DL files.
+	+ Added HAM8 support and IFF 256 color images.
+	+ certain Weather GIFs had extra bytes encoded. check for this.
+	+ Added Sizing and On the Fly rescaling features.
+	+ redid color cycling and added support for cycling during
+	  animations.
+Rev 2.50.1
+	+ on 8 bit display that support TrueColors with 256 cmap entries
+	  instead of 8, xanim was incorrectly choosing this as a default
+	  visual. Should be fixed now.
+	+ added an option +Cc to forcibly install the cmap before each
+	  image. (NOTE: this only will happen when a cmap can be installed).
+	  Has no effect  with +Cn or on static displays etc.
+Rev 2.50.2
+	+ Hugh D.R. Evans added MAKE.COM, XANIM.OPT and VAXTIME.h to allow
+	  xanim to be compiled under VMS.
+Rev 2.50.3
+	+ installing wrong cmap with +Ca/+Cf options for unbuffered FLIs or
+	  IFF anims.
+Rev 2.54.0
+	+ fixed bug in FLC code on visuals of depth > 8.
+	+ fixed bug in HAM6/HAM8 code.
+	+ Added pre-buffer scaling to conserve memory usage.
+Rev 2.55.0
+	+ Added Amiga IFF anim 7 support
+	+ Fixed colormap generation of DirectColor visuals on 8 bit machines.
+Rev 2.55.1
+	+ Was closing display before freeing an image. Possibly causing
+	  irregular behavior when exiting.
+	+ Bonehead mistake on XCreateImage. Was passing bytes per pixel
+	  instead of bitmap_pad. 
+	+ Fixed typo in Imakfile and added -fno-builtin when using gcc
+Rev 2.55.2
+	+ typo in 2.55.1 release on Monochrome systems causing early 
+	  exit for no reason. fixed.
+Rev 2.55.3
+	+ fixed up Imakefile.
+	+ started man page.
+	+ broke ANIM-J XOR deltas on IFF anims trying to optimize in 2.50.
+	  Now fixed.
+
+Rev 2.56
+	+ added color_quantization/dither options for buffered HAM images
+	+ added Utah Raster Toolkit RLE file support(with multiple images)
+	+ added gamma options.
+	+ added command line and window key input to scale animation speed.
+	+ modified window commands to have single stepping within and across
+	  animations.
+	+ added mouse button events to run, stop and single step animation.
+	+ added limited support for IFF FACE files.
+	+ Full buffering support of ANIM-J Movies.
+	+ MovieSetters are now no longer automatically pixmapped.
+
+Rev 2.60
+	+ Added AVI support (CRAM 8 bit only).
+	+ Redid Delta handling to simplify Code and ease new codecs additions.
+	+ Fixed bug that caused core dumps on 2 byte visuals.
+	+ Fixed single-step bug on IFFs introduced in 2.56.
+	+ removed +Ct option(try to fit) not deemed useful.
+	+ allow user to select Visual Class using +V option.
+	+ Fixed cases where anims had more colors than X11 display
+	  and weren't remapped for other reasons.
+	+ XAnim checks for a 2nd directory for unpacked MovieSetters. The
+	  2nd directory is same as 1st except case of 1st letter switched.
+	+ thanks Rick Dyson for providing descript.mms and VMS suggestions.
+
+Rev 2.61 (not released)
+	+ Added CRAM(Microsoft Video 1) 16 bit support.
+	+ Added AVI RAW support(thanks Julian Bradfield)
+	+ Added Quicktime Support for RPZA codecs 
+	  (thanks to Frank Roussel for testing out quicktime code and
+	   making sure the colors were correct).
+	+ Added Quicktime Support for RLE8, RLE16, RLE31 and RAW codecs
+
+Rev 2.62 (not released)
+	+ Added Quicktime Support for SMC codecs
+	+ Fixed bug on SGI TrueColor and Sun Rasterflex. Needed to
+	  create new GC when selected visual depth wasn't the
+          default.  (thanx Terje Lein-Mathisen for testing out my
+	  test code)
+	+ Added +f option to play animations from disk for
+	  avi,fli and qt anims.
+	+ Added Quicktime Support for RLE24 codecs.
+	+ Added +f option of IFF anims(except BODY).
+	+ Added support for quicktime anims with own colormap.
+	+ Added RLE depth=1 support for quicktime anims.
+
+Rev 2.63.0 (not released)
+	+ fixed Amiga IFF Type J bug for anims of odd depth.
+	+ Thanks to John Kneitz for some VMS fixes and suggestions.
+
+Rev 2.64.0 (Released 14 Feb 1994)
+
+Rev 2.64.1
+	+ Potential core dump when exiting from unkown animation types.
+	  Was re-Destroying and already Destroyed Image.
+		thanks to trs@csc.liv.ac.uk
+	+ Finally added MSDOS DESQview/X options
+		thanks to Steve G.(goodrich@qdeck.com)
+
+Rev 2.64.2
+	+ Realized I totally broke fli code on some little endian machines.
+
+Rev 2.64.3 (not released yet)
+	+ Finished making fli code more robust to handle fli's whose chunk
+	  sizes don't add up to the frame size.
+	+ Added +k1 (k for kludge) for flis that don't include pad bytes
+	  on odd byte length chunks(no way that I know of to detect
+	  this automatically - there's no magic in the chunks like there
+	  is in the frame hdrs).
+	+ Attempting to make XAnim more resilient to errors, etc.
+	+ If you use AUFS from the Columbia Appletalk Package, then
+	  Quicktime Animations have the resource forks stored in
+	  a directory called .resource. Scott Davis has provided
+	  code to support this.
+Rev 2.67.0 
+	+ +Cn option now the default.
+	+ Fixed bug that caused problems on machines whose Address
+	  bus is larger than 32 bits(Alpha's).
+	+ Fixed bug with visual selection on machines with more than
+	  one screen.
+	+ Fixed bug with odd width FLC anims.
+	+ Cleaned up AVI RGB codec.
+	+ Added AVI RLE8 codec.
+	+ Added Cinepak codec to AVI and Quicktime and optimized.
+	+ Added SMC code 0x50(also clarified code 0x40).
+	+ Fixed bug in Mono and Color dither routines.
+	+ Added +Z option to cause xanim to exit after playing command
+	  line instead of looping forever.
+	+ Added +B option to used X11 shared memory extension. Only
+	  used for tempory image bufs on non-buffered anims(i.e. no
+	  affect when +b option is used or animation always buffered).
+	+ Added +CF4 option for anims whose color depth is > than 8
+	  AND who has a "colorful" 1st frame. Beats the default
+	  truncation of RGB color info to 3-3-2 on 256 color displays.
+	+ Optimized CRAM8 and CRAM16 codecs.
+	+ Allow Gamma changes on all AVI and Quicktime codecs.
+Rev 2.67.1 
+	+ Fixed CVID color generation.
+	+ Fixed bug in AVI RGB code for odd width anims.
+Rev 2.67.2 
+	+ Thanks to John Kneitz and Martin Zinser for all the help
+	  with the VMS/AXP testing and makefiles.
+	+ minor niceties added.
+	+ RPZA optimization.
+
+Rev 2.68.0  (release) 
+
+Rev 2.68.1
+	+ I messed up the make.com right before release. what was I thinking?
+	+ Also when I changed the +f option from fread to read, I didn't
+	  realize VMS didn't have unistd.h(it used unixio.h instead).
+Rev 2.68.2
+	+ more fixes to VMS make files.
+	+ fixed bug/typo with +CF4 option and Cinepak codec.
+Rev 2.68.3  30Jun94
+	+ For VMS, a new make.com file that creates the correct
+	  xanim.opt file.
+	+ +Z changed to +Ze and +Zp# option added.
+	+ Quicktime SMC(Apple Anim) codec optimized for speed.
+Rev 2.68.4  04Aug94
+	+ Added +Cs# option that greatly improves +CF4's usefullness when
+	  running 16 and 24 bit animations on 8 bit display. It's also
+	  on by default now. (+CF0 to turn off).
+	+ QT filename parse potential cores when called from Mosaic
+	+ bug when freeing shared memory caused potential cores.
+
+*********BEGINNING OF AUDIO SUPPORT*****************************************
+
+Rev 2.69.0
+	+ Added Buttons(thanks to George Ferguson for the code)
+	+ Added IBM Ultimotion to AVI.
+	+ Added Sparc Audio to AVI and Quicktime.
+Rev 2.69.1
+	+ Added Linux and SGI coded. They compile but may not work.
+	+ Added DL Format 3 support.
+	+ Added +Cs# option that greatly improves +CF4's usefullness.
+	+ Added Quicktime YUV2 codec.
+Rev 2.69.2-3
+	+ unsuccessful attempt to find a generic fix for Alarm Clock
+	  and other errors.
+Rev 2.69.4
+	+ Use XtAppAddTimeOut instead of signals and interval timer.
+	  Fixes: Alarm Clock.
+
+Suspended temporarily
+
+Known BUGS/Features
+	+ XAnim compiled on machine without XtNVisual(usually older
+	  revs of X11 or machines with only 1 visual) cannot be
+	  run on displays that have multiple visuals. X11 Feature.
+	+ background colorcycling not supported in MovieSetters.
+	+ Visuals of depth 4 or depth 2 that put more than one pixel
+	  in a byte aren't fully supported yet.
+
+Any additional bugs, suggestions or comments email to:
+
+Mark Podlipec - podlipec@wellfleet.com or podlipec@shell.portal.com
+http://www.portal.com/~podlipec/home.html  "The XAnim Home Page"
+
+
