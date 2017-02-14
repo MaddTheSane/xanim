@@ -16,7 +16,7 @@
  * or its effect upon hardware or computer systems.
  *
  */
-#include <Xos.h>
+#include <X11/Xos.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <stdio.h>
@@ -46,7 +46,7 @@
 #include <unixio.h>
 #endif
 #include <stdlib.h>
-#include <Xlib.h>
+#include <X11/Xlib.h>
 #include "xa_config.h"
 
 #ifdef XA_XTPOINTER

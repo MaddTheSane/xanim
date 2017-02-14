@@ -510,41 +510,41 @@ xaclean::
 
 
 XCOMM  DO NOT DELETE THIS LINE
-xanim.o: Imakefile xanim.h xa_config.h xa_x11.h xanim.c
+xanim.o: Imakefile xanim.h xa_config.h xa_x11.h xa_cmap.h xanim.c
 xa1.0_kpcd.o: xa1.0_kpcd.c
 unpacker.o: unpacker.c
 xa_acodec.o: Imakefile xanim.h xa_acodec.c
 xa_act.o: xanim.h xa_config.h xa_act.c
 xa_au.o: xanim.h xa_config.h xa_au.c
 xa_audio.o: Imakefile xanim.h xa_config.h xa_audio.h xa_audio.c
-xa_avi.o: Imakefile xanim.h xa_config.h xa_avi.h xa_codecs.h xa_xmpg.h xa_avi.c
-xa_cmap.o: xanim.h xa_config.h xa_cmap.c
-xa_color.o: xanim.h xa_color.c
+xa_avi.o: Imakefile xanim.h xa_config.h xa_avi.h xa_codecs.h xa_xmpg.h xa_avi.c xa_cmap.h
+xa_cmap.o: xanim.h xa_config.h xa_cmap.c xa_cmap.h
+xa_color.o: xanim.h xa_color.c xa_cmap.h
 xa_dl.o: xanim.h xa_config.h xa_dl.h xa_dl.c
 xa_dumfx.o: xanim.h xa_dumfx.c
 xa_fli.o: xanim.h xa_config.h xa_fli.h xa_fli.c
 xa_formats.o: xanim.h xa_formats.c
 xa_gif.o: xanim.h xa_config.h xa_gif.h xa_gif.c
-xa_iff.o: xanim.h xa_config.h xa_iff.h xa_iff.c
+xa_iff.o: xanim.h xa_config.h xa_cmap.h xa_iff.h xa_iff.c
 xa_input.o: xanim.h xa_input.c
 xa_ipc.o: Imakefile xanim.h xa_config.h xa_ipc.h xa_ipc.c
 xa_jmov.o: xanim.h xa_config.h xa_jmov.h xa_jmov.c
 xa_jpg.o: xanim.h xa_config.h xa_jpg.h xa_jpg.c
 xa_j6i.o: xanim.h xa_j6i.h xa_j6i.c
-xa_movi.o: xanim.h xa_config.h xa_movi.h xa_movi.c
-xa_mpg.o: xanim.h xa_config.h xa_mpg.h xa_xmpg.h xa_mpg.c xa_jpg.c
-xa_qt.o: Imakefile xanim.h xa_config.h xa_qt.h xa_codecs.h xa_qt.c
-xa_qt_decs.o: Imakefile xanim.h xa_config.h xa_qt.h xa_qt_decs.c
+xa_movi.o: xanim.h xa_config.h xa_movi.h xa_movi.c xa_cmap.h
+xa_mpg.o: xanim.h xa_config.h xa_mpg.h xa_xmpg.h xa_mpg.c xa_jpg.c xa_cmap.h
+xa_qt.o: Imakefile xanim.h xa_config.h xa_qt.h xa_codecs.h xa_qt.c xa_cmap.h
+xa_qt_decs.o: Imakefile xanim.h xa_config.h xa_qt.h xa_qt_decs.c xa_cmap.h
 xa_vid_codec.o: Imakefile xa_avi.h xa_qt.h xa_codecs.h xavid.h xavid_mod.h
 xa_vid_codec.o: xa_vid_codec.c
 xa_replay.o: xanim.h xa_config.h xa_replay.h xa_replay.c
 xa_rle.o: xanim.h xa_config.h xa_rle.h xa_rle.c
 xa_set.o: xanim.h xa_config.h xa_iff.h xa_iff.c xa_set.h xa_set.c
-xa_raw.o: xanim.h xa_raw.h xa_raw.c
+xa_raw.o: xanim.h xa_raw.h xa_raw.c xa_cmap.h
 xa_show.o: Imakefile xanim.h xa_show.c
 xa_txt.o: xanim.h xa_config.h xa_txt.c
 xa_utils.o: xanim.h xa_config.h xa_utils.c
 xa_wav.o: xanim.h xa_config.h xa_avi.h xa_wav.c
 xa_8svx.o: xanim.h xa_8svx.h xa_8svx.c
-xa_x11.o: Imakefile xanim.h xa_config.h xa_x11.h xa_x11.c
+xa_x11.o: Imakefile xanim.h xa_config.h xa_cmap.h xa_x11.h xa_x11.c
 xa_gsm.o: xanim.h xa_gsm_state.h xa_gsm.h xa_gsm.c

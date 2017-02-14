@@ -18,9 +18,9 @@
 
 
 #include "xanim.h"
-#include <Intrinsic.h>
-#include <StringDefs.h>
-#include <Shell.h>
+#include <X11/Intrinsic.h>
+#include <X11/StringDefs.h>
+#include <X11/Shell.h>
 
 #include "xa_x11.h"
 #include "xa_ipc.h"

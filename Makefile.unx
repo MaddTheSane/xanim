@@ -296,21 +296,21 @@ XA_MOD_OFILES = $(XA_AUD_OFILES)
 # XLIBDIR = -L/usr/openwin/lib
 #
 ###-- Linux using X11R6
-INCLUDE =  -I/usr/X11R6/include -I/usr/X11R6/include/X11
+INCLUDE =  -I/usr/X11R6/include
 XLIBDIR = -L/usr/X11R6/lib
 #
 ###-- My SunOS machine running X11R5
-# INCLUDE = -I/usr/X11R5/include -I/usr/X11R5/include/X11
+# INCLUDE = -I/usr/X11R5/include
 # XLIBDIR = -L/usr/X11R5/lib  -lnsl
 #
 ###-- My SunOS machine running X11R6
-# INCLUDE = -I/usr/X11R6/include -I/usr/X11R6/include/X11
+# INCLUDE = -I/usr/X11R6/include
 # XLIBDIR = -L/usr/X11R6/lib  -lnsl
 #
 ###-- Win32 
 #-- This depends on where you installed the Cygnus X11 includes and libs.
 #-- IMPORTANT: See all NOTE_9's further down in the Makefile.
-# INCLUDE = -I/cygnus/b19/x11r6.4/include -I/cygnus/b19/x11r6.4/include/X11
+# INCLUDE = -I/cygnus/b19/x11r6.4/include
 # XLIBDIR = -L/cygnus/b19/x11r6.4/lib
 #
 # TODO: add more machine/OS specific examples here. Feel free to send

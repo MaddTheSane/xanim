@@ -24,9 +24,9 @@
  */
 
 #include "xanim.h"
-#include <Intrinsic.h>
-#include <StringDefs.h>
-#include <Shell.h>
+#include <X11/Intrinsic.h>
+#include <X11/StringDefs.h>
+#include <X11/Shell.h>
 
 #ifdef XSHM
 #include <sys/ipc.h>

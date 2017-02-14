@@ -29,10 +29,10 @@
 
 #include "xanim.h"
 #include "xa_cmap.h"
-#include <Intrinsic.h>
-#include <StringDefs.h>
-#include <Shell.h>
-#include <Xatom.h>
+#include <X11/Intrinsic.h>
+#include <X11/StringDefs.h>
+#include <X11/Shell.h>
+#include <X11/Xatom.h>
 
 #ifdef XA_ATHENA
 #include <Xaw/Form.h>
