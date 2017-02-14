@@ -25,15 +25,13 @@
 
 #include "xanim.h"
 #include "xa_color.h"
+#include "xa_cmap.h"
 
 YUVTabs def_yuv_tabs;
 void XA_Gen_YUV_Tabs();
 void XA_Gen_YUV2_Tabs();
 void XA_Free_YUV_Tabs();
 extern void XA_Add_Func_To_Free_Chain();
-extern xaULONG CMAP_Find_Closest(); 
-extern void CMAP_Cache_Init();
-extern void CMAP_Cache_Clear();
 xaULONG XA_Get_Image_Type();
 
 xaULONG XA_RGB24_To_CLR32();

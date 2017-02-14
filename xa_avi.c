@@ -46,6 +46,7 @@
 #include "xa_xmpg.h" 
 #include "xa_codecs.h"
 #include "xa_color.h"
+#include "xa_cmap.h"
 
 
 #ifdef XA_GSM
@@ -78,21 +79,21 @@ xaULONG AVI_Stream_Chunk();
 xaULONG AVI_Read_IDX1();
 
 /* CODEC ROUTINES */
-xaULONG JFIF_Decode_JPEG();
-void JFIF_Read_IJPG_Tables();
-xaULONG AVI_Decode_RLE8();
-xaULONG AVI_Decode_CRAM();
-xaULONG AVI_Decode_CRAM16();
-xaULONG AVI_Decode_RGB4();
-xaULONG AVI_Decode_RGB8();
-xaULONG AVI_Decode_RGB16();
-xaULONG AVI_Decode_RGB24();
-xaULONG AVI_Decode_V422();
-xaULONG AVI_Decode_VYUY();
-xaULONG AVI_Decode_YUY2();
-xaULONG AVI_Decode_YV12();
-xaULONG AVI_Decode_I420();
-xaULONG AVI_Decode_Y41P();
+extern xaULONG JFIF_Decode_JPEG();
+extern void JFIF_Read_IJPG_Tables();
+static xaULONG AVI_Decode_RLE8();
+extern xaULONG AVI_Decode_CRAM();
+extern xaULONG AVI_Decode_CRAM16();
+static xaULONG AVI_Decode_RGB4();
+static xaULONG AVI_Decode_RGB8();
+static xaULONG AVI_Decode_RGB16();
+static xaULONG AVI_Decode_RGB24();
+static xaULONG AVI_Decode_V422();
+static xaULONG AVI_Decode_VYUY();
+static xaULONG AVI_Decode_YUY2();
+static xaULONG AVI_Decode_YV12();
+static xaULONG AVI_Decode_I420();
+static xaULONG AVI_Decode_Y41P();
 #ifdef NO_CLUE_JUST_PUTZIN_AROUND
 xaULONG AVI_Decode_VIXL();
 #endif
@@ -109,16 +110,13 @@ extern void XA_Gen_YUV_Tabs();
 extern void JPG_Alloc_MCU_Bufs();
 extern void JPG_Setup_Samp_Limit_Table();
 extern xaULONG jpg_search_marker();
-xaULONG AVI_Get_Ulti_Color();
-void AVI_Get_Ulti_rgbColor();
-void AVI_ULTI_Gen_YUV();
-void AVI_ULTI_LTC();
-void AVI_Ulti_Gen_LTC();
-xaULONG AVI_Ulti_Check();
+static xaULONG AVI_Get_Ulti_Color();
+static void AVI_Get_Ulti_rgbColor();
+static void AVI_ULTI_Gen_YUV();
+static void AVI_ULTI_LTC();
+static void AVI_Ulti_Gen_LTC();
+static xaULONG AVI_Ulti_Check();
 static void AVI_XMPG_Kludge();
-
-extern void CMAP_Cache_Clear();
-extern void CMAP_Cache_Init();
 
 extern XA_ACTION *ACT_Get_Action();
 extern XA_CHDR *ACT_Get_CMAP();
@@ -136,8 +134,8 @@ extern xaUBYTE *UTIL_RGB_To_Map();
 extern XA_ANIM_SETUP *XA_Get_Anim_Setup();
 extern void XA_Free_Anim_Setup();
 
-void *XA_YUV211111_Func();
-void *XA_YUV221111_Func();
+extern void *XA_YUV211111_Func();
+extern void *XA_YUV221111_Func();
 
 static xaULONG avi_video_attempt;
 /** AVI SOUND STUFF ****/
@@ -150,7 +148,7 @@ static xaULONG avi_audio_chans;
 static xaULONG avi_audio_bps;
 static xaULONG avi_audio_end;
 static AUDS_HDR auds_hdr;
-xaULONG XA_Add_Sound();
+extern xaULONG XA_Add_Sound();
 
 
 extern xaLONG xa_dither_flag;
@@ -163,7 +161,7 @@ extern YUVTabs def_yuv_tabs;
 static xaULONG avi_first_delta;
 
 static xaLONG ulti_Cr[16],ulti_Cb[16],ulti_CrCb[256];
-xaUBYTE *avi_ulti_tab = 0;
+static xaUBYTE *avi_ulti_tab = 0;
 
 
 static AVI_HDR avi_hdr;

@@ -37,9 +37,9 @@
 
 /* Forward declarations */
 xaULONG SVX_Read_File();
-void SVX_Read_VHDR();
-void SVX_Read_Chunk_Header();
-void SVX_Print_VHDR();
+static void SVX_Read_VHDR();
+static void SVX_Read_Chunk_Header();
+static void SVX_Print_VHDR();
 
 extern void IFF_Print_ID(); /* borrowed from xa_iff.c */
 

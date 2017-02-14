@@ -17,6 +17,7 @@
  */
 
 #include "xanim.h"
+#include "xa_cmap.h"
 
 extern XA_CHDR *xa_chdr_first;
 extern XColor  defs[256];
@@ -62,39 +63,17 @@ typedef struct CMAP_Box_Struct
 #define CMAP_MEDIAN_BLUE  3
 
 int ColorComp();
-int CMAP_CList_Compare();
-xaULONG CMAP_Find_Closest();
-xaLONG CMAP_Find_Exact();
-xaLONG CMAP_CHDR_Match();
-void CMAP_Remap_CHDRs();
-void CMAP_Remap_CHDR();
-void CMAP_Compact_Box();
-xaLONG CMAP_Split_Box();
-void CMAP_Histogram_CHDR();
-void CMAP_CMAP_From_Clist();
-void CMAP_CList_CombSort();
-void CMAP_CList_CombSort_Red();
-void CMAP_CList_CombSort_Green();
-void CMAP_CList_CombSort_Blue();
-xaULONG CMAP_Gamma_Adjust();
-void CMAP_Shrink_CHDR();
-void CMAP_Map_To_One();
+static int CMAP_CList_Compare(const void *pc1, const void *pc2);
+static void CMAP_Shrink_CHDR(XA_CHDR *old_chdr,xaULONG new_csize);
+static CMAP_Box *CMAP_Get_Box();
+static void CMAP_Compact_Box(CMAP_Box *box);
+static xaLONG CMAP_Split_Box(CMAP_Box *box);
+static void CMAP_Find_Box_Color(ColorReg *creg,CMAP_Box *box);
 
-
-xaLONG CMAP_Median_Cut();
-CMAP_Box *CMAP_Get_Box();
-void CMAP_Find_Box_Color();
-int CMAP_Median_Compare_Red();
-int CMAP_Median_Compare_Green();
-int CMAP_Median_Compare_Blue();
-xaLONG CMAP_Split_Box();
-
-XA_CHDR *ACT_Get_CHDR();
-XA_CHDR *ACT_Get_CMAP();
-XA_CHDR *CMAP_Create_CHDR_From_True();
-
-void X11_Get_Colormap();
-void X11_Make_Nice_CHDR();
+static xaLONG CMAP_Median_Cut(ColorReg *cmap_out,xaULONG *clist,xaULONG clist_len,xaULONG wanted_clen);
+static int CMAP_Median_Compare_Red(const void *pc1, const void *pc2);
+static int CMAP_Median_Compare_Green(const void *pc1, const void *pc2);
+static int CMAP_Median_Compare_Blue(const void *pc1, const void *pc2);
 
 /*
  *
@@ -115,12 +94,7 @@ ColorReg *c1,*c2;
 /*
  *
  */
-xaULONG CMAP_Find_Closest(t_cmap,csize,r,g,b,rbits,gbits,bbits,color_flag)
-ColorReg *t_cmap;
-xaULONG csize;
-xaLONG r,g,b;
-xaULONG rbits,gbits,bbits;
-xaULONG color_flag;
+xaULONG CMAP_Find_Closest(ColorReg *t_cmap,xaULONG csize,xaLONG r,xaLONG g,xaLONG b,xaULONG rbits,xaULONG gbits,xaULONG bbits,xaULONG color_flag)
 { register xaULONG i,min_diff;
   register xaULONG cmap_entry;
 
@@ -189,10 +163,7 @@ xaULONG color_flag;
  * return index of exact match.
  * return -1 if no match found.
  */
-xaLONG CMAP_Find_Exact(cmap,coff,csize,r,g,b,gray)
-ColorReg *cmap;
-xaULONG coff,csize;
-xaUSHORT r,g,b,gray;
+xaLONG CMAP_Find_Exact(ColorReg *cmap,xaULONG coff,xaULONG csize,xaUSHORT r,xaUSHORT g,xaUSHORT b,xaUSHORT gray)
 {
   register xaLONG i,match;
 
@@ -218,8 +189,7 @@ xaUSHORT r,g,b,gray;
 /*
  *
  */
-xaLONG CMAP_CHDR_Match(chdr1,chdr2)
-XA_CHDR *chdr1,*chdr2;
+xaLONG CMAP_CHDR_Match(XA_CHDR *chdr1, XA_CHDR *chdr2)
 {
   ColorReg *cmap1,*cmap2;
   xaULONG i;
@@ -242,16 +212,14 @@ XA_CHDR *chdr1,*chdr2;
 /*
  *
  */
-int CMAP_CList_Compare(pc1,pc2)
-void *pc1,*pc2;
-{ int *c1 = (int *)pc1;
-  int *c2 = (int *)pc2;
+int CMAP_CList_Compare(const void *pc1, const void *pc2)
+{ const int *c1 = (const int *)pc1;
+  const int *c2 = (const int *)pc2;
   return( (*c1) - (*c2) );
 }
 
-void
-CMAP_BitMask_CList(clist,cnum,bits)
-xaULONG *clist,cnum,bits;
+static void
+CMAP_BitMask_CList(xaULONG *clist,xaULONG cnum,xaULONG bits)
 {
   xaULONG i,r_mask;
   if ( (bits==0) || (bits>=9) ) TheEnd1("CMAP_BitMask_CList: bad bits");
@@ -261,8 +229,7 @@ xaULONG *clist,cnum,bits;
   for(i=0;i<cnum;i++) *clist++ &= r_mask;
 }
 
-xaULONG CMAP_Compress_CList(clist,cnum)
-xaULONG *clist,cnum;
+static xaULONG CMAP_Compress_CList(xaULONG *clist,xaULONG cnum)
 {
   register xaULONG i,j,data;
 
@@ -289,9 +256,7 @@ xaULONG *clist,cnum;
  * return the total number of colors in all of the current chdr's
  * also return the largest csize in max_csize if not NULL.
  */
-xaULONG CMAP_Color_Count(chdr,max_csize)
-XA_CHDR *chdr;
-xaULONG *max_csize;
+static xaULONG CMAP_Color_Count(XA_CHDR *chdr,xaULONG *max_csize)
 {
   xaULONG cnt,max_size;
   cnt = max_size = 0;
@@ -305,9 +270,7 @@ xaULONG *max_csize;
 }
 
 
-xaULONG CMAP_Make_Clist(chdr,clist)
-XA_CHDR *chdr;
-xaULONG **clist;
+static xaULONG CMAP_Make_Clist(XA_CHDR *chdr,xaULONG **clist)
 {
   xaULONG *clst,clist_len,c_i;
 
@@ -358,8 +321,8 @@ xaULONG **clist;
   return(c_i);
 }
 
-void
-CMAP_Map_To_One()
+static void
+CMAP_Map_To_One(void)
 {
   XA_CHDR *new_chdr;
   xaULONG *clist,clist_len,i,wanted_csize;
@@ -412,9 +375,7 @@ DEBUG_LEVEL2
 }
 
 void
-CMAP_Shrink_CHDR(old_chdr,new_csize)
-XA_CHDR *old_chdr;
-xaULONG new_csize;
+CMAP_Shrink_CHDR(XA_CHDR *old_chdr,xaULONG new_csize)
 {
   XA_CHDR *new_chdr;
   xaULONG *clist,clist_len,i,wanted_csize;
@@ -512,8 +473,7 @@ CMAP_Manipulate_CHDRS()
 }
 
 void
-CMAP_Remap_CHDR(new_chdr,old_chdr)
-XA_CHDR *new_chdr,*old_chdr;
+CMAP_Remap_CHDR(XA_CHDR *new_chdr,XA_CHDR *old_chdr)
 {
   ColorReg *new_cmap,*old_cmap;
   xaULONG *tmp_map,*old_map;
@@ -559,12 +519,11 @@ XA_CHDR *new_chdr,*old_chdr;
 }
 
 void
-CMAP_Remap_CHDRs(the_chdr)
-XA_CHDR *the_chdr;
+CMAP_Remap_CHDRs(XA_CHDR *the_chdr)
 {
   XA_CHDR *tmp_chdr;
 
-  DEBUG_LEVEL2 fprintf(stderr,"CMAP_Remap_CHDRs to %x\n",(xaULONG)the_chdr);
+  DEBUG_LEVEL2 fprintf(stderr,"CMAP_Remap_CHDRs to %p\n",the_chdr);
 
   tmp_chdr = xa_chdr_start;
   while(tmp_chdr)
@@ -576,9 +535,7 @@ XA_CHDR *the_chdr;
 }
 
 void
-CMAP_CMAP_From_Clist(cmap_out,clist,clist_len)
-ColorReg *cmap_out;
-xaULONG *clist,clist_len;
+CMAP_CMAP_From_Clist(ColorReg *cmap_out,xaULONG *clist,xaULONG clist_len)
 {
   register xaULONG i,r,g,b;
 
@@ -603,9 +560,7 @@ CMAP_Box *CMAP_Get_Box()
   return(tmp);
 }
 
-xaLONG CMAP_Median_Cut(cmap_out,clist,clist_len,wanted_clen)
-ColorReg *cmap_out;
-xaULONG *clist,clist_len,wanted_clen;
+xaLONG CMAP_Median_Cut(ColorReg *cmap_out,xaULONG *clist,xaULONG clist_len,xaULONG wanted_clen)
 {
   CMAP_Box *start_box,*box;
   xaULONG i,cur_box_num;
@@ -658,8 +613,7 @@ xaULONG *clist,clist_len,wanted_clen;
 
 
 void
-CMAP_Compact_Box(box)
-CMAP_Box *box;
+CMAP_Compact_Box(CMAP_Box *box)
 {
   xaLONG i;
 
@@ -685,31 +639,27 @@ CMAP_Box *box;
   }
 }
 
-int CMAP_Median_Compare_Red(pc1,pc2)
-void *pc1,*pc2;
-{ int *c1 = (int *)pc1;
-  int *c2 = (int *)pc2;
+int CMAP_Median_Compare_Red(const void *pc1, const void *pc2)
+{ const int *c1 = (const int *)pc1;
+  const int *c2 = (const int *)pc2;
   return( ((*c1) & 0xff0000) - ((*c2) & 0xff0000) );
 }
 
-int CMAP_Median_Compare_Green(pc1,pc2)
-void *pc1,*pc2;
-{ int *c1 = (int *)pc1;
-  int *c2 = (int *)pc2;
+int CMAP_Median_Compare_Green(const void *pc1, const void *pc2)
+{ const int *c1 = (const int *)pc1;
+  const int *c2 = (const int *)pc2;
   return( ((*c1) & 0xff00) - ((*c2) & 0xff00) );
 }
 
-int CMAP_Median_Compare_Blue(pc1,pc2)
-void *pc1,*pc2;
-{ int *c1 = (int *)pc1;
-  int *c2 = (int *)pc2;
+int CMAP_Median_Compare_Blue(const void *pc1, const void *pc2)
+{ const int *c1 = (const int *)pc1;
+  const int *c2 = (const int *)pc2;
   return( ((*c1) & 0xff) - ((*c2) & 0xff) );
 }
 
 
 
-xaLONG CMAP_Split_Box(box)
-CMAP_Box *box;
+xaLONG CMAP_Split_Box(CMAP_Box *box)
 {
   CMAP_Box *newbox;
   register xaLONG sort_type,rdif,gdif,bdif;
@@ -764,9 +714,7 @@ CMAP_Box *box;
  * Assumes 8 bits per color component
  */
 void
-CMAP_Find_Box_Color(creg,box)
-ColorReg *creg;
-CMAP_Box *box;
+CMAP_Find_Box_Color(ColorReg *creg,CMAP_Box *box)
 {
   register xaLONG i;
   register xaULONG r,g,b,sum;
@@ -800,9 +748,7 @@ CMAP_Box *box;
 
 
 void
-CMAP_Histogram_CHDR(chdr,hist,csize,moff)
-XA_CHDR *chdr;
-xaULONG *hist,csize,moff;
+CMAP_Histogram_CHDR(XA_CHDR *chdr,xaULONG *hist,xaULONG csize,xaULONG moff)
 {
   XA_ACTION *act;
 
@@ -888,8 +834,7 @@ void CMAP_Expand_Maps()
 }
 
 void
-CMAP_Cache_Init(flag)
-xaULONG flag;
+CMAP_Cache_Init(xaULONG flag)
 {
   cmap_cache_bits = cmap_median_bits;
   if (cmap_cache_bits > CMAP_CACHE_MAX_BITS)
@@ -923,8 +868,7 @@ CMAP_Cache_Clear()
 }
 
 
-xaULONG CMAP_Get_Or_Mask(cmap_size)
-xaULONG cmap_size;   /* number of colors in anim cmap */
+xaULONG CMAP_Get_Or_Mask(xaULONG cmap_size /* number of colors in anim cmap */)
 {
   xaULONG or_mask,imagec;
 
@@ -967,9 +911,7 @@ xaULONG cmap_size;   /* number of colors in anim cmap */
  *   sets csize to 332 CHDR size.
  *
  */ 
-XA_CHDR *CMAP_Create_332(cmap,csize)
-ColorReg *cmap;
-xaULONG *csize;
+XA_CHDR *CMAP_Create_332(ColorReg *cmap,xaULONG *csize)
 {
   xaULONG i,size;
 
@@ -1056,9 +998,7 @@ xaULONG *csize;
   return(cmap_332_chdr);
 }
 
-XA_CHDR *CMAP_Create_Gray(cmap,csize)
-ColorReg *cmap;
-xaULONG *csize;
+XA_CHDR *CMAP_Create_Gray(ColorReg *cmap,xaULONG *csize)
 {
   xaULONG i,size;
 
@@ -1102,13 +1042,8 @@ xaULONG *csize;
  *
  *
  */
-XA_CHDR *CMAP_Create_CHDR_From_True(ipic,rbits,gbits,bbits,
-						width,height,cmap,csize)
-xaUBYTE *ipic;
-xaULONG rbits,gbits,bbits;
-xaULONG width,height;
-ColorReg *cmap;
-xaULONG *csize;
+XA_CHDR *CMAP_Create_CHDR_From_True(xaUBYTE *ipic,xaULONG rbits,xaULONG gbits,xaULONG bbits,
+						xaULONG width,xaULONG height,ColorReg *cmap,xaULONG *csize)
 {
   XA_CHDR *new_chdr;
   xaULONG *clist,clist_len,wanted_csize;
@@ -1170,8 +1105,7 @@ xaULONG *csize;
   return(new_chdr);
 }
 
-void CMAP_CList_CombSort(clist,cnum)
-xaULONG *clist,cnum;
+void CMAP_CList_CombSort(xaULONG *clist,xaULONG cnum)
 { register xaULONG ShrinkFactor,gap,i,temp,finished;
   ShrinkFactor = 13; gap = cnum;
   do
@@ -1188,8 +1122,7 @@ xaULONG *clist,cnum;
   } while( !finished ||  (gap > 1) );
 }
 
-void CMAP_CList_CombSort_Red(clist,cnum)
-xaULONG *clist,cnum;
+void CMAP_CList_CombSort_Red(xaULONG *clist,xaULONG cnum)
 {
   register xaULONG ShrinkFactor,gap,i,temp,finished;
   ShrinkFactor = 13; gap = cnum;
@@ -1207,8 +1140,7 @@ xaULONG *clist,cnum;
   } while( !finished ||  (gap > 1) );
 }
 
-void CMAP_CList_CombSort_Green(clist,cnum)
-xaULONG *clist,cnum;
+void CMAP_CList_CombSort_Green(xaULONG *clist,xaULONG cnum)
 {
   register xaULONG ShrinkFactor,gap,i,temp,finished;
   ShrinkFactor = 13; gap = cnum;
@@ -1226,8 +1158,7 @@ xaULONG *clist,cnum;
   } while( !finished ||  (gap > 1) );
 }
 
-void CMAP_CList_CombSort_Blue(clist,cnum)
-xaULONG *clist,cnum;
+void CMAP_CList_CombSort_Blue(xaULONG *clist,xaULONG cnum)
 {
   register xaULONG ShrinkFactor,gap,i,temp,finished;
   ShrinkFactor = 13; gap = cnum;
@@ -1245,9 +1176,7 @@ xaULONG *clist,cnum;
   } while( !finished ||  (gap > 1) );
 }
 
-xaULONG CMAP_Gamma_Adjust(gamma_adj,disp_gamma,anim_gamma)
-xaUSHORT *gamma_adj;
-double disp_gamma,anim_gamma;
+xaULONG CMAP_Gamma_Adjust(xaUSHORT *gamma_adj,double disp_gamma,double anim_gamma)
 {
   register xaULONG i;
   double pow(),t64k,d;
@@ -1282,9 +1211,7 @@ double disp_gamma,anim_gamma;
  *   sets csize to 422 CHDR size.
  *
  */ 
-XA_CHDR *CMAP_Create_422(cmap,csize)
-ColorReg *cmap;
-xaULONG *csize;
+XA_CHDR *CMAP_Create_422(ColorReg *cmap,xaULONG *csize)
 {
   xaULONG i,size;
   xaULONG r_bits,g_bits,b_bits,last,disp_bits;

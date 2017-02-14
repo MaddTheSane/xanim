@@ -39,29 +39,29 @@ extern void Gen_Arm_2_Signed();
 extern void Gen_ALaw_2_Signed();
 
 /* Internal */
-xaULONG XA_ADecode_1M_1M();
-xaULONG XA_ADecode_PCMXM_PCM1M();
-xaULONG XA_ADecode_PCM1M_PCM2M();
-xaULONG XA_ADecode_PCM1S_PCMxM();
-xaULONG XA_ADecode_PCM2X_PCM2M();
-xaULONG XA_ADecode_NOP_PCMXM();
-xaULONG XA_ADecode_ULAWx_PCMxM();
-xaULONG XA_ADecode_ALAWx_PCMxM();
-xaULONG XA_ADecode_ARMLAWx_PCMxM();
-xaULONG XA_ADecode_ADPCMS_PCM2M();
-xaULONG XA_ADecode_ADPCMM_PCM2M();
-xaULONG XA_ADecode_DVIM_PCMxM();
-xaULONG XA_ADecode_DVIS_PCMxM();
-xaULONG XA_ADecode_IMA4M_PCMxM();
-xaULONG XA_ADecode_IMA4S_PCMxM();
+static xaULONG XA_ADecode_1M_1M();
+static xaULONG XA_ADecode_PCMXM_PCM1M();
+static xaULONG XA_ADecode_PCM1M_PCM2M();
+static xaULONG XA_ADecode_PCM1S_PCMxM();
+static xaULONG XA_ADecode_PCM2X_PCM2M();
+static xaULONG XA_ADecode_NOP_PCMXM();
+static xaULONG XA_ADecode_ULAWx_PCMxM();
+static xaULONG XA_ADecode_ALAWx_PCMxM();
+static xaULONG XA_ADecode_ARMLAWx_PCMxM();
+static xaULONG XA_ADecode_ADPCMS_PCM2M();
+static xaULONG XA_ADecode_ADPCMM_PCM2M();
+static xaULONG XA_ADecode_DVIM_PCMxM();
+static xaULONG XA_ADecode_DVIS_PCMxM();
+static xaULONG XA_ADecode_IMA4M_PCMxM();
+static xaULONG XA_ADecode_IMA4S_PCMxM();
 #ifdef XA_GSM
 extern xaULONG XA_ADecode_GSMM_PCMxM();
 extern void XA_MSGSM_Decoder();
 extern void XA_GSM_Decoder();
 #endif
 
-xaULONG XA_IPC_Sound();
-xaULONG XA_Add_Sound();
+extern xaULONG XA_IPC_Sound();
+extern xaULONG XA_Add_Sound();
 extern xaULONG xa_vaudio_hard_buff;
 extern xaULONG xa_audio_hard_type;
 

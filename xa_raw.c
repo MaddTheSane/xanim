@@ -25,6 +25,7 @@
 #include "xa_raw.h"
 #include "xa_codecs.h"
 #include "xa_color.h"
+#include "xa_cmap.h"
 
 
 /****---------- Global Routines -----------------------****/
@@ -45,10 +46,6 @@ extern xaULONG RAW_Decode_YUV411();  /* QCIF, CIF */
 extern XA_ANIM_SETUP *XA_Get_Anim_Setup();
 extern void XA_Free_Anim_Setup();
 extern XA_ACTION *ACT_Get_Action();
-extern XA_CHDR *ACT_Get_CMAP();
-extern XA_CHDR *CMAP_Create_332();
-extern XA_CHDR *CMAP_Create_422();
-extern XA_CHDR *CMAP_Create_Gray();
 extern void ACT_Add_CHDR_To_Action();
 extern void ACT_Setup_Mapped();
 extern void ACT_Setup_Delta();

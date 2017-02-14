@@ -16,6 +16,7 @@
  *
  */
 #include "xa_rle.h"
+#include "xa_cmap.h"
 
 xaULONG RLE_Read_File();
 xaULONG RLE_Read_Header();
@@ -24,9 +25,6 @@ void RLE_Read_Row();
 
 XA_ACTION *ACT_Get_Action();
 XA_CHDR   *ACT_Get_CMAP();
-XA_CHDR *CMAP_Create_332();
-XA_CHDR *CMAP_Create_Gray();
-XA_CHDR *CMAP_Create_CHDR_From_True();
 xaUBYTE *UTIL_RGB_To_Map();
 xaUBYTE *UTIL_RGB_To_FS_Map();
 void ACT_Setup_Mapped();

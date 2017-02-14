@@ -17,6 +17,7 @@
  */
 #include "xanim.h"
 #include "xa_iff.h"
+#include "xa_cmap.h"
 
 xaULONG IFF_Read_File();
 void IFF_Adjust_For_EHB();
@@ -57,10 +58,6 @@ XA_ACTION *IFF_Hash_Get();
 xaULONG IFF_Check_Same();
 
 
-xaULONG CMAP_Get_Or_Mask();
-XA_CHDR *CMAP_Create_332();
-XA_CHDR *CMAP_Create_Gray();
-XA_CHDR *CMAP_Create_CHDR_From_True();
 void ACT_Add_CHDR_To_Action();
 void ACT_Del_CHDR_From_Action();
 void UTIL_Mapped_To_Bitmap();

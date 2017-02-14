@@ -39,15 +39,15 @@ xaUBYTE *UTIL_Scale_Bitmap();
 void UTIL_Pack_Image();
 void UTIL_FPS_2_Time();
 
-xaULONG UTIL_Get_LSB_Long();
-xaULONG UTIL_Get_LSB_Short();
-xaULONG UTIL_Get_MSB_Long();
-xaULONG UTIL_Get_MSB_UShort();
-xaLONG UTIL_Get_MSB_Short();
-void UTIL_Mapped_To_Floyd();
-xaULONG CMAP_Find_Closest();
-void CMAP_Cache_Init();
-void CMAP_Cache_Clear();
+static xaULONG UTIL_Get_LSB_Long();
+static xaULONG UTIL_Get_LSB_Short();
+extern xaULONG UTIL_Get_MSB_Long();
+static xaULONG UTIL_Get_MSB_UShort();
+static xaLONG UTIL_Get_MSB_Short();
+extern void UTIL_Mapped_To_Floyd();
+extern xaULONG CMAP_Find_Closest();
+extern void CMAP_Cache_Init();
+extern void CMAP_Cache_Clear();
 
 extern xaULONG *xa_scale_row_buff;
 extern xaULONG xa_scale_row_size;

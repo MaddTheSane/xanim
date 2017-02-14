@@ -26,6 +26,7 @@
 
 
 #include "xa_movi.h" 
+#include "xa_cmap.h"
 
 xaULONG MOVI_Read_File();
 MOVI_FRAME *MOVI_Add_Frame();
@@ -47,8 +48,6 @@ xaULONG MOVI_Read_Index3();
 void MOVI_Add_Video_Frames();
 void MOVI_Add_Audio_Frames();
 xaULONG MOVI_Get_Color();
-extern void CMAP_Cache_Init();
-extern void CMAP_Cache_Clear();
 extern void JPG_Setup_Samp_Limit_Table();
 
 

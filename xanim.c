@@ -60,6 +60,7 @@
  */
 
 #include "xanim.h"
+#include "xa_cmap.h"
 #include <Intrinsic.h>
 #include <StringDefs.h>
 #include <Shell.h>
@@ -212,10 +213,6 @@ extern void Free_Video_Codecs();
 
 extern xaULONG XA_Alloc_Input_Methods();
 extern xaULONG XA_Setup_Input_Methods();
-
-void CMAP_Manipulate_CHDRS();
-void CMAP_Expand_Maps();
-xaULONG CMAP_Gamma_Adjust();
 
 xaULONG DUM_Read_File();
 

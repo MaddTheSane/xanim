@@ -19,6 +19,7 @@
  *	     clip masks prior to mapping.
  */
 #include "xanim.h"
+#include "xa_cmap.h"
 #include <Intrinsic.h>
 #include <StringDefs.h>
 #include <Shell.h>

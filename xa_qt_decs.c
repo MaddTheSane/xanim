@@ -43,6 +43,7 @@
 #include "xa_qt.h"
 #include "xa_codecs.h"
 #include "xa_color.h"
+#include "xa_cmap.h"
 
 xaLONG QT_Codec_Query();
 xaLONG QT_UNK_Codec_Query();
@@ -90,10 +91,6 @@ extern	xaULONG XA_RGB24_To_CLR32();
 extern	xaUSHORT qt_gamma_adj[32];
 
 void *XA_YUV211111_Func();
-
-extern void CMAP_Cache_Clear();
-extern void CMAP_Cache_Init();
-extern xaULONG CMAP_Find_Closest();
 
 extern xaLONG xa_dither_flag;
 extern xaUBYTE  *xa_byte_limit;

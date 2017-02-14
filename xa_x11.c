@@ -28,6 +28,7 @@
 
 
 #include "xanim.h"
+#include "xa_cmap.h"
 #include <Intrinsic.h>
 #include <StringDefs.h>
 #include <Shell.h>
@@ -120,8 +121,6 @@ void X11_Pre_Setup();
 void X11_Setup_Window();
 void X11_Map_Window();
 void X11_Make_Nice_CHDR();
-void X11_Get_Colormap();
-void XA_Free_CMAP();
 
 #ifdef XA_REMOTE_CONTROL
 
@@ -146,13 +145,13 @@ void XA_Remote_SpeedDiff();
 void XA_Remote_Adj_Volume();
 #endif
 
-static void XA_Install_CMAP();
+extern void XA_Install_CMAP();
 static void IFF_Buffer_HAM6();
 static void IFF_Buffer_HAM8();
 static void UTIL_Mapped_To_Bitmap();
 static void UTIL_Mapped_To_Mapped();
-static xaULONG CMAP_Find_Closest();
-static void XA_Store_Title();
+extern xaULONG CMAP_Find_Closest();
+extern void XA_Store_Title();
 
 
 
@@ -1614,8 +1613,7 @@ void X11_Show_Visuals()
   }
 }
 
-void X11_Get_Colormap(chdr)
-XA_CHDR *chdr;
+void X11_Get_Colormap(XA_CHDR *chdr)
 {
   ColorReg *cmap;
   xaULONG i,*map;
@@ -1654,8 +1652,7 @@ DEBUG_LEVEL2 fprintf(stderr,"X11_Get_Colormap:\n");
   }
 }
 
-void X11_Make_Nice_CHDR(chdr)
-XA_CHDR *chdr;
+void X11_Make_Nice_CHDR(XA_CHDR *chdr)
 {
   ColorReg *old_cmap,*new_cmap;
   xaULONG i,*old_map,*new_map;

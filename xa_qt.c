@@ -50,6 +50,7 @@
  */
 #include "xa_qt.h"
 #include "xa_codecs.h"
+#include "xa_cmap.h"
 #include <sys/stat.h>
 
 #ifdef XA_ZLIB
@@ -61,18 +62,15 @@ static XA_CODEC_HDR qt_codec_hdr;
 extern xaULONG QT_Video_Codec_Query();
 extern xaULONG XA_Mem_Open_Init();
 
-xaULONG QT_Read_Video_Codec_HDR();
-xaULONG QT_Read_Audio_Codec_HDR();
-void QT_Audio_Type();
-xaULONG QT_Read_File();
+static xaULONG QT_Read_Video_Codec_HDR();
+static xaULONG QT_Read_Audio_Codec_HDR();
+static void QT_Audio_Type();
+extern xaULONG QT_Read_File();
 
 
-void QT_Create_Default_Cmap();
-void QT_Create_Gray_Cmap();
+static void QT_Create_Default_Cmap();
+extern void QT_Create_Gray_Cmap();
 extern char *XA_rindex();
-
-void CMAP_Cache_Clear();
-void CMAP_Cache_Init();
 
 
 xaUSHORT qt_gamma_adj[32];

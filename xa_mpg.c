@@ -55,6 +55,7 @@
 #include "xa_mpg.h"
 #include "xa_xmpg.h"
 #include "xa_color.h"
+#include "xa_cmap.h"
 
 extern YUVBufs jpg_YUVBufs;
 extern YUVTabs def_yuv_tabs;
@@ -62,29 +63,29 @@ extern YUVTabs def_yuv_tabs;
 /* internal FUNCTIONS */
 xaULONG MPG_Read_File();
 xaULONG mpg_get_start_code();
-xaULONG mpg_read_SEQ_HDR();
-xaULONG mpg_read_GOP_HDR();
-xaULONG mpg_read_PIC_HDR();
-xaULONG MPG_Setup_Delta();
-xaULONG MPG_Decode_I();
+static xaULONG mpg_read_SEQ_HDR();
+static xaULONG mpg_read_GOP_HDR();
+static xaULONG mpg_read_PIC_HDR();
+static xaULONG MPG_Setup_Delta();
+static xaULONG MPG_Decode_I();
 #ifdef NOTYET
 xaULONG MPG_Decode_P();
 xaULONG MPG_Decode_B();
 #endif
 void MPG_Init_Stuff();
-void mpg_init_motion_vectors();
-void mpg_init_mb_type_B();
-void mpg_init_mb_type_P();
-void mpg_init_mb_addr_inc();
-void MPG_Free_Stuff();
-void  decodeDCTDCSizeLum();
-void  decodeDCTDCSizeChrom();
+static void mpg_init_motion_vectors();
+static void mpg_init_mb_type_B();
+static void mpg_init_mb_type_P();
+static void mpg_init_mb_addr_inc();
+static void MPG_Free_Stuff();
+static void  decodeDCTDCSizeLum();
+static void  decodeDCTDCSizeChrom();
 static void decodeDCTCoeff();
-void  decodeDCTCoeffFirst();
-void  decodeDCTCoeffNext();
-void mpg_huffparseI();
-void mpg_skip_extra_bitsB();
-void j_orig_rev_dct();
+static void  decodeDCTCoeffFirst();
+static void  decodeDCTCoeffNext();
+static void mpg_huffparseI();
+static void mpg_skip_extra_bitsB();
+static void j_orig_rev_dct();
 void j_rev_dct();
 
 extern xaLONG xa_dither_flag;
@@ -99,25 +100,19 @@ extern void XA_MCU221111_To_CF4();
 extern void XA_MCU221111_To_332_Dither();
 extern void XA_MCU221111_To_332();
 
-XA_ACTION *ACT_Get_Action();
+extern XA_ACTION *ACT_Get_Action();
 extern XA_ANIM_SETUP *XA_Get_Anim_Setup();
 extern void XA_Add_Func_To_Free_Chain();
-void XA_Free_Anim_Setup();
-XA_CHDR   *ACT_Get_CMAP();
-XA_CHDR *CMAP_Create_332();
-XA_CHDR *CMAP_Create_Gray();
-XA_CHDR *CMAP_Create_CHDR_From_True();
-xaUBYTE *UTIL_RGB_To_Map();
-xaUBYTE *UTIL_RGB_To_FS_Map();
-void UTIL_FPS_2_Time();
-void ACT_Setup_Mapped();
-void ACT_Add_CHDR_To_Action();
+extern void XA_Free_Anim_Setup();
+extern xaUBYTE *UTIL_RGB_To_Map();
+extern xaUBYTE *UTIL_RGB_To_FS_Map();
+extern void UTIL_FPS_2_Time();
+extern void ACT_Setup_Mapped();
+extern void ACT_Add_CHDR_To_Action();
 extern void JPG_Alloc_MCU_Bufs();
 extern void JPG_Setup_Samp_Limit_Table();
 extern xaULONG UTIL_Get_MSB_Long();
 extern void ACT_Setup_Delta();
-extern void CMAP_Cache_Init();
-extern void CMAP_Cache_Clear();
 
 /* external Buffers */
 extern xaUBYTE *xa_byte_limit;

@@ -1,4 +1,5 @@
-
+#ifndef __XANIM_H__
+#define __XANIM_H__
 /*
  * xanim.h
  *
@@ -934,4 +935,4 @@ typedef struct
 #include "xa_dec2.h"
 
 
-
+#endif
