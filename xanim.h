@@ -32,7 +32,9 @@
 #else
 #ifndef __CYGWIN32__
 #ifndef __FreeBSD__
+#ifndef __APPLE__
 #include <malloc.h>
+#endif
 #endif
 #endif
 #endif
@@ -336,6 +338,9 @@ typedef struct
 #define XA_AUDIO 1
 #endif
 #ifdef XA_TOWNS8_AUDIO
+#define XA_AUDIO 1
+#endif
+#ifdef XA_COREAUDIO_AUDIO
 #define XA_AUDIO 1
 #endif
 

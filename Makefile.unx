@@ -74,7 +74,7 @@ XANIM = xanim
 #
 # CC = cc
 # CC = gcc
-CC = egcs
+# CC = egcs
 #
 ######### OPTIMIZATION FLAGS
 # -- Specifiy Any compiler Optimization flags that you wish to use. This
@@ -346,8 +346,8 @@ XA_X11R6_LIBS = -lSM -lICE
 # XA_AUDIO_DEFS =
 #
 ### -- Linux PCs --------------------------------------------------------------
-XA_AUDIO_DEFS = -DXA_LINUX_AUDIO
-XA_AUDIO_LIBS = -lc
+# XA_AUDIO_DEFS = -DXA_LINUX_AUDIO
+# XA_AUDIO_LIBS = -lc
 #
 # -- Linux PC's with OLD Rev sound drivers ------------------------------------
 # XA_AUDIO_DEFS = -DXA_LINUX_AUDIO -DXA_LINUX_OLDER_SND
@@ -459,6 +459,10 @@ XA_AUDIO_LIBS = -lc
 # XA_AUDIO_DEFS = -DXA_NAS_AUDIO
 # XA_AUDIO_LIBS = -L/pain/audio/nas/lib/audio -laudio
 # XA_AUDIO_INCS = -I/pain/audio/nas/usr/include
+#
+#  ----- Mac OS X CoreAudio Support -------------------------------------------
+XA_AUDIO_DEFS = -DXA_COREAUDIO_AUDIO
+XA_AUDIO_LIBS = -framework CoreAudio
 #
 ############
 

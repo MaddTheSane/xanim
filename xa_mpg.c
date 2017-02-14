@@ -1597,9 +1597,10 @@ XA_DEC_INFO *dec_info;  /* Decoder Info Header */
       if ( (chdr) && (x11_display_type == XA_PSEUDOCOLOR))
       {
 	if (cmap_color_func == 4)        color_func = XA_MCU221111_To_CF4;
-	else if ( (cmap_true_to_332 == xaTRUE) && (x11_cmap_size == 256) )
-        if (xa_dither_flag==xaTRUE)    color_func = XA_MCU221111_To_332_Dither;
-        else                           color_func = XA_MCU221111_To_332;
+	else if ( (cmap_true_to_332 == xaTRUE) && (x11_cmap_size == 256) ) {
+        if (xa_dither_flag==xaTRUE)    { color_func = XA_MCU221111_To_332_Dither; }
+        else                           { color_func = XA_MCU221111_To_332; }
+        }
       }
     }
     else if (x11_bytes_pixel==2)	color_func = XA_MCU221111_To_CLR16;

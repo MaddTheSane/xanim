@@ -31,6 +31,7 @@
  */
 
 #include "xa_g72x.h"
+#include <stdlib.h>
 
 static short power2[15] = {1, 2, 4, 8, 0x10, 0x20, 0x40, 0x80,
 			0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000, 0x4000};
@@ -366,18 +367,21 @@ struct g72x_state *state_ptr;	/* coder state pointer */
 		/* UPA1 */
 		/* update predictor pole a[0] */
 		state_ptr->a[0] -= state_ptr->a[0] >> 8;
-		if (dqsez != 0)
-			if (pks1 == 0)
+		if (dqsez != 0) {
+			if (pks1 == 0) {
 				state_ptr->a[0] += 192;
-			else
+			} else {
 				state_ptr->a[0] -= 192;
+			}
+		}
 
 		/* LIMD */
 		a1ul = 15360 - a2p;
-		if (state_ptr->a[0] < -a1ul)
+		if (state_ptr->a[0] < -a1ul) {
 			state_ptr->a[0] = -a1ul;
-		else if (state_ptr->a[0] > a1ul)
+		} else if (state_ptr->a[0] > a1ul) {
 			state_ptr->a[0] = a1ul;
+		}
 
 		/* UPB : update predictor zeros b[6] */
 		for (cnt = 0; cnt < 6; cnt++) {

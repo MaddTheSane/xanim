@@ -358,7 +358,7 @@ xaULONG xa_vaudio_hard_buff = 0;		/* VID Domain snd chunk size */
 
 xaULONG xa_audio_hard_freq;		/* hardware frequency */
 xaULONG xa_audio_hard_buff;		/* preferred snd chunk size */
-xaULONG xa_audio_ring_size;		/* preferred num of ring entries */
+static xaULONG xa_audio_ring_size;		/* preferred num of ring entries */
 xaULONG xa_audio_hard_type;		/* hardware sound encoding type */
 xaULONG xa_audio_hard_bps;		/* hardware bytes per sample */
 xaULONG xa_audio_hard_chans;		/* hardware number of chan. not yet */
@@ -5456,12 +5456,112 @@ xaULONG volume;
 /******************* END OF Towns8 SPECIFIC ROUTINES *********************/
 /****************************************************************************/
 
+/****************************************************************************/
+/**************** CoreAudio SPECIFIC ROUTINES *****************************/
+/****************************************************************************/
+#ifdef XA_COREAUDIO_AUDIO
+
+/*
+ * Mac OS X CoreAudio  port provided by C.W. "Madd the Sane" Betts,
+ *	computers57@hotmail.com
+ * Using c89 because K&R sucks.
+ * Tues Feb. 14, 2017
+ *
+ */
+
+static void  CoreAudio_Audio_Init(void);
+static void  CoreAudio_Audio_Kill(void);
+static void  CoreAudio_Audio_Off(xaULONG flag);
+static void  CoreAudio_Audio_Prep(void);
+static void  CoreAudio_Audio_On(void);
+static void  CoreAudio_Adjust_Volume(xaULONG volume);
+static xaULONG CoreAudio_Closest_Freq(xaLONG ifreq);
+static void CoreAudio_Set_Output_Port(xaULONG aud_ports);
+static void CoreAudio_Speaker_Toggle(xaLONG ifreq);
+static void CoreAudio_Headphone_Toggle(xaULONG flag);
+
+void XA_Audio_Setup()
+{
+
+  XA_Audio_Init		= CoreAudio_Audio_Init;
+  XA_Audio_Kill		= CoreAudio_Audio_Kill;
+  XA_Audio_Off		= CoreAudio_Audio_Off;
+  XA_Audio_Prep		= CoreAudio_Audio_Prep;
+  XA_Audio_On		= CoreAudio_Audio_On;
+  XA_Closest_Freq	= CoreAudio_Closest_Freq;
+  XA_Set_Output_Port	= (void *)(0);
+  XA_Speaker_Tog	= CoreAudio_Speaker_Toggle;
+  XA_Headphone_Tog	= CoreAudio_Headphone_Toggle;
+  XA_LineOut_Tog	= CoreAudio_Headphone_Toggle;
+  XA_Adjust_Volume	= CoreAudio_Adjust_Volume;
+
+  xa_snd_cur = 0;
+  xa_audio_present = XA_AUDIO_UNK;
+  xa_audio_status  = XA_AUDIO_STOPPED;
+  xa_audio_ring_size  = 8;
+}
+
+void  CoreAudio_Audio_Init(void)
+{
+	
+}
+
+void  CoreAudio_Audio_Kill(void)
+{
+	
+}
+
+void  CoreAudio_Audio_Off(xaULONG flag)
+{
+	
+}
+
+void  CoreAudio_Audio_Prep(void)
+{
+	
+}
+void  CoreAudio_Audio_On(void)
+{
+	
+}
+
+void  CoreAudio_Adjust_Volume(xaULONG volume)
+{
+
+}
+
+xaULONG CoreAudio_Closest_Freq(xaLONG ifreq)
+{
+	xa_audio_hard_buff = XA_HARD_BUFF_2K;
+	return ifreq;
+}
+
+void CoreAudio_Set_Output_Port(xaULONG aud_ports)
+{
+
+}
+
+void CoreAudio_Speaker_Toggle(xaLONG ifreq)
+{
+
+}
+
+void CoreAudio_Headphone_Toggle(xaULONG flag)
+{
+
+}
+
+
+#endif
+/****************************************************************************/
+/******************* END OF Towns8 SPECIFIC ROUTINES *********************/
+/****************************************************************************/
 
 /* NEW CODE */
 XA_SND *XA_Audio_Next_Snd(snd_hdr)
 XA_SND *snd_hdr;
-{ DEBUG_LEVEL2 fprintf(stderr,"XA_Audio_Next_Snd: snd_hdr %x \n",
-							(xaULONG)snd_hdr);
+{ DEBUG_LEVEL2 fprintf(stderr,"XA_Audio_Next_Snd: snd_hdr %p \n",
+							snd_hdr);
   xa_snd_cur = snd_hdr->next;
   /* brief clean up of old header */
   snd_hdr->inc_cnt = 0;

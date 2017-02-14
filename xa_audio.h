@@ -207,6 +207,12 @@ extern xaULONG xa_forkit;
 #ifdef XA_TOWNS8_AUDIO
 #endif
 
+/*********************** Mac OS X CoreAudio INCLUDES *******************/
+#ifdef XA_COREAUDIO_AUDIO
+#define Boolean MacBoolean
+#include <CoreAudio/CoreAudio.h>
+#undef Boolean
+#endif
+
 
 /*********************** END   INCLUDES ********************************/
-

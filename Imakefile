@@ -96,9 +96,9 @@ XCOMM   Specify any Linker flags needed to allow dynamically loadable modules
 XCOMM   to link against symbols inside xanim.
 XCOMM 
 XCOMM ## Linux
-LD_FLAGS = -rdynamic
+XCOMM LD_FLAGS = -rdynamic
 XCOMM ## SunOS/Solaris use:
-XCOMM  LD_FLAGS =
+  LD_FLAGS =
 
 
 XCOMM #########################################################################
@@ -267,8 +267,8 @@ XCOMM  -- NOTE_9 Since xanim doesn't yet support Win32 audio, this is necessary.
 XCOMM  XA_AUDIO_DEFS =
 XCOMM 
 XCOMM ## -- Linux PCs ---------------------------------------------------------
-XA_AUDIO_DEFS = -DXA_LINUX_AUDIO
-XA_AUDIO_LIBS = -lc
+XCOMM  XA_AUDIO_DEFS = -DXA_LINUX_AUDIO
+XCOMM  XA_AUDIO_LIBS = -lc
 XCOMM 
 XCOMM  -- Linux PC's with OLD Rev sound drivers -------------------------------
 XCOMM  XA_AUDIO_DEFS = -DXA_LINUX_AUDIO -DXA_LINUX_OLDER_SND
@@ -382,6 +382,10 @@ XCOMM  (pain because the disk died once already :)
 XCOMM  XA_AUDIO_DEFS = -DXA_NAS_AUDIO
 XCOMM  XA_AUDIO_LIBS = -L/pain/audio/nas/lib/audio -laudio
 XCOMM  XA_AUDIO_INCS = -I/pain/audio/nas/usr/include
+XCOMM 
+XCOMM  ----- Mac OS X CoreAudio Support ---------------------------------------
+XA_AUDIO_DEFS = -DXA_COREAUDIO_AUDIO
+XA_AUDIO_LIBS = -framework CoreAudio
 XCOMM 
 XCOMM ###########
 
