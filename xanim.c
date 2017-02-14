@@ -49,9 +49,9 @@
  *
  *******************************/
 
-#define DA_REV 2.69
-#define DA_MINOR_REV 7
-#define DA_BETA_REV 8
+#define DA_REV 2.70
+#define DA_MINOR_REV 1
+#define DA_BETA_REV 0
 
 /*
  * Any problems, suggestions, solutions, anims to show off, etc contact:
@@ -64,7 +64,13 @@
 #include <Intrinsic.h>
 #include <StringDefs.h>
 #include <Shell.h>
+
+#ifdef __QNX__
+#include <signal.h>
+#else
 #include <sys/signal.h>
+#endif
+
 #ifdef MSDOS
 #include <sys/resource.h>
 #else /* not MSDOS */
@@ -91,47 +97,153 @@ extern Visual        *theVisual;
 extern void XA_Remote_Pause();
 #endif
 
-#include "xanim_x11.h"
+#include "xa_x11.h"
+#ifdef XA_FORK
+#include "xa_ipc.h"
+void XA_Video_BOFL();
+void XA_Setup_BOFL();
+#endif
 
-ULONG xa_audio_init;
-ULONG xa_audio_present;
-ULONG xa_audio_enable;
-ULONG xa_audio_status;
-ULONG xa_audio_mute;		/* mute audio T/F */
-LONG  xa_audio_volume;		/* volume 0 - 100 */
-ULONG xa_audio_newvol;		/* volume/mute has changed T/F */
-ULONG xa_audio_port;		/* Audio output port */
-ULONG xa_audio_playrate;	/* forcibly select audio rate */
-ULONG xa_audio_divtest;		/* select an interval time */
-ULONG xa_audio_synctst;		/* testing only */
-double xa_audio_scale;		/* scale audio speed */
-ULONG xa_audio_buffer;
-XA_SND *xa_snd_cur;
+
 /*Sound variables */
+
+/* POD TEMP */
+XA_AUD_FLAGS *vaudiof;
+xaULONG xa_has_audio;
 
 /*KLUDGES*/
 extern jpg_free_stuff();
-extern mpg_free_stuff();
 
+xaULONG xa_forkit;
+
+/************************************************** Fork Audio Defines *******/
+/* ZZZZ */
+#ifdef XA_FORK
+extern xaULONG XA_Give_Birth();
+extern xaULONG XA_Video_Receive_Ack();
+extern xaULONG XA_Video_Send2_Audio();
+extern void XA_IPC_Close_Pipes();
+extern void XA_IPC_Set_Debug();
+
+
+xaULONG xa_vaudio_present;
+xaULONG xa_vaudio_enable;
+xaULONG xa_vaudio_status;
+
+XA_SND *xa_snd_cur;  /* temporary */
+
+#define XA_AUDIO_SETUP		{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_AUD_SETUP,NULL,0,0,2000,&xa_vaudio_status); }
+#define XA_AUDIO_KILL()		{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_AUD_KILL,NULL,0,0,2000,&xa_vaudio_status); }
+#define XA_AUDIO_ON()		{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_AUD_ON,NULL,0,0,2000,&xa_vaudio_status); }
+#define XA_AUDIO_OFF(x)		{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_AUD_OFF,NULL,0,x,2000,&xa_vaudio_status); }
+#define XA_SET_OUTPUT_PORT(x)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_AUD_PORT,NULL,0,x,2000,0); }
+#define XA_SPEAKER_TOG(x)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_AUD_STOG,NULL,0,x,2000,0); }
+#define XA_HEADPHONE_TOG(x)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_AUD_HTOG,NULL,0,x,2000,0); }
+#define XA_LINEOUT_TOG(x)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_AUD_LTOG,NULL,0,x,2000,0); }
+#define XA_AUDIO_INIT_SND(x)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_SND_INIT,NULL,0,0,2000,0); }
+#define XA_AUDIO_SET_VOLUME(x)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_AUD_VOL,0,0,x,1000,0);  }
+#define XA_AUDIO_SET_MUTE(x)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_AUD_MUTE,0,0,x,1000,0);  }
+#define XA_AUDIO_SET_RATE(x);	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_AUD_RATE,0,0,x,1000,0);  }
+#define XA_AUDIO_SET_ENABLE(x)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_AUD_ENABLE,0,0,x,1000,0); }
+#define XA_AUDIO_SET_FFLAG(x)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_AUD_FFLAG,0,0,x,1000,0); }
+#define XA_AUDIO_SET_BFLAG(x)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_AUD_BFLAG,0,0,x,1000,0); }
+#define XA_AUDIO_GET_STATUS(x)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_GET_STATUS,0,0,0,1000,&x); \
+  else x = XA_AUDIO_NICHTDA; } 
+#define XA_AUDIO_PLAY_FILE(x,y)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_PLAY_FILE, 0,0,x,1000,&y);  }
+#define XA_AUDIO_SET_AUD_BUFF(x) { if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_SET_AUDBUFF, 0,0,(x),1000,0);  }
+#define XA_AUDIO_N_FILE(x,y)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_N_FILE,0,0,x,1000,&y);  }
+#define XA_AUDIO_EXIT()		{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_EXIT,NULL,0,0,1000,0); \
+  xa_forkit = xaFALSE; }
+
+#define XA_AUDIO_VID_TIME(x)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_VID_TIME,NULL,0,x,1000,0); }
+#define XA_AUDIO_FILE(num)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_FILE,0,0,num,1000,0); }
+#define XA_AUDIO_FNAME(fn,len,num)  { if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_FNAME,fn,len,num,1000,0); }
+#define XA_AUDIO_RST_TIME(x)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_RST_TIME,0,0,x,2000,0); }
+#define XA_AUDIO_UNFILE(num)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_UNFILE,0,0,num,1000,0); }
+#define XA_AUDIO_MERGEFILE(num)	{ if (xa_forkit == xaTRUE) xa_forkit = \
+  XA_Video_Send2_Audio(XA_IPC_MERGEFILE,0,0,num,1000,0); }
+#else
 extern void XA_Audio_Setup();
-extern ULONG (*XA_Audio_Init)();
+extern xaULONG (*XA_Audio_Init)();
 extern void (*XA_Audio_Kill)();
 extern void (*XA_Audio_Off)();
 extern void (*XA_Audio_On)();
-extern void (*XA_Output_Audio)();
+extern xaULONG (*XA_Closest_Freq)();
 extern void  (*XA_Set_Output_Port)();
 extern void  (*XA_Speaker_Tog)();
 extern void  (*XA_Headphone_Tog)();
 extern void  (*XA_LineOut_Tog)();
 void XA_Audio_Init_Snd();
-ULONG XA_Audio_Speaker(); 
+
+xaULONG xa_audio_present;
+xaULONG xa_audio_enable;
+xaULONG xa_audio_status;
+#define xa_vaudio_present xa_audio_present
+#define xa_vaudio_enable  xa_audio_enable
+#define xa_vaudio_status  xa_audio_status
+xaULONG xa_audio_mute;		/* mute audio T/F 		*/
+xaLONG  xa_audio_volume;		/* volume 0 - 100 		*/
+xaULONG xa_audio_newvol;		/* volume/mute has changed T/F	*/
+xaULONG xa_audio_port;		/* Audio output port 		*/
+xaULONG xa_audio_playrate;	/* forcibly select audio rate 	*/
+xaULONG xa_audio_divtest;		/* select an interval time 	*/
+double xa_audio_scale;		/* scale audio speed 		*/
+xaULONG xa_audio_buffer;
+XA_SND *xa_snd_cur;
+
+#define XA_AUDIO_SETUP	{ XA_Audio_Setup(); }
+#define XA_AUDIO_KILL()	{ XA_Audio_Kill(); }
+#define XA_AUDIO_ON()	{ XA_Audio_On(); }
+#define XA_AUDIO_OFF(x)	{ XA_Audio_Off(x); }
+#define XA_SET_OUTPUT_PORT(x)	{ XA_Set_Output_Port(x); }
+#define XA_SPEAKER_TOG(x)	{ XA_Speaker_Tog(x); }
+#define XA_HEADPHONE_TOG(x)	{ XA_Headphone_Tog(x); }
+#define XA_LINEOUT_TOG(x)	{ XA_LineOut_Tog(x); }
+#define XA_AUDIO_INIT_SND(x)	{ XA_Audio_Init_Snd(x); }
+#define XA_AUDIO_SET_MUTE(x)
+#define XA_AUDIO_SET_VOLUME(x)
+#define XA_AUDIO_SET_RATE(x)
+#define XA_AUDIO_SET_ENABLE(x);
+#define XA_AUDIO_SET_FFLAG(x);
+#define XA_AUDIO_SET_BFLAG(x);
+#endif
+
+/* POD: NEED TO HAVE THIS INFO SENT ACROSS TO AUDIO CHILD IF CHANGED! */
+char *xa_audio_device = DEFAULT_AUDIO_DEVICE_NAME;
+
+xaULONG XA_Audio_Speaker(); 
 
 void XA_Read_Audio_Delta();
 
 extern Widget theWG;
 
 /* POD TESTING */
-ULONG fli_pad_kludge;
+xaULONG fli_pad_kludge;
 
 void TheEnd();
 void TheEnd1();
@@ -140,7 +252,7 @@ void Usage();
 void Usage_Quick();
 void ShowAnimation();
 void ShowAction();
-LONG Determine_Anim_Type();
+xaLONG Determine_Anim_Type();
 void XA_Audio_Wait();
 void XA_Cycle_Wait();
 void XA_Cycle_It();
@@ -154,17 +266,17 @@ void ACT_Free_Act();
 XA_ANIM_HDR *Get_Anim_Hdr();
 XA_ANIM_HDR *Return_Anim_Hdr();
 void Step_Action_Prev();
-LONG XA_Time_Read();
-void XA_Time_Init();
+xaLONG XA_Time_Read();
+xaLONG XA_Time_Init();
 void XA_Time_Check();
 void XA_Reset_AV_Time();
-LONG XA_Read_AV_Time();
+xaLONG XA_Read_AV_Time();
 void XA_Reset_Speed_Time();
 void XA_Install_CMAP();
-ULONG XA_Mapped_To_Display();
-ULONG XA_Read_Int();
+xaULONG XA_Mapped_To_Display();
+xaULONG XA_Read_Int();
 float XA_Read_Float();
-LONG XA_Get_Class();
+xaLONG XA_Get_Class();
 void XA_Add_Pause();
 void XA_SHOW_IMAGE();
 void XA_SHOW_PIXMAP();
@@ -173,51 +285,63 @@ void XA_SHOW_PIXMAPS();
 void XA_SHOW_DELTA();
 XA_ANIM_SETUP *XA_Get_Anim_Setup();
 void XA_Free_Anim_Setup();
+XA_FUNC_CHAIN *XA_Get_Func_Chain();
+void XA_Add_Func_To_Free_Chain();
+void XA_Walk_The_Chain();
 
-void X11_Setup_Window();
-void X11_Map_Window();
-void X11_Init_Image_Struct();
-void X11_Pre_Setup();
-void ACT_Make_Images();
+extern void X11_Setup_Window();
+extern void X11_Map_Window();
+extern void X11_Init_Image_Struct();
+extern void X11_Init();
+extern void X11_Pre_Setup();
+extern void ACT_Make_Images();
 #ifdef XA_REMOTE_CONTROL
-void XA_Create_Remote();
+extern void XA_Create_Remote();
 #endif
 
 void CMAP_Manipulate_CHDRS();
 void CMAP_Expand_Maps();
-ULONG CMAP_Gamma_Adjust();
+xaULONG CMAP_Gamma_Adjust();
 
-ULONG IFF_Read_File();
-LONG Is_IFF_File();
-ULONG GIF_Read_Anim();
-LONG Is_GIF_File();
-ULONG TXT_Read_File();
-LONG Is_TXT_File();
-ULONG Fli_Read_File();
-LONG Is_FLI_File();
-ULONG DL_Read_File();
-LONG Is_DL_File();
+xaLONG Is_IFF_File();
+xaULONG IFF_Read_File();
+xaLONG Is_GIF_File();
+xaULONG GIF_Read_Anim();
+xaLONG Is_TXT_File();
+xaULONG TXT_Read_File();
+xaLONG Is_FLI_File();
+xaULONG Fli_Read_File();
+xaLONG Is_DL_File();
+xaULONG DL_Read_File();
 /*POD TEMP
-ULONG PFX_Read_File();
-LONG Is_PFX_File();
+xaLONG Is_PFX_File();
+xaULONG PFX_Read_File();
 */
-ULONG SET_Read_File();
-LONG Is_SET_File();
-ULONG RLE_Read_File();
-LONG Is_RLE_File();
-ULONG AVI_Read_File();
-LONG Is_AVI_File();
-ULONG QT_Read_File();
-LONG Is_QT_File();
-ULONG JFIF_Read_File();
-LONG Is_JFIF_File();
-ULONG MPG_Read_File();
-LONG Is_MPG_File();
-LONG Is_WAV_File();
-ULONG WAV_Read_File();
+xaLONG Is_SET_File();
+xaULONG SET_Read_File();
+xaLONG Is_RLE_File();
+xaULONG RLE_Read_File();
+xaLONG Is_AVI_File();
+xaULONG AVI_Read_File();
+xaLONG Is_QT_File();
+xaULONG QT_Read_File();
+xaLONG Is_JFIF_File();
+xaULONG JFIF_Read_File();
+xaLONG Is_MPG_File();
+xaULONG MPG_Read_File();
+xaLONG Is_JMOV_File();
+xaULONG JMOV_Read_File();
+xaLONG Is_ARM_File();
+xaULONG ARM_Read_File();
+xaLONG Is_WAV_File();
+xaULONG WAV_Read_File();
+xaLONG Is_AU_File();
+xaULONG AU_Read_File();
+xaULONG DUM_Read_File();
 
+XA_DEC_INFO xa_dec_info;
 
-ULONG shm = 0;
+xaULONG shm = 0;
 #ifdef XSHM
 XShmSegmentInfo im0_shminfo;
 XShmSegmentInfo im1_shminfo;
@@ -227,6 +351,8 @@ XImage *im1_Image = 0;
 XImage *im2_Image = 0;
 XImage *sh_Image = 0;
 #endif
+
+xaULONG mbuf = 0;
 
 #ifdef VMS
 /*      
@@ -277,40 +403,40 @@ struct timezone *tzp;
  *
  */
 
-LONG x11_error_possible = 0; /* -1 err occured. 0 no error. 1 err expected */
-LONG x11_depth;
-LONG x11_class;
-LONG x11_bytes_pixel;
-LONG x11_byte_order;
-LONG x11_bits_per_pixel;
-LONG x11_bitmap_pad;
-LONG x11_pack_flag;
-LONG x11_bitmap_unit;
-LONG x11_bit_order;
-LONG x11_cmap_flag;
-LONG x11_cmap_size;
-LONG x11_disp_bits;
-LONG x11_cmap_type;
-LONG x11_depth_mask;
-LONG x11_display_type;
-LONG x11_red_mask;
-LONG x11_green_mask;
-LONG x11_blue_mask;
-LONG x11_red_shift;
-LONG x11_green_shift;
-LONG x11_blue_shift;
-LONG x11_red_bits;
-LONG x11_green_bits;
-LONG x11_blue_bits;
-LONG x11_black;
-LONG x11_white;
-LONG x11_verbose_flag;
-LONG pod_max_colors;
-LONG xa_user_visual;
-LONG xa_user_class;
-ULONG x11_kludge_1;
+xaLONG x11_error_possible = 0; /* -1 err occured. 0 no error. 1 err expected */
+xaLONG x11_depth;
+xaLONG x11_class;
+xaLONG x11_bytes_pixel;
+xaLONG x11_byte_order;
+xaLONG x11_bits_per_pixel;
+xaLONG x11_bitmap_pad;
+xaLONG x11_pack_flag;
+xaLONG x11_bitmap_unit;
+xaLONG x11_bit_order;
+xaLONG x11_cmap_flag;
+xaLONG x11_cmap_size;
+xaLONG x11_disp_bits;
+xaLONG x11_cmap_type;
+xaLONG x11_depth_mask;
+xaLONG x11_display_type;
+xaLONG x11_red_mask;
+xaLONG x11_green_mask;
+xaLONG x11_blue_mask;
+xaLONG x11_red_shift;
+xaLONG x11_green_shift;
+xaLONG x11_blue_shift;
+xaLONG x11_red_bits;
+xaLONG x11_green_bits;
+xaLONG x11_blue_bits;
+xaLONG x11_black;
+xaLONG x11_white;
+xaLONG x11_verbose_flag;
+xaLONG pod_max_colors;
+xaLONG xa_user_visual;
+xaLONG xa_user_class;
+xaULONG x11_kludge_1;
 /*POD TEST */
-ULONG pod = 0;
+xaULONG pod = 0;
 
 /*
  * Each animation is broken up into a series of individual actions.
@@ -335,76 +461,76 @@ ULONG pod = 0;
  * for the worst case.
  *
  */
-ULONG xa_anim_type;
-ULONG xa_merged_anim_flags;
+xaULONG xa_anim_type;
+xaULONG xa_merged_anim_flags;
 
 
 /*
  * cmap keeps track of the current colors to the screen.
  *
  */
-LONG cmap_true_to_332;
-LONG cmap_true_to_gray;
-LONG cmap_true_to_1st;
-LONG cmap_true_to_all;
-LONG cmap_true_map_flag;
-LONG cmap_luma_sort;
-LONG cmap_map_to_1st_flag;
-LONG cmap_map_to_one_flag;
-LONG cmap_play_nice;
-LONG cmap_force_load;
-LONG xa_allow_nice;
-LONG cmap_hist_flag;
-LONG cmap_dither_type;
-LONG cmap_median_type;
-LONG cmap_median_bits;
-LONG cmap_use_combsort;
+xaLONG cmap_true_to_332;
+xaLONG cmap_true_to_gray;
+xaLONG cmap_true_to_1st;
+xaLONG cmap_true_to_all;
+xaLONG cmap_true_map_flag;
+xaLONG cmap_luma_sort;
+xaLONG cmap_map_to_1st_flag;
+xaLONG cmap_map_to_one_flag;
+xaLONG cmap_play_nice;
+xaLONG cmap_force_load;
+xaLONG xa_allow_nice;
+xaLONG cmap_hist_flag;
+xaLONG cmap_dither_type;
+xaLONG cmap_median_type;
+xaLONG cmap_median_bits;
+xaLONG cmap_use_combsort;
 double xa_disp_gamma;
 double xa_anim_gamma;
-ULONG xa_gamma_flag;
-USHORT xa_gamma_adj[256];
+xaULONG xa_gamma_flag;
+xaUSHORT xa_gamma_adj[256];
 XA_CHDR *xa_chdr_start;
 XA_CHDR *xa_chdr_cur;
 XA_CHDR *xa_chdr_now;
 XA_CHDR *xa_chdr_first;
-USHORT *cmap_cache,*cmap_cache2;
-ULONG cmap_cache_size;
-ULONG cmap_cache_bits;
-ULONG cmap_cache_rmask;
-ULONG cmap_cache_gmask;
-ULONG cmap_cache_bmask;
+xaUSHORT *cmap_cache,*cmap_cache2;
+xaULONG cmap_cache_size;
+xaULONG cmap_cache_bits;
+xaULONG cmap_cache_rmask;
+xaULONG cmap_cache_gmask;
+xaULONG cmap_cache_bmask;
 XA_CHDR *cmap_cache_chdr;
-SHORT cmap_floyd_error;
+xaSHORT cmap_floyd_error;
 
-ULONG cmap_color_func;
-ULONG cmap_sample_cnt;   /* sample anim every X many frames for colors */
+xaULONG cmap_color_func;
+xaULONG cmap_sample_cnt;   /* sample anim every X many frames for colors */
 
 /*
  * These are variables for HAM images
  *
  */
-ULONG xa_ham_map_size;
-ULONG *xa_ham_map;
+xaULONG xa_ham_map_size;
+xaULONG *xa_ham_map;
 XA_CHDR *xa_ham_chdr;
-ULONG xa_ham_init;
+xaULONG xa_ham_init;
 /*
- * These are for converting TRUE images to PSEUDO
+ * These are for converting xaTRUE images to PSEUDO
  *
  */
-ULONG xa_r_shift,xa_g_shift,xa_b_shift;
-ULONG xa_r_mask,xa_g_mask,xa_b_mask;
-ULONG xa_gray_bits,xa_gray_shift;
+xaULONG xa_r_shift,xa_g_shift,xa_b_shift;
+xaULONG xa_r_mask,xa_g_mask,xa_b_mask;
+xaULONG xa_gray_bits,xa_gray_shift;
 
 ColorReg *xa_cmap = 0;
-ULONG  xa_cmap_size,xa_cmap_off;
-ULONG  *xa_map;
-ULONG  xa_map_size,xa_map_off;
+xaULONG  xa_cmap_size,xa_cmap_off;
+xaULONG  *xa_map;
+xaULONG  xa_map_size,xa_map_off;
 
 /*
  * Global variable to keep track of Anim type
  */
-LONG filetype;
-ULONG xa_title_flag;
+xaLONG filetype;
+xaULONG xa_title_flag;
 char xa_title[256];
 
 
@@ -417,33 +543,33 @@ char xa_title[256];
  *
  * image_size and max_image_size are imagex * imagey, etc.
  */
-ULONG xa_image_size;
-ULONG xa_max_image_size;
-ULONG xa_imagex,xa_max_imagex;
-ULONG xa_imagey,xa_max_imagey;
-ULONG xa_imaged;
+xaULONG xa_image_size;
+xaULONG xa_max_image_size;
+xaULONG xa_imagex,xa_max_imagex;
+xaULONG xa_imagey,xa_max_imagey;
+xaULONG xa_imaged;
 
 /*
  * Scaling Variable
  *
  */
 
-ULONG xa_need_to_scale_b;
-ULONG xa_need_to_scale_u;
+xaULONG xa_need_to_scale_b;
+xaULONG xa_need_to_scale_u;
 float xa_scalex, xa_scaley;
 float xa_bscalex, xa_bscaley;
-ULONG xa_buff_x,xa_buff_y;		/* anim buffering size */
-ULONG xa_allow_lace;
-ULONG xa_allow_resizing; 		/* allow window resizing */
-ULONG xa_disp_y, xa_max_disp_y;
-ULONG xa_disp_x, xa_max_disp_x;
-ULONG xa_disp_size;
-ULONG xa_max_disp_size;
-ULONG x11_display_x, x11_display_y;	/* max display size */
-ULONG x11_window_x, x11_window_y;	/* current window size */
-ULONG *xa_scale_row_buff;
-ULONG xa_scale_row_size;
-ULONG x11_expose_flag;
+xaULONG xa_buff_x,xa_buff_y;		/* anim buffering size */
+xaULONG xa_allow_lace;
+xaULONG xa_allow_resizing; 		/* allow window resizing */
+xaULONG xa_disp_y, xa_max_disp_y;
+xaULONG xa_disp_x, xa_max_disp_x;
+xaULONG xa_disp_size;
+xaULONG xa_max_disp_size;
+xaULONG x11_display_x, x11_display_y;	/* max display size */
+xaULONG x11_window_x, x11_window_y;	/* current window size */
+xaULONG *xa_scale_row_buff;
+xaULONG xa_scale_row_size;
+xaULONG x11_expose_flag;
 
 /* 
  * These variable keep track of where we are in the animation.
@@ -459,88 +585,94 @@ ULONG x11_expose_flag;
  */
 XA_ANIM_HDR *cur_file   = 0;
 XA_ANIM_HDR *first_file = 0;
-LONG xa_file_num;
-LONG cur_floop,cur_frame;
-LONG xa_cycle_cnt;      /* keeps track of number of cycling actions called */
-LONG xa_now_cycling;    /* indicates that cycling is now in progress */
-LONG xa_anim_cycling;   /* if set, allows cycling for animations */
-LONG file_is_started;
+xaLONG xa_file_num;
+xaLONG cur_floop,cur_frame;
+xaLONG xa_cycle_cnt;      /* keeps track of number of cycling actions called */
+xaLONG xa_now_cycling;    /* indicates that cycling is now in progress */
+xaLONG xa_anim_cycling;   /* if set, allows cycling for animations */
+xaLONG file_is_started;
+
 int xa_vid_fd;		/* Used if anim is being read from a file */
+xaUBYTE *xa_vidcodec_buf;
+xaULONG xa_vidcodec_maxsize; 
+
 int xa_aud_fd;		/* Used if anim is being read from a file */
-UBYTE *xa_vidcodec_buf,*xa_audcodec_buf;
-ULONG xa_vidcodec_maxsize, xa_audcodec_maxsize;
+xaUBYTE *xa_audcodec_buf;
+xaULONG xa_audcodec_maxsize;
+
 /*
  * Image buffers.
  * im_buff1 is used for double buffered anims(IFF).
  * xa_disp_buff is needed when the display is of a different format than the
- * double buffered images. (like HAM or TRUE_COLOR).
+ * double buffered images. (like HAM or xaTRUE_COLOR).
  *
  * xa_pic is a pointer to im_buff0 or im_buff1 during double buffering.
  * im_buff2 is used for dithered or HAM images
  */
 char *im_buff0,*im_buff1,*im_buff2,*im_buff3;
 char *xa_pic,*xa_disp_buff,*xa_scale_buff;
-ULONG xa_disp_buff_size,xa_scale_buff_size;
+xaULONG xa_disp_buff_size,xa_scale_buff_size;
 
 /*
  * Variables for statistics
  *
  */
-LONG xa_time_now;
-LONG xa_time_video,xa_time_audio,xa_timelo_audio;
-LONG xa_audio_start;
-LONG xa_time_reset;
-LONG xa_av_time_off;
-LONG xa_skip_flag;
-LONG xa_serious_skip_flag;
-LONG xa_skip_video;
-LONG xa_skip_cnt;	/* keeps track of how many we skip */
-#define XA_SKIP_MAX 25  /* don't skip more than 5 frames in a row */
-LONG xa_time_start;
-LONG xa_time_end;
-LONG xa_time_off;
-LONG xa_no_disp;
-LONG xa_time_flag;
-LONG xa_time_av;
-LONG xa_time_num;
+xaLONG xa_time_now;
+xaLONG xa_time_video,xa_time_audio;
+xaULONG xa_timelo_audio;
+xaLONG xa_audio_start;
+xaLONG xa_time_reset;
+xaLONG xa_av_time_off;
+xaLONG xa_skip_flag;	/* enables skipping */
+xaLONG xa_skip_diff;	/* keeps track of how far behind in frames */
+xaLONG xa_skip_video;	/* flag to Decoder  0 no 1 fallback/skip 2 skip */
+xaLONG xa_skip_cnt;	/* keeps track of how many we skip */
+xaLONG xa_time_start;
+xaLONG xa_time_end;
+xaLONG xa_time_off;
+xaLONG xa_no_disp;
+xaLONG xa_time_flag;
+xaLONG xa_time_av;
+xaLONG xa_frames_skipd, xa_frames_Sskipd;
+xaLONG xa_time_num;
 struct timeval tv;
 
 
 /* 
  * Global flags that are set on command line.
  */
-LONG xa_buffer_flag;
-LONG x11_shared_flag;
-LONG xa_file_flag;
-LONG fade_flag,fade_time;
-LONG xa_noresize_flag;
-LONG xa_optimize_flag;
-LONG xa_pixmap_flag;
-LONG xa_dither_flag;
-LONG xa_pack_flag;
-LONG xa_debug;
-LONG xa_verbose;
-LONG xa_quiet;
+xaLONG xa_buffer_flag;
+xaLONG x11_shared_flag;
+xaLONG x11_multibuf_flag;
+xaLONG xa_file_flag;
+xaLONG fade_flag,fade_time;
+xaLONG xa_noresize_flag;
+xaLONG xa_optimize_flag;
+xaLONG xa_pixmap_flag;
+xaLONG xa_dither_flag;
+xaLONG xa_pack_flag;
+xaLONG xa_debug;
+xaLONG xa_verbose;
+xaLONG xa_quiet;
 
-LONG xa_loop_each_flag;
-LONG xa_pingpong_flag;
-LONG xa_jiffy_flag;
-ULONG xa_speed_scale,xa_speed_change;
+xaLONG xa_loop_each_flag;
+xaLONG xa_pingpong_flag;
+xaLONG xa_jiffy_flag;
+xaULONG xa_speed_scale,xa_speed_change;
 
-LONG xa_anim_flags;
-LONG xa_anim_holdoff;
-LONG xa_anim_status,xa_old_status;
-LONG xa_anim_ready = FALSE;
-LONG xa_remote_ready = FALSE;
-LONG xa_use_depth_flag;
+xaLONG xa_anim_flags;
+xaLONG xa_anim_holdoff;
+xaLONG xa_anim_status,xa_old_status;
+xaLONG xa_anim_ready = xaFALSE;
+xaLONG xa_remote_ready = xaFALSE;
+xaLONG xa_use_depth_flag;
 
-LONG xa_exit_flag;
-LONG xa_remote_flag;
+xaLONG xa_exit_flag;
+xaLONG xa_remote_flag;
 
 XA_PAUSE *xa_pause_hdr=0;
-LONG xa_pause_last;
+xaLONG xa_pause_last;
 
-char *xa_audio_device = DEFAULT_AUDIO_DEVICE_NAME;
 
 /*
  * act is a global pointer to the current action.
@@ -558,16 +690,16 @@ Usage_Quick()
 }
 void
 Usage_Default_TF(flag,justify)
-ULONG flag,justify;
+xaULONG flag,justify;
 {
   if (justify == 1) fprintf(stdout,"            ");
-  if (flag == TRUE) fprintf(stdout," default is on.\n");
+  if (flag == xaTRUE) fprintf(stdout," default is on.\n");
   else fprintf(stdout," default is off.\n");
 }
 
 void
 Usage_Default_Num(num,justify)
-ULONG num,justify;
+xaULONG num,justify;
 {
   if (justify == 1) fprintf(stdout,"            ");
   fprintf(stdout," default is %ld.\n",num);
@@ -586,7 +718,7 @@ void Usage()
  fprintf(stdout,"VMS users need to enclose opts in double qotes: \"+Cn\".\n");
  fprintf(stdout,"\n");
 #endif
- if (DEFAULT_PLUS_IS_ON == TRUE) 
+ if (DEFAULT_PLUS_IS_ON == xaTRUE) 
       fprintf(stdout,"A + turns an option on and a - turns it off.\n");
  else fprintf(stdout,"A - turns an option on and a + turns it off.\n");
  fprintf(stdout,"\n");
@@ -610,7 +742,7 @@ void Usage()
  fprintf(stdout,"      Cf    Forcibly remap to 1st cmap\n");
  Usage_Default_TF(DEFAULT_CMAP_MAP_TO_1ST,1);
  fprintf(stdout,"      CF4   Better(?) Color mapping for TrueColor anims.\n");
- Usage_Default_TF(FALSE,1);
+ Usage_Default_TF(xaFALSE,1);
  fprintf(stdout,"      Cg    Convert TrueColor anims to gray scale.\n");
  Usage_Default_TF(DEFAULT_TRUE_TO_GRAY,1);
  fprintf(stdout,"      Ch    Use histogram to aid in color reduction.\n");
@@ -653,7 +785,7 @@ void Usage()
  Usage_Default_TF(DEFAULT_BUFF_FLAG,1);
 #ifdef XSHM
  fprintf(stdout,"       B    Use X11 Shared Memory Extention if supported.\n"); 
- Usage_Default_TF(FALSE,1);
+ Usage_Default_TF(xaFALSE,1);
 #endif
  fprintf(stdout,"       c    disable looping for nonlooping iff anims.\n"); 
  Usage_Default_TF(DEFAULT_IFF_LOOP_OFF,1);
@@ -714,21 +846,64 @@ void Usage()
  exit(0);
 }
 
+
 int main(argc, argv)
 int argc;
 char *argv[];
 {
- char *filename,*in;
- LONG i,j;
+  char *filename,*in;
+  xaLONG i,j;
 
+  vaudiof = 0;
 /* 
  * Initialize global variables.
  */
- theDisp = NULL;
+  theDisp = NULL;
+
+  xa_av_time_off = XA_Time_Init();
+  xa_forkit = xaFALSE;
+
+  xa_time_now		= 0;
+  xa_time_video		= 0;
+  xa_time_audio		= -1;
+  xa_timelo_audio	= 0;
+  xa_vid_fd		= xa_aud_fd		= -1;
+  xa_vidcodec_buf	= xa_audcodec_buf	=  0;
+  xa_vidcodec_maxsize	= xa_audcodec_maxsize	=  0;
+
+#ifdef XA_AUDIO
+  xa_vaudio_present	= XA_AUDIO_UNK;
+  xa_vaudio_enable	= DEFAULT_XA_AUDIO_ENABLE;
+  xa_vaudio_status	= XA_AUDIO_NICHTDA;
+#ifdef XA_FORK
+/* POD FOR FORK TESTING PURPOSES ONLY */
+  if ( strcmp( argv[0], "xad\0") == 0) XA_IPC_Set_Debug(xaTRUE);
+
+  xa_forkit = XA_Give_Birth();  /* FireUp the Audio Child */
+
+/* Wait for first XA_IPC_OK Acknowlege */
+
+  if (xa_forkit == xaTRUE)
+  {
+     xa_forkit = XA_Video_Receive_Ack(5000);
+  }
+
+  if (xa_forkit == xaTRUE)
+	xa_forkit = XA_Video_Send2_Audio(XA_IPC_HELLO,NULL,0,0,2000,0);
+#endif
+#else
+ xa_vaudio_present	= XA_AUDIO_NONE;
+ xa_vaudio_enable	= xaFALSE;
+ xa_vaudio_status	= XA_AUDIO_NICHTDA;
+#endif
+
+ vaudiof = (XA_AUD_FLAGS *)malloc( sizeof(XA_AUD_FLAGS) );
+ if (vaudiof==0) TheEnd1("vaudiof failure\n");
 
  cmap_color_func = 0;
  cmap_sample_cnt = 5; /* default value */
 
+ xa_has_audio	= xaFALSE;
 #ifdef XSHM
  im0_shminfo.shmaddr = 0;
  im1_shminfo.shmaddr = 0;
@@ -759,66 +934,49 @@ char *argv[];
  xa_max_disp_y	= 0;
  xa_anim_flags		= 0;
  xa_merged_anim_flags	= 0;
- x11_pack_flag	= FALSE;
- x11_expose_flag = FALSE;
+ x11_pack_flag	= xaFALSE;
+ x11_expose_flag = xaFALSE;
  x11_error_possible = 0;
 
  first_file = cur_file = 0;
  xa_file_num = -1;
 
- xa_anim_holdoff	= TRUE;
+ xa_anim_holdoff	= xaTRUE;
  xa_anim_status		= XA_UNSTARTED;
  xa_old_status		= XA_UNSTARTED;
- xa_anim_ready		= FALSE;
- xa_remote_ready	= FALSE;
+ xa_anim_ready		= xaFALSE;
+ xa_remote_ready	= xaFALSE;
 
- xa_audio_init		= FALSE;
-#ifdef XA_AUDIO
- xa_audio_present	= XA_AUDIO_UNK;
- xa_audio_enable	= DEFAULT_XA_AUDIO_ENABLE;
- xa_audio_status	= XA_AUDIO_NICHTDA;
-#else
- xa_audio_present	= XA_AUDIO_NONE;
- xa_audio_enable	= FALSE;
- xa_audio_status	= XA_AUDIO_NICHTDA;
-#endif
- xa_audio_scale		= 1.0;
- xa_audio_mute		= FALSE;
- xa_audio_volume	= DEFAULT_XA_AUDIO_VOLUME;
- if (xa_audio_volume > XA_AUDIO_MAXVOL) xa_audio_volume = XA_AUDIO_MAXVOL;
- xa_audio_newvol	= TRUE;
- xa_audio_playrate	= 0;
  xa_audio_start		= 0;
  xa_time_reset		= 0;
- xa_audio_port 		= XA_Audio_Speaker("SPEAKER");
- /* if DEFAULT_XA_AUDIO_PORT is 0, then XAnim doesn't reset it */
- if (xa_audio_port == 0) xa_audio_port = DEFAULT_XA_AUDIO_PORT;
-/*
-#ifdef XA_SGI_AUDIO
- xa_audio_divtest	= 2;
-#else
- xa_audio_divtest	= 5;
-#endif
-*/
- xa_audio_divtest	= 2;
- xa_audio_synctst	= 0;
- xa_time_now		= 0;
- xa_time_video		= 0;
- xa_time_audio		= -1;
- xa_timelo_audio	= 0;
- xa_skip_flag		= TRUE;
- xa_serious_skip_flag	= FALSE;
- xa_skip_video		= 0;
- xa_skip_cnt		= 0;
- xa_audio_buffer	= FALSE;
 
- xa_vid_fd		= xa_aud_fd	= -1;
- xa_vidcodec_buf	= xa_audcodec_buf	= 0;
- xa_vidcodec_maxsize	= xa_audcodec_maxsize	= 0;
+ vaudiof->device		= DEFAULT_AUDIO_DEVICE_NAME;
+ vaudiof->scale		= 1.0;
+ vaudiof->mute		= xaFALSE;
+ vaudiof->volume		= DEFAULT_XA_AUDIO_VOLUME;
+ if (vaudiof->volume > XA_AUDIO_MAXVOL) vaudiof->volume = XA_AUDIO_MAXVOL;
+ vaudiof->newvol	= xaTRUE;
+ vaudiof->playrate	= 0;
+ vaudiof->port 		= XA_Audio_Speaker("SPEAKER");
+ /* if DEFAULT_XA_AUDIO_PORT is 0, then XAnim doesn't reset it */
+ if (vaudiof->port == 0) vaudiof->port = DEFAULT_XA_AUDIO_PORT;
+ vaudiof->divtest	= 2;
+ vaudiof->fromfile	= xaFALSE;
+ vaudiof->bufferit	= xaFALSE;
+ XA_AUDIO_SET_VOLUME(vaudiof->volume);
+ XA_AUDIO_SET_MUTE(vaudiof->mute);
+ XA_AUDIO_SET_RATE(vaudiof->playrate);
+
+ xa_skip_flag		= xaTRUE;
+ xa_skip_video		= 0;
+ xa_skip_diff		= 0;
+ xa_skip_cnt		= 0;
+
  xa_buffer_flag		= DEFAULT_BUFF_FLAG;
- if (xa_buffer_flag == TRUE) xa_file_flag = FALSE;
+ if (xa_buffer_flag == xaTRUE) xa_file_flag = xaFALSE;
  else xa_file_flag	= DEFAULT_FILE_FLAG;
- x11_shared_flag	= TRUE;
+ x11_shared_flag	= xaTRUE;
+ x11_multibuf_flag	= xaTRUE;
  xa_pack_flag		= DEFAULT_PACK_FLAG;
  xa_noresize_flag	= DEFAULT_NORESIZE_FLAG;
  xa_verbose		= DEFAULT_VERBOSE;
@@ -836,19 +994,19 @@ char *argv[];
  xa_speed_scale		= XA_SPEED_NORM;
  xa_speed_change	= 0;
  x11_verbose_flag	= DEFAULT_X11_VERBOSE_FLAG;
- x11_kludge_1		= FALSE;
+ x11_kludge_1		= xaFALSE;
  cmap_luma_sort		= DEFAULT_CMAP_LUMA_SORT;
  cmap_map_to_1st_flag	= DEFAULT_CMAP_MAP_TO_1ST;
  cmap_map_to_one_flag	= DEFAULT_CMAP_MAP_TO_ONE;
  cmap_play_nice		= DEFAULT_CMAP_PLAY_NICE;
- cmap_force_load	= FALSE;
- xa_allow_nice		= TRUE;
+ cmap_force_load	= xaFALSE;
+ xa_allow_nice		= xaTRUE;
  cmap_hist_flag		= DEFAULT_CMAP_HIST_FLAG;
  cmap_dither_type	= DEFAULT_CMAP_DITHER_TYPE;
 
  cmap_median_type	= DEFAULT_CMAP_MEDIAN_TYPE;
  cmap_median_bits	= 6;
- cmap_use_combsort	= TRUE;
+ cmap_use_combsort	= xaTRUE;
  cmap_floyd_error	= 256; 
  cmap_cache		= cmap_cache2		= 0;
  cmap_cache_size	= 0;
@@ -859,7 +1017,7 @@ char *argv[];
  cmap_cache_chdr	= 0;
  xa_disp_gamma		= DEFAULT_DISP_GAMMA;
  xa_anim_gamma		= DEFAULT_ANIM_GAMMA;
- xa_gamma_flag		= FALSE;
+ xa_gamma_flag		= xaFALSE;
 
  xa_title_flag		= DEFAULT_XA_TITLE_FLAG;
  xa_exit_flag		= DEFAULT_XA_EXIT_FLAG;
@@ -878,9 +1036,10 @@ char *argv[];
  xa_time_start		= 0;
  xa_time_end		= 0;
  xa_time_av 		= 0;
+ xa_frames_skipd	= xa_frames_Sskipd	= 0;
  xa_time_num		= 0;
- xa_no_disp		= FALSE;
- xa_time_flag		= FALSE;
+ xa_no_disp		= xaFALSE;
+ xa_time_flag		= xaFALSE;
  pod_max_colors		= 0;
  xa_r_shift = xa_g_shift = xa_b_shift = 0;
  xa_r_mask = xa_g_mask = xa_b_mask = 0;
@@ -889,16 +1048,14 @@ char *argv[];
  xa_ham_map = 0;
  xa_ham_chdr = 0;
  xa_ham_init = 0;
- fli_pad_kludge = FALSE;
+ fli_pad_kludge = xaFALSE;
  xa_pause_hdr = 0;
- xa_pause_last = FALSE;
+ xa_pause_last = xaFALSE;
 
- DEBUG_LEVEL5 (void)fprintf(stdout,"Calling XA_Time_Init()\n");
- XA_Time_Init();
  xa_gamma_flag = CMAP_Gamma_Adjust(xa_gamma_adj,xa_disp_gamma,xa_anim_gamma);
 
- if (DEFAULT_IFF_LOOP_OFF  == TRUE) xa_anim_flags |= ANIM_NOLOOP;
- if (DEFAULT_CYCLE_IMAGE_FLAG == TRUE) xa_anim_flags |= ANIM_CYCLE;
+ if (DEFAULT_IFF_LOOP_OFF  == xaTRUE) xa_anim_flags |= ANIM_NOLOOP;
+ if (DEFAULT_CYCLE_IMAGE_FLAG == xaTRUE) xa_anim_flags |= ANIM_CYCLE;
 
 /* setup for dying time.
  */
@@ -920,12 +1077,14 @@ char *argv[];
 		xa_user_visual = atoi(&in[2]);
      else	xa_user_class = XA_Get_Class( &in[2] );
    }
-   else if ( (in[0]=='-') && (in[1]=='X') ) x11_verbose_flag = FALSE;
-   else if ( (in[0]=='+') && (in[1]=='X') ) x11_verbose_flag = TRUE;
-   else if ( (in[0]=='+') && (in[1]=='B') ) x11_shared_flag = TRUE;
-   else if ( (in[0]=='-') && (in[1]=='B') ) x11_shared_flag = FALSE;
-   else if ( (in[0]=='+') && (in[1]=='q') ) xa_quiet = TRUE;
-   else if ( (in[0]=='-') && (in[1]=='q') ) xa_quiet = FALSE;
+   else if ( (in[0]=='-') && (in[1]=='X') ) x11_verbose_flag = xaFALSE;
+   else if ( (in[0]=='+') && (in[1]=='X') ) x11_verbose_flag = xaTRUE;
+   else if ( (in[0]=='+') && (in[1]=='B') ) x11_shared_flag = xaTRUE;
+   else if ( (in[0]=='-') && (in[1]=='B') ) x11_shared_flag = xaFALSE;
+   else if ( (in[0]=='+') && (in[1]=='D') ) x11_multibuf_flag = xaTRUE;
+   else if ( (in[0]=='-') && (in[1]=='D') ) x11_multibuf_flag = xaFALSE;
+   else if ( (in[0]=='+') && (in[1]=='q') ) xa_quiet = xaTRUE;
+   else if ( (in[0]=='-') && (in[1]=='q') ) xa_quiet = xaFALSE;
    else if ( ( (in[0]=='-') && (in[1]=='d') )   ||
              ( (in[0]=='+') && (in[1]=='d') ) ){
      if ( (in[2] >= '0') && (in[2] <= '9') )  /* number */
@@ -941,8 +1100,8 @@ char *argv[];
 
 /* What REV are we running
  */
- if ( (xa_quiet==FALSE) || (xa_verbose==TRUE) || (xa_debug >= 1) )
- fprintf(stdout,"XAnim Rev %2.2f.%ld.%lda by Mark Podlipec (c) 1991-1995\n",DA_REV,DA_MINOR_REV,DA_BETA_REV);
+ if ( (xa_quiet==xaFALSE) || (xa_verbose==xaTRUE) || (xa_debug >= 1) )
+ fprintf(stdout,"XAnim Rev %2.2f.%ld Experimental by Mark Podlipec (c) 1991-1995\n",DA_REV,DA_MINOR_REV);
 
 /* quick command line check.
  */
@@ -951,31 +1110,40 @@ char *argv[];
 
  /* PreSet of X11 Display to find out what we're dealing with
   */
- DEBUG_LEVEL5 (void)fprintf(stdout,"Calling X11_Pre_Setup()\n");
- X11_Pre_Setup(&argc, argv, xa_user_visual, xa_user_class);
- if (xa_allow_nice == FALSE) cmap_play_nice = FALSE;
+ DEBUG_LEVEL5 (void)fprintf(stderr,"Calling X11_Pre_Setup()\n");
+ X11_Init(&argc, argv);
+ X11_Pre_Setup(xa_user_visual, xa_user_class);
+
+#ifdef XA_FORK
+  if (xa_forkit == xaTRUE)
+  {
+    XA_Setup_BOFL();
+  }
+#endif
+
+ if (xa_allow_nice == xaFALSE) cmap_play_nice = xaFALSE;
  if ( (x11_bits_per_pixel == 2) || (x11_bits_per_pixel == 4) )
-						x11_pack_flag = TRUE;
+						x11_pack_flag = xaTRUE;
   if (x11_display_type == XA_MONOCHROME) xa_dither_flag = DEFAULT_DITHER_FLAG;
   else if (   (x11_display_type == XA_PSEUDOCOLOR)
 	   || (x11_display_type == XA_STATICCOLOR) )
   {
-    if (cmap_color_func == 4) xa_dither_flag = FALSE;
-    else if (cmap_color_func == 5) xa_dither_flag = TRUE;
+    if (cmap_color_func == 4) xa_dither_flag = xaFALSE;
+    else if (cmap_color_func == 5) xa_dither_flag = xaTRUE;
     else xa_dither_flag = DEFAULT_DITHER_FLAG;
   }
-  else xa_dither_flag = FALSE;
+  else xa_dither_flag = xaFALSE;
 
  /* Audio Setup */
  DEBUG_LEVEL5 (void)fprintf(stdout,"Calling XA_Audio_Setup()\n");
- XA_Audio_Setup();
+ XA_AUDIO_SETUP;
 
  /* Visual Dependent switches and flags */
  if (x11_display_type & XA_X11_TRUE)
  {
-   cmap_true_to_332  = FALSE; cmap_true_to_gray = FALSE;
-   cmap_true_to_1st  = FALSE; cmap_true_to_all  = FALSE;
-   cmap_true_map_flag = FALSE;
+   cmap_true_to_332  = xaFALSE; cmap_true_to_gray = xaFALSE;
+   cmap_true_to_1st  = xaFALSE; cmap_true_to_all  = xaFALSE;
+   cmap_true_map_flag = xaFALSE;
  }
  else if (x11_display_type & XA_X11_COLOR)
  {
@@ -983,12 +1151,12 @@ char *argv[];
    cmap_true_to_gray = DEFAULT_TRUE_TO_GRAY;
    cmap_true_to_1st  = DEFAULT_TRUE_TO_1ST;
    cmap_true_to_all  = DEFAULT_TRUE_TO_ALL;
-   if (cmap_true_to_1st || cmap_true_to_all) cmap_true_map_flag = TRUE;
+   if (cmap_true_to_1st || cmap_true_to_all) cmap_true_map_flag = xaTRUE;
    else cmap_true_map_flag = DEFAULT_TRUE_MAP_FLAG;
  }
- else { cmap_true_to_332  = FALSE; cmap_true_to_gray = TRUE; 
-        cmap_true_to_1st  = FALSE; cmap_true_to_all  = FALSE;
-        cmap_true_map_flag = FALSE;  }
+ else { cmap_true_to_332  = xaFALSE; cmap_true_to_gray = xaTRUE; 
+        cmap_true_to_1st  = xaFALSE; cmap_true_to_all  = xaFALSE;
+        cmap_true_map_flag = xaFALSE;  }
 
  xa_time_start = XA_Time_Read();
 
@@ -999,12 +1167,12 @@ char *argv[];
    in = argv[i];
    if ( (in[0] == '-') || (in[0] == '+') )
    {
-     LONG len,opt_on;
+     xaLONG len,opt_on;
 
-     if (in[0] == '-') opt_on = FALSE;
-     else opt_on = TRUE;
+     if (in[0] == '-') opt_on = xaFALSE;
+     else opt_on = xaTRUE;
      /* if + turns off then reverse opt_on */
-     if (DEFAULT_PLUS_IS_ON == FALSE) opt_on = (opt_on==TRUE)?FALSE:TRUE;
+     if (DEFAULT_PLUS_IS_ON == xaFALSE) opt_on = (opt_on==xaTRUE)?xaFALSE:xaTRUE;
 
      len = strlen(argv[i]);
      j = 1;
@@ -1014,23 +1182,23 @@ char *argv[];
        {
         case 'A':   /* audio options sub menu */
 	{
-	  ULONG exit_flag = FALSE;
+	  xaULONG exit_flag = xaFALSE;
 	  j++;
-	  while( (exit_flag == FALSE) && (j<len) )
+	  while( (exit_flag == xaFALSE) && (j<len) )
 	  {
 	    switch(in[j])
 	    {
 	      case 'b':   /* snd buffer on/off */
-		j++; xa_audio_buffer = opt_on;
+		j++; vaudiof->bufferit = opt_on;
 		break;
 	      case 'e':   /* snd enable on/off */
-		j++; xa_audio_enable = opt_on;
+		j++; xa_vaudio_enable = opt_on;
 		break;
 	      case 'k':   /* toggle skip video */
 		j++; xa_skip_flag = opt_on;
 		break;
 	      case 'p':   /* select audio port */
-		{ ULONG t,val;
+		{ xaULONG t,val;
 		  j++; t = XA_Read_Int(in,&j);
 		  switch(t)
 		  {
@@ -1039,48 +1207,47 @@ char *argv[];
 		    case 2: val = XA_AUDIO_PORT_EXT; break;
 		    default: val = 0;
 		  }
-		  if (opt_on == TRUE) xa_audio_port |= val;
-		  else xa_audio_port &= ~(val);
+		  if (opt_on == xaTRUE) vaudiof->port |= val;
+		  else vaudiof->port &= ~(val);
 		}
 		break;
 	      case 'd':   /* POD TEST */
-		j++; xa_audio_divtest = XA_Read_Int(in,&j);
-		if (xa_audio_divtest==0) xa_audio_divtest = 2;
+		j++; vaudiof->divtest = XA_Read_Int(in,&j);
+		if (vaudiof->divtest==0) vaudiof->divtest = 2;
 		break;
 	      case 'D':   /* s/6000 audio device name */
 	      {
-		j++; xa_audio_device = &in[j];
+		j++; vaudiof->device = &in[j];
 		j = len;
 	      }
 	      break;
 	      case 'r':   /* POD TEST */
-		j++; xa_audio_playrate = XA_Read_Int(in,&j);
-		if (xa_audio_playrate==0) xa_audio_playrate = 8000;
+		j++; vaudiof->playrate = XA_Read_Int(in,&j);
+		if (vaudiof->playrate==0) vaudiof->playrate = 8000;
+		XA_AUDIO_SET_RATE(vaudiof->playrate);
 		break;
 	      case 's':   /* snd scale */
-		j++; xa_audio_scale = XA_Read_Float(in,&j);
+		j++; vaudiof->scale = XA_Read_Float(in,&j);
 		fprintf(stderr,"XAnim: +As# temporarily disabled.\n");
-		if (xa_audio_scale < 0.125) xa_audio_scale = 0.125;
-		if (xa_audio_scale > 8.000) xa_audio_scale = 8.000;
-		break;
-	      case 't':   /* POD TEST */
-		j++; xa_audio_synctst = XA_Read_Int(in,&j);
+		if (vaudiof->scale < 0.125) vaudiof->scale = 0.125;
+		if (vaudiof->scale > 8.000) vaudiof->scale = 8.000;
 		break;
 	      case 'v':
-		j++; xa_audio_volume = XA_Read_Int(in,&j);
-		if (xa_audio_volume > XA_AUDIO_MAXVOL) 
-					xa_audio_volume = XA_AUDIO_MAXVOL;
+		j++; vaudiof->volume = XA_Read_Int(in,&j);
+		if (vaudiof->volume > XA_AUDIO_MAXVOL) 
+					vaudiof->volume = XA_AUDIO_MAXVOL;
+		XA_AUDIO_SET_VOLUME(vaudiof->volume);
 		break;
-	      default: exit_flag = TRUE;
+	      default: exit_flag = xaTRUE;
 	    }
 	  }
 	}
 	break;
         case 'C':   /* colormap options sub menu */
 	  {
-	    ULONG exit_flag = FALSE;
+	    xaULONG exit_flag = xaFALSE;
 	    j++;
-	    while( (exit_flag == FALSE) && (j<len) )
+	    while( (exit_flag == xaFALSE) && (j<len) )
 	    {
 		switch(in[j])
 		{
@@ -1089,53 +1256,53 @@ char *argv[];
 			break;
 		  case 'F':
 			j++; cmap_color_func = XA_Read_Int(in,&j);
-			if (cmap_color_func==4) xa_dither_flag = FALSE;
+			if (cmap_color_func==4) xa_dither_flag = xaFALSE;
 			else if (cmap_color_func==5)
-			{ xa_dither_flag = TRUE;
+			{ xa_dither_flag = xaTRUE;
 			  cmap_color_func = 4;
 			}
 			break;
 		  case '1':
  			if (   (x11_display_type & XA_X11_TRUE)
  			    || (x11_display_type == XA_MONOCHROME) ) 
-							opt_on = FALSE;
+							opt_on = xaFALSE;
 			cmap_true_to_1st  = opt_on;
-			if (cmap_true_to_1st == TRUE)
+			if (cmap_true_to_1st == xaTRUE)
 			{
-			  cmap_true_to_gray = FALSE; cmap_true_to_332  = FALSE;
-			  cmap_true_to_all  = FALSE; cmap_true_map_flag = TRUE;
+			  cmap_true_to_gray = xaFALSE; cmap_true_to_332  = xaFALSE;
+			  cmap_true_to_all  = xaFALSE; cmap_true_map_flag = xaTRUE;
 			}
 			j++; break;
 		  case 'A':
  			if (   (x11_display_type & XA_X11_TRUE)
  			    || (x11_display_type == XA_MONOCHROME) ) 
-							opt_on = FALSE;
+							opt_on = xaFALSE;
 			cmap_true_to_all  = opt_on;
-			if (cmap_true_to_all == TRUE)
+			if (cmap_true_to_all == xaTRUE)
 			{
-			  cmap_true_to_gray = FALSE; cmap_true_to_332  = FALSE;
-			  cmap_true_to_1st  = FALSE; cmap_true_map_flag = TRUE;
+			  cmap_true_to_gray = xaFALSE; cmap_true_to_332  = xaFALSE;
+			  cmap_true_to_1st  = xaFALSE; cmap_true_map_flag = xaTRUE;
 			}
 			j++; break;
 		  case '3':
  			if (   (x11_display_type & XA_X11_TRUE)
  			    || (!(x11_display_type & XA_X11_COLOR))
  			    || (x11_display_type == XA_MONOCHROME) ) 
-							opt_on = FALSE;
+							opt_on = xaFALSE;
 			cmap_true_to_332  = opt_on;
-			if (opt_on == TRUE)
+			if (opt_on == xaTRUE)
 			{
-			  cmap_true_to_gray = FALSE; cmap_true_to_1st  = FALSE;
-			  cmap_true_to_all  = FALSE;
+			  cmap_true_to_gray = xaFALSE; cmap_true_to_1st  = xaFALSE;
+			  cmap_true_to_all  = xaFALSE;
 			}
 			j++; break;
 		  case 'g':
- 			if (x11_display_type & XA_X11_TRUE) opt_on = FALSE;
+ 			if (x11_display_type & XA_X11_TRUE) opt_on = xaFALSE;
 			cmap_true_to_gray  = opt_on;
-			if (opt_on == TRUE)
+			if (opt_on == xaTRUE)
 			{
-			  cmap_true_to_332 = FALSE; cmap_true_to_1st = FALSE;
-			  cmap_true_to_all = FALSE;
+			  cmap_true_to_332 = xaFALSE; cmap_true_to_1st = xaFALSE;
+			  cmap_true_to_all = xaFALSE;
 			}
 			j++; break;
 		  case 'a': cmap_map_to_one_flag = opt_on; j++; break;
@@ -1145,19 +1312,19 @@ char *argv[];
 		  case 'f': cmap_map_to_1st_flag = opt_on; j++; break;
 		  case 'm': cmap_true_map_flag = opt_on; j++; break;
 		  case 'n': j++;
-		    if (xa_allow_nice == TRUE) cmap_play_nice  = opt_on;
+		    if (xa_allow_nice == xaTRUE) cmap_play_nice  = opt_on;
 		    break;
 		  case 'h': cmap_hist_flag  = opt_on; j++; break;
-		  default: exit_flag = TRUE;
+		  default: exit_flag = xaTRUE;
 		}
 	    }
 	  }
           break;
 	case 'G': /* gamma options sub-menu */ 
 	  {
-	    ULONG exit_flag = FALSE;
+	    xaULONG exit_flag = xaFALSE;
 	    j++;
-	    while( (exit_flag == FALSE) && (j<len) )
+	    while( (exit_flag == xaFALSE) && (j<len) )
 	    {
 		switch(in[j])
 		{
@@ -1175,7 +1342,7 @@ char *argv[];
 			xa_gamma_flag = CMAP_Gamma_Adjust(xa_gamma_adj,
 						xa_disp_gamma,xa_anim_gamma);
 			break;
-		  default: exit_flag = TRUE;
+		  default: exit_flag = xaTRUE;
 		}
 	    }
 	  }
@@ -1183,9 +1350,9 @@ char *argv[];
 
 	case 'M': /* median cut options sub-menu */ 
 	  {
-	    ULONG exit_flag = FALSE;
+	    xaULONG exit_flag = xaFALSE;
 	    j++;
-	    while( (exit_flag == FALSE) && (j<len) )
+	    while( (exit_flag == xaFALSE) && (j<len) )
 	    {
 		switch(in[j])
 		{
@@ -1202,10 +1369,10 @@ char *argv[];
 			if (cmap_median_bits >  8) cmap_median_bits = 8;
 			break;
 		  /* POD benchmark only */
-		  case 'q': if (opt_on == TRUE) cmap_use_combsort = FALSE;
-			    else cmap_use_combsort = TRUE;
+		  case 'q': if (opt_on == xaTRUE) cmap_use_combsort = xaFALSE;
+			    else cmap_use_combsort = xaTRUE;
 			    j++; break;
-		  default: exit_flag = TRUE;
+		  default: exit_flag = xaTRUE;
 		}
 	    }
 	  }
@@ -1213,12 +1380,15 @@ char *argv[];
         case 'B':
                 x11_shared_flag = opt_on;	j++;
                 break;
+        case 'D':
+                x11_multibuf_flag = opt_on;	j++;
+                break;
         case 'b':
                 xa_buffer_flag = opt_on;	j++;
-		if (xa_buffer_flag==TRUE) xa_file_flag = FALSE;
+		if (xa_buffer_flag==xaTRUE) xa_file_flag = xaFALSE;
                 break;
         case 'c':
-                if (opt_on==TRUE) xa_anim_flags |= ANIM_NOLOOP;
+                if (opt_on==xaTRUE) xa_anim_flags |= ANIM_NOLOOP;
                 else xa_anim_flags &= (~ANIM_NOLOOP);
                 j++; break;
         case 'd':
@@ -1227,11 +1397,11 @@ char *argv[];
 		break;
         case 'f':
                 xa_file_flag = opt_on;	j++;
-		if (xa_file_flag==TRUE) xa_buffer_flag = FALSE;
+		if (xa_file_flag==xaTRUE) xa_buffer_flag = xaFALSE;
 		break;
         case 'F':
                 xa_dither_flag = opt_on;	j++;
-		if (x11_display_type & XA_X11_TRUE) xa_dither_flag = FALSE;
+		if (x11_display_type & XA_X11_TRUE) xa_dither_flag = xaFALSE;
 		break;
         case 'h':
                 Usage(); break;
@@ -1239,7 +1409,7 @@ char *argv[];
 		j++; xa_speed_scale = XA_Read_Int(in,&j);
 		if (xa_speed_scale == 0) xa_speed_scale = 1;
 		if (xa_speed_scale > 16) xa_speed_scale = 16;
-		if (opt_on == TRUE) xa_speed_scale <<= 4;
+		if (opt_on == xaTRUE) xa_speed_scale <<= 4;
 		else	xa_speed_scale = (1<<4) / xa_speed_scale;
 		break;
         case 'j':
@@ -1252,7 +1422,7 @@ char *argv[];
 		else xa_jiffy_flag = 0; /* off */
                 break;
         case 'k':
-		{ ULONG tmp;
+		{ xaULONG tmp;
                   j++;
 		  if ( (in[j] >= '0') || (in[j] <= '9') )
 		  { 
@@ -1267,7 +1437,7 @@ char *argv[];
 		{
 		  xa_pingpong_flag = opt_on; j++;
 		}
-		else xa_pingpong_flag = FALSE;
+		else xa_pingpong_flag = xaFALSE;
                 xa_loop_each_flag = XA_Read_Int(in,&j);
                 if (xa_loop_each_flag<=0) xa_loop_each_flag = 1;
 		break;
@@ -1278,7 +1448,7 @@ char *argv[];
                 xa_optimize_flag = opt_on; j++;	break;
         case 'p':
                 xa_pixmap_flag = opt_on; j++;
-		if (opt_on==TRUE) xa_anim_flags |= ANIM_PIXMAP;
+		if (opt_on==xaTRUE) xa_anim_flags |= ANIM_PIXMAP;
 		else xa_anim_flags &= ~ANIM_PIXMAP;
                 break;
         case 'P':
@@ -1286,7 +1456,7 @@ char *argv[];
                 if (pod_max_colors <= 0) pod_max_colors = 0;
 		break;
         case 'r':
-                if (opt_on == TRUE)	xa_anim_flags |= ANIM_CYCLE;
+                if (opt_on == xaTRUE)	xa_anim_flags |= ANIM_CYCLE;
                 else			xa_anim_flags &= (~ANIM_CYCLE);
                 j++;
                 break;
@@ -1294,9 +1464,9 @@ char *argv[];
                 xa_anim_cycling = opt_on; j++;	break;
         case 'S':
 	  {
-	    ULONG exit_flag = FALSE;
+	    xaULONG exit_flag = xaFALSE;
 	    j++;
-	    while( (exit_flag==FALSE) && (j<len) )
+	    while( (exit_flag==xaFALSE) && (j<len) )
 	    {
 		switch(in[j])
 		{
@@ -1361,7 +1531,7 @@ char *argv[];
                     xa_bscaley = XA_Read_Float(in,&j);
 		    if (xa_bscaley == 0.0) xa_bscaley = 1.0;
 		    xa_buff_y = 0; break;
-		  default: exit_flag = TRUE;
+		  default: exit_flag = xaTRUE;
 		}
 	    }
 	  }
@@ -1382,10 +1552,10 @@ char *argv[];
 		j += len; break;   /* ignore reset and move on */
         case 'Z':
 	  {
-	    ULONG exit_flag = FALSE;
+	    xaULONG exit_flag = xaFALSE;
 	    j++;
-	    while( (exit_flag==FALSE) && (j<len) )
-	    { ULONG tmp;
+	    while( (exit_flag==xaFALSE) && (j<len) )
+	    { xaULONG tmp;
 		switch(in[j])
 		{
 		  case 'e': xa_exit_flag = opt_on;	j++;	break;
@@ -1398,15 +1568,15 @@ char *argv[];
 		  case 'z': /* POD TEST SWITCH FOR TRY DIFFERENT THINGS */
 		    j++; pod = XA_Read_Int(in,&j);
 		    break;
-		  default: exit_flag = TRUE;
+		  default: exit_flag = xaTRUE;
 		}
 	    }
 	  }
 	  break;
         case '-':
-                opt_on = (DEFAULT_PLUS_IS_ON==TRUE)?FALSE:TRUE; j++;	break;
+                opt_on = (DEFAULT_PLUS_IS_ON==xaTRUE)?xaFALSE:xaTRUE; j++;	break;
         case '+':
-                opt_on = (DEFAULT_PLUS_IS_ON==TRUE)?TRUE:FALSE; j++;	break;
+                opt_on = (DEFAULT_PLUS_IS_ON==xaTRUE)?xaTRUE:xaFALSE; j++;	break;
         default:
                 Usage_Quick();
        } /* end of option switch */
@@ -1415,38 +1585,44 @@ char *argv[];
    else 
    /* If no hyphen in front of argument, assume it's a file.
     */
-   { ULONG result,audio_attempt;
+   { xaULONG result,audio_attempt;
+     xaULONG merge_flag = xaFALSE;
      filename = argv[i];
 
      /* Visual Dependent switches and flags */
      if (x11_display_type & XA_X11_TRUE)
      {
-       cmap_true_to_332  = cmap_true_to_gray = FALSE;
-       cmap_true_to_1st  = cmap_true_to_all  = cmap_true_map_flag = FALSE;
+       cmap_true_to_332  = cmap_true_to_gray = xaFALSE;
+       cmap_true_to_1st  = cmap_true_to_all  = cmap_true_map_flag = xaFALSE;
      }
      else if (!(x11_display_type & XA_X11_COLOR))
-     { cmap_true_to_gray = TRUE; cmap_true_to_332  = FALSE;
-       cmap_true_to_1st  = cmap_true_to_all  = cmap_true_map_flag = FALSE;
+     { cmap_true_to_gray = xaTRUE; cmap_true_to_332  = xaFALSE;
+       cmap_true_to_1st  = cmap_true_to_all  = cmap_true_map_flag = xaFALSE;
      }
     
      /* disable audio is timing has changed */
-     if (xa_jiffy_flag) xa_audio_enable = FALSE;
+     if (xa_jiffy_flag) xa_vaudio_enable = xaFALSE;
      /* pass audio flag to routines */
-     if ( (xa_audio_enable == TRUE) &&
-          ((xa_audio_present==XA_AUDIO_UNK) || (xa_audio_present==XA_AUDIO_OK))
-        ) audio_attempt = TRUE;
-     else audio_attempt = FALSE;
+     if ( (xa_vaudio_enable == xaTRUE) &&
+         ((xa_vaudio_present==XA_AUDIO_UNK) || (xa_vaudio_present==XA_AUDIO_OK))
+        ) audio_attempt = xaTRUE;
+     else audio_attempt = xaFALSE;
 
-     if ( (x11_display_type == XA_MONOCHROME) || (xa_pack_flag == TRUE) )
-       xa_use_depth_flag = FALSE;
+     XA_AUDIO_SET_ENABLE(audio_attempt);
+     XA_AUDIO_SET_FFLAG(xa_file_flag);
+     XA_AUDIO_SET_BFLAG(vaudiof->bufferit);
+
+
+     if ( (x11_display_type == XA_MONOCHROME) || (xa_pack_flag == xaTRUE) )
+       xa_use_depth_flag = xaFALSE;
      else
-       xa_use_depth_flag = TRUE;
+       xa_use_depth_flag = xaTRUE;
         /* default is FLI  */
      cur_file = Get_Anim_Hdr(cur_file,filename);
      xa_anim_type = Determine_Anim_Type(filename);
      cur_file->anim_type = xa_anim_type;
      cur_file->anim_flags = xa_anim_flags;
-     if (x11_display_type == XA_MONOCHROME) xa_optimize_flag = FALSE;
+     if (x11_display_type == XA_MONOCHROME) xa_optimize_flag = xaFALSE;
      switch(xa_anim_type)
      {
         case IFF_ANIM:
@@ -1495,40 +1671,100 @@ char *argv[];
 	  if (xa_verbose) fprintf(stderr,"Reading AVI File %s\n",filename);
 	  result = AVI_Read_File(filename,cur_file,audio_attempt);
 	  break;
-        case WAV_ANIM:
-	  result = FALSE;
-	  if (   (cur_file->prev_file == 0) 
-              || (cur_file->prev_file == cur_file) ) break;
-	  if (cur_file->prev_file->first_snd != 0) break;
-	  if (xa_verbose) fprintf(stderr,"Reading WAV File %s\n",filename);
-	  result = WAV_Read_File(filename,cur_file->prev_file,audio_attempt);
-	  result = FALSE; /* always want to free up cur_file */
-	  break;
         case QT_ANIM:
 	  if (xa_verbose) fprintf(stderr,"Reading QT File %s\n",filename);
 	  result = QT_Read_File(filename,cur_file,audio_attempt);
 	  break;
+        case JMOV_ANIM:
+	  if (xa_verbose) fprintf(stderr,"Reading JMOV File %s\n",filename);
+	  result = JMOV_Read_File(filename,cur_file,audio_attempt);
+	  break;
+        case ARM_ANIM:
+	  if (xa_verbose) fprintf(stderr,"Reading ARM File %s\n",filename);
+	  result = ARM_Read_File(filename,cur_file,audio_attempt);
+	  break;
         case NOFILE_ANIM:
 	  fprintf(stderr,"File %s not found\n",filename);
-	  result = FALSE;
+	  result = xaFALSE;
+	  break;
+        case AU_ANIM:
+        case WAV_ANIM:
+	  { XA_ANIM_HDR *snd_file;
+	    merge_flag = xaTRUE;
+		/* If first file, then create dummy video file */
+	    if (   (cur_file->prev_file == 0) 
+              || (cur_file->prev_file == cur_file) )
+		{ DUM_Read_File(filename,cur_file); merge_flag = xaFALSE; }
+
+		/* If prev file has audio, create new dummy video file */
+#ifdef XA_FORK
+	    { int f_ret;
+	      XA_AUDIO_N_FILE(cur_file->prev_file->file_num,f_ret);
+	      if ( (xa_forkit==xaTRUE) && (f_ret == xaTRUE) )
+		{ DUM_Read_File(filename,cur_file); merge_flag = xaFALSE; }
+	    }
+#else
+	    if (cur_file->prev_file->first_snd != 0)
+		{ DUM_Read_File(filename,cur_file); merge_flag = xaFALSE; }
+#endif
+
+		/* Either add snd to previous file or current file */
+	    snd_file = (merge_flag==xaFALSE)?(cur_file):(cur_file->prev_file);
+	    if (xa_anim_type == WAV_ANIM)
+	    { 
+	      if (xa_verbose) 
+			fprintf(stderr,"Reading WAV Audio File %s\n",filename);
+	      result = WAV_Read_File(filename,snd_file,audio_attempt);
+	    }
+	    else
+	    {
+	      if (xa_verbose)
+			fprintf(stderr,"Reading AU Audio File %s\n",filename);
+	      result = AU_Read_File(filename,snd_file,audio_attempt);
+	    }
+	  }
 	  break;
         default:
 	  fprintf(stderr,"Unknown or unsupported animation type: %s\n",
 								filename);
-	  result = FALSE;
+	  result = xaFALSE;
 	  break;
       } 
-      if (result == FALSE) cur_file = Return_Anim_Hdr(cur_file);
+      if (result == xaFALSE) 
+      {
+#ifdef XA_FORK
+	XA_AUDIO_UNFILE(cur_file->file_num);
+#endif
+	cur_file = Return_Anim_Hdr(cur_file);
+      }
+      else if (merge_flag == xaTRUE)
+      {
+#ifdef XA_FORK
+	/* Set current file name to previous file name for Audio only */
+	/* NOTE: this'll set cur audio hdr to prev_file */
+	if (cur_file->fname)
+	{ xaULONG length = strlen( cur_file->fname ) + 1;
+	  XA_AUDIO_FNAME(cur_file->fname, length, 
+					cur_file->prev_file->file_num);
+	}
+	XA_AUDIO_SET_AUD_BUFF( cur_file->prev_file->max_faud_size );
+	XA_AUDIO_UNFILE(cur_file->file_num);
+#endif
+	cur_file = Return_Anim_Hdr(cur_file);
+	if (cur_file->max_faud_size > xa_audcodec_maxsize)
+			xa_audcodec_maxsize = cur_file->max_faud_size;
+      }
       else
-      { ULONG tmpx,tmpy;
+      { xaULONG tmpx,tmpy;
+
         /* Setup up anim header.  */
         cur_file->loop_num = xa_loop_each_flag;
 
-        if (xa_pause_last == TRUE)
+        if (xa_pause_last == xaTRUE)
         { if ( (xa_anim_type == FLI_ANIM) && (cur_file->last_frame > 1))
 					XA_Add_Pause(cur_file->last_frame-2);
           else XA_Add_Pause(cur_file->last_frame);
-          xa_pause_last = FALSE;
+          xa_pause_last = xaFALSE;
         }
 	cur_file->pause_lst = xa_pause_hdr;
 	xa_pause_hdr = 0;
@@ -1540,6 +1776,13 @@ char *argv[];
 
 	if (cur_file->max_fvid_size > xa_vidcodec_maxsize)
 			xa_vidcodec_maxsize = cur_file->max_fvid_size;
+#ifdef XA_FORK
+	if (cur_file->fname)
+	{ xaULONG length = strlen( cur_file->fname ) + 1;
+	  XA_AUDIO_FNAME( (cur_file->fname), length, (cur_file->file_num) );
+	}
+	XA_AUDIO_SET_AUD_BUFF( (cur_file->max_faud_size) );
+#endif
 	if (cur_file->max_faud_size > xa_audcodec_maxsize)
 			xa_audcodec_maxsize = cur_file->max_faud_size;
 
@@ -1553,9 +1796,9 @@ char *argv[];
 	else
 	{
 		/* handle any scaling */
-	  tmpx = (ULONG)((float)(xa_imagex) * xa_bscalex);
+	  tmpx = (xaULONG)((float)(xa_imagex) * xa_bscalex);
 	  if (tmpx == 0) tmpx = xa_imagex;
-	  tmpy = (ULONG)((float)(xa_imagey) * xa_bscaley);
+	  tmpy = (xaULONG)((float)(xa_imagey) * xa_bscaley);
 	  if (tmpy == 0) tmpy = xa_imagey;
 	}
 	cur_file->buffx = tmpx;
@@ -1571,13 +1814,13 @@ char *argv[];
 	else
 	{
 		/* handle any scaling */
-	  tmpx = (ULONG)((float)(xa_imagex) * xa_scalex);
+	  tmpx = (xaULONG)((float)(xa_imagex) * xa_scalex);
 	  if (tmpx == 0) tmpx = xa_imagex;
-	  tmpy = (ULONG)((float)(xa_imagey) * xa_scaley);
+	  tmpy = (xaULONG)((float)(xa_imagey) * xa_scaley);
 	  if (tmpy == 0) tmpy = xa_imagey;
 	}
 	/* handle any IFF laced images */
-	if ( (xa_allow_lace==TRUE) && (cur_file->anim_flags & ANIM_LACE))
+	if ( (xa_allow_lace==xaTRUE) && (cur_file->anim_flags & ANIM_LACE))
 		tmpy >>= 1;
 	else	cur_file->anim_flags &= ~ANIM_LACE;
 	cur_file->dispx = tmpx;
@@ -1585,15 +1828,15 @@ char *argv[];
 	if (tmpx > xa_max_disp_x) xa_max_disp_x = tmpx;
 	if (tmpy > xa_max_disp_y) xa_max_disp_y = tmpy;
 
-	if ((cmap_dither_type == CMAP_DITHER_FLOYD) && (xa_buffer_flag==FALSE))
+	if ((cmap_dither_type == CMAP_DITHER_FLOYD) && (xa_buffer_flag==xaFALSE))
 			cur_file->anim_flags |= ANIM_3RD_BUF;
 	xa_merged_anim_flags |= cur_file->anim_flags;
 
 	/* NOTE: removed fade, remember to readd eventually */
 
-	if (xa_time_flag == TRUE)
+	if (xa_time_flag == xaTRUE)
 	{
-	  LONG time_int;
+	  xaLONG time_int;
 	  xa_time_end = XA_Time_Read();
 	  time_int = xa_time_end - xa_time_start;
 	  fprintf(stderr,"time = %ld\n",time_int);
@@ -1607,20 +1850,26 @@ char *argv[];
   */
  if (first_file == 0) Usage_Quick();
 
+ /* If No Audio then Kill Audio Child
+  */
+#ifdef XA_FORK
+  if (xa_vaudio_present==XA_AUDIO_UNK) XA_AUDIO_EXIT();
+#endif
+
  /* Set up X11 Display
   */
 
- if (xa_noresize_flag==TRUE) X11_Setup_Window(xa_max_disp_x,xa_max_disp_y,
+ if (xa_noresize_flag==xaTRUE) X11_Setup_Window(xa_max_disp_x,xa_max_disp_y,
 		xa_max_disp_x,xa_max_disp_y);
  else X11_Setup_Window(xa_max_disp_x,xa_max_disp_y,
 		first_file->dispx, first_file->dispy);
- if (x11_display_type == XA_MONOCHROME) xa_optimize_flag = FALSE;
+ if (x11_display_type == XA_MONOCHROME) xa_optimize_flag = xaFALSE;
  
  /* color map manipulation */
  CMAP_Manipulate_CHDRS();
 
  /* Kludge for some X11 displays */
- if (x11_kludge_1 == TRUE) CMAP_Expand_Maps();
+ if (x11_kludge_1 == xaTRUE) CMAP_Expand_Maps();
 
  xa_time_start = XA_Time_Read();
  cur_file = first_file;
@@ -1630,9 +1879,9 @@ char *argv[];
    cur_file = cur_file->next_file;
    if (cur_file == first_file) cur_file = 0;
  }
- if (xa_time_flag == TRUE)
+ if (xa_time_flag == xaTRUE)
  {
-   LONG time_int;
+   xaLONG time_int;
    xa_time_end = XA_Time_Read();
    time_int = xa_time_end - xa_time_start;
    fprintf(stderr,"ACT_Make_Images: time = %ld\n",time_int);
@@ -1640,26 +1889,18 @@ char *argv[];
  }
 
  /* Set Audio Ports */
-  if (xa_audio_present == XA_AUDIO_OK)
+  if (xa_vaudio_present == XA_AUDIO_OK)
   {
 #ifdef XA_SPARC_AUDIO
-    if (xa_audio_port) XA_Set_Output_Port(xa_audio_port);
+    if (vaudiof->port) XA_SET_OUTPUT_PORT(vaudiof->port);
 #else
-    if (xa_audio_port & XA_AUDIO_PORT_INT) XA_Speaker_Tog(1);
-    else XA_Speaker_Tog(0);
-    if (XA_Headphone_Tog == XA_LineOut_Tog) /* if same */
-    {
-      if (   (xa_audio_port & XA_AUDIO_PORT_HEAD) 
-	  || (xa_audio_port & XA_AUDIO_PORT_EXT) ) XA_Headphone_Tog(1);
-      else XA_Headphone_Tog(0);
-    }
-    else /* else treat differently */
-    {
-      if (xa_audio_port & XA_AUDIO_PORT_HEAD) XA_Headphone_Tog(1);
-      else XA_Headphone_Tog(0);
-      if (xa_audio_port & XA_AUDIO_PORT_EXT) XA_LineOut_Tog(1);
-      else XA_LineOut_Tog(0);
-    }
+    if (vaudiof->port & XA_AUDIO_PORT_INT) XA_SPEAKER_TOG(1)
+    else XA_SPEAKER_TOG(0)
+/*POD NOTE: HEADPHONES AND LINEOUT MUST BE DIFFERENT */
+    if (vaudiof->port & XA_AUDIO_PORT_HEAD) XA_HEADPHONE_TOG(1)
+    else XA_HEADPHONE_TOG(0)
+    if (vaudiof->port & XA_AUDIO_PORT_EXT) XA_LINEOUT_TOG(1)
+    else XA_LINEOUT_TOG(0)
 #endif
   }
 
@@ -1672,7 +1913,7 @@ char *argv[];
 #ifdef XA_REMOTE_CONTROL
   XA_Create_Remote(theWG,xa_remote_flag);
 #else
-  xa_remote_ready = TRUE;
+  xa_remote_ready = xaTRUE;
 #endif
   xanim_events();
 
@@ -1692,7 +1933,7 @@ char *argv[];
  * It then kicks off the animation.
  */
 void ShowAnimation()
-{ ULONG buf_size;
+{ xaULONG buf_size;
   /* POD TEMPORARY PARTIAL KLUDGE UNTIL REAL FIX IS IMPLEMENTED */
   if (xa_max_imagex & 0x03) shm = 0;
 
@@ -1743,7 +1984,7 @@ void ShowAnimation()
 	shmctl(im0_shminfo.shmid, IPC_RMID, 0 );
 	im0_Image->data = im_buff0 = im0_shminfo.shmaddr;
 	sh_Image = im0_Image;
-        if (xa_verbose) fprintf(stderr, "Using Shared Memory Extension\n");
+        DEBUG_LEVEL2 fprintf(stderr, "Using Shared Memory Extension\n");
 
 DEBUG_LEVEL2 fprintf(stderr,"IM_BUFF0 = %lx im0_IMAGE = %lx\n",im_buff0,im0_Image);
       }
@@ -1802,10 +2043,10 @@ DEBUG_LEVEL2 fprintf(stderr,"IM_BUFF2 = %lx im2_IMAGE = %lx\n",im_buff2,im2_Imag
       if (im_buff2 == 0) TheEnd1("ShowAnimation: im_buff2 malloc err1");
     }
   }
-  if (x11_pack_flag == TRUE)
+  if (x11_pack_flag == xaTRUE)
   {
-    ULONG tsize;
-    ULONG pbb = (8 / x11_bits_per_pixel);
+    xaULONG tsize;
+    xaULONG pbb = (8 / x11_bits_per_pixel);
     tsize = (xa_max_imagex + pbb - 1) / pbb;
     im_buff3 = (char *) malloc(xa_max_disp_y * tsize);
     if (im_buff3 == 0) TheEnd1("ShowAnimation: im_buff3 malloc err1");
@@ -1816,12 +2057,14 @@ DEBUG_LEVEL2 fprintf(stderr,"IM_BUFF2 = %lx im2_IMAGE = %lx\n",im_buff2,im2_Imag
   cur_frame = -1;  /* since we step first */
   xa_audio_start = 0;
   xa_time_reset = 1;
-  file_is_started = FALSE;
+  file_is_started = xaFALSE;
   xa_cycle_cnt = 0;
-  xa_now_cycling = FALSE;
+  xa_now_cycling = xaFALSE;
 
-  xa_anim_ready = TRUE; /* allow expose event to start animation */
+  xa_anim_ready = xaTRUE; /* allow expose event to start animation */
 }
+
+#define XA_ALLOWABLE_LOOPS 2
 
 /*
  * This is the heart of this program. It does each action and then calls
@@ -1830,9 +2073,11 @@ DEBUG_LEVEL2 fprintf(stderr,"IM_BUFF2 = %lx im2_IMAGE = %lx\n",im_buff2,im2_Imag
 void ShowAction(dptr,id)
 XtPointer dptr;
 XtIntervalId *id;
-{ ULONG command = (ULONG)dptr;
-  LONG t_time_delta = 0;
-  LONG snd_speed_now_ok = FALSE;
+{ xaULONG command = (xaULONG)dptr;
+  xaLONG t_time_delta = 0;
+  xaLONG snd_speed_now_ok = xaFALSE;
+  xaULONG looped = 0;   /* allow certain number of goto's. This is because */
+	/* while we are in this routine. All input is held off. */
 
 /* just for benchmarking, currently isn't(and shouldn't be) used */
 
@@ -1845,7 +2090,7 @@ ShowAction_Loop:
   switch (xa_anim_status)
   {
     case XA_BEGINNING:  
-	if ((xa_anim_ready == FALSE) || (xa_remote_ready == FALSE))
+	if ((xa_anim_ready == xaFALSE) || (xa_remote_ready == xaFALSE))
 	{ /* try again 10ms later */
 	  XtAppAddTimeOut(theContext,10, (XtTimerCallbackProc)ShowAction,
 						(XtPointer)(XA_SHOW_NORM));
@@ -1862,26 +2107,26 @@ ShowAction_Loop:
 	break;
     case XA_ISTP_NEXT: 
 #ifdef XA_AUDIO
-	XA_Audio_Off(0);	xa_audio_start = 0;
+	XA_AUDIO_OFF(0);	xa_audio_start = 0;
 #endif
 	Step_Frame_Next();
 	break;
     case XA_ISTP_PREV: 
 #ifdef XA_AUDIO
-	XA_Audio_Off(0);	xa_audio_start = 0;
+	XA_AUDIO_OFF(0);	xa_audio_start = 0;
 #endif
 	Step_Frame_Prev();
 	break;
     case XA_FILE_NEXT:
 #ifdef XA_AUDIO
-	XA_Audio_Off(0);	xa_audio_start = 0;
+	XA_AUDIO_OFF(0);	xa_audio_start = 0;
 #endif
 	Step_File_Next();
 	xa_anim_status = XA_STEP_NEXT;
 	break;
     case XA_FILE_PREV:
 #ifdef XA_AUDIO
-	XA_Audio_Off(0);	xa_audio_start = 0;
+	XA_AUDIO_OFF(0);	xa_audio_start = 0;
 #endif
 	Step_File_Prev();
 	xa_anim_status = XA_STEP_PREV;
@@ -1890,22 +2135,22 @@ ShowAction_Loop:
     case XA_STOP_NEXT:  
     case XA_STOP_PREV:  
 #ifdef XA_AUDIO
-	XA_Audio_Off(0);	xa_audio_start = 0;
+	XA_AUDIO_OFF(0);	xa_audio_start = 0;
 #endif
 	if (xa_title_flag != XA_TITLE_NONE)
 	{
 	  sprintf(xa_title,"XAnim: %s %ld",cur_file->name,cur_frame);
 	  XStoreName(theDisp,mainW,xa_title);
 	}
-	xa_anim_holdoff = FALSE;
+	xa_anim_holdoff = xaFALSE;
 	xa_old_status = xa_anim_status;
 	return;
 	break;
     default:
 #ifdef XA_AUDIO
-	XA_Audio_Off(0);	xa_audio_start = 0;
+	XA_AUDIO_OFF(0);	xa_audio_start = 0;
 #endif
-	xa_anim_holdoff = FALSE;
+	xa_anim_holdoff = xaFALSE;
 	xa_old_status = xa_anim_status;
 	return;
 	break;
@@ -1917,10 +2162,14 @@ ShowAction_Loop:
  /* 1st throught this particular file.
   * Resize if necessary and init required variables.
   */
-  if (file_is_started == FALSE)
+  if (file_is_started == xaFALSE)
   {
 #ifdef XA_AUDIO
-    if (xa_audio_status == XA_AUDIO_STARTED)
+
+#ifdef XA_FORK
+    XA_AUDIO_GET_STATUS( xa_vaudio_status );
+#endif
+    if (xa_vaudio_status == XA_AUDIO_STARTED)
     {
       XtAppAddTimeOut(theContext, 50, (XtTimerCallbackProc)XA_Audio_Wait,
 							(XtPointer)(NULL) );
@@ -1928,7 +2177,7 @@ ShowAction_Loop:
     }
 #endif
      /* If previous anim is still cycling, wait for it to stop */
-    if (xa_now_cycling == TRUE)
+    if (xa_now_cycling == xaTRUE)
     { /*PODNOTE: This check might want to be before above switch */
       xa_anim_flags &= ~(ANIM_CYCLE);
       XtAppAddTimeOut(theContext, 50, (XtTimerCallbackProc)XA_Cycle_Wait,
@@ -1936,36 +2185,35 @@ ShowAction_Loop:
       return; 
     }
 
-    file_is_started = TRUE;
+    file_is_started = xaTRUE;
     xa_anim_flags = cur_file->anim_flags;
-    if (xa_anim_flags & ANIM_PIXMAP) xa_pixmap_flag = TRUE;
-    else xa_pixmap_flag = FALSE;
-
-    /* If anim consists of only full frames, then allow serious skipping */
-    xa_serious_skip_flag =(xa_anim_flags & ANIM_FULL_IM)?(xa_skip_flag):(FALSE);
+    if (xa_anim_flags & ANIM_PIXMAP) xa_pixmap_flag = xaTRUE;
+    else xa_pixmap_flag = xaFALSE;
 
       /* user has not resized window yet */
-    if (     (xa_allow_resizing == FALSE)
-         || ( (xa_allow_resizing == TRUE) && (x11_window_x==0) )
+    if (     (xa_allow_resizing == xaFALSE)
+         || ( (xa_allow_resizing == xaTRUE) && (x11_window_x==0) )
        )
     {   /* anim if allowed to cause window resizing */
-      if (xa_noresize_flag == FALSE)
+      if (xa_noresize_flag == xaFALSE)
       {
         if ((xa_disp_x != cur_file->dispx) || (xa_disp_y != cur_file->dispy)) 
         {
 DEBUG_LEVEL1 fprintf(stderr,"resizing to <%ld,%ld>\n",cur_file->dispx,cur_file->dispy);
+    	   XSync(theDisp,False);
 	   XResizeWindow(theDisp,mainW,cur_file->dispx,cur_file->dispy);
 	   x11_window_x = cur_file->dispx; x11_window_y = cur_file->dispy;
     	   XSync(theDisp,False);
-    	   /* XFlush(theDisp);*/
         }
       }
       else /* fixed window size */
       {
+    	XSync(theDisp,False);
         if (xa_disp_x > cur_file->dispx)
-		XClearArea(theDisp,mainW,cur_file->dispx,0, 0,0,FALSE);
+		XClearArea(theDisp,mainW,cur_file->dispx,0, 0,0,False);
         if (xa_disp_y > cur_file->dispy)
-		XClearArea(theDisp,mainW,0,cur_file->dispy, 0,0,FALSE);
+		XClearArea(theDisp,mainW,0,cur_file->dispy, 0,0,False);
+    	XSync(theDisp,False);
       }
     }
     /* Do Title if set */
@@ -2008,6 +2256,13 @@ DEBUG_LEVEL1 fprintf(stderr,"resizing to <%ld,%ld>\n",cur_file->dispx,cur_file->
         fprintf(stderr,"Open file %s for video err\n",cur_file->fname); 
         TheEnd();
       }
+      /* Allocate video buffer if not done already */
+      if ((cur_file->max_fvid_size) && (xa_vidcodec_buf==0))
+      {
+	xa_vidcodec_buf = (xaUBYTE *)malloc( xa_vidcodec_maxsize );
+	if (xa_vidcodec_buf==0) TheEnd1("XAnim: malloc vidcodec_buf err");
+      }
+#ifndef XA_FORK
       /* Close old audio file and open new one */
       if (xa_aud_fd>=0) { close(xa_aud_fd); xa_aud_fd = -1; }
       if ( (xa_aud_fd=open(cur_file->fname,O_RDONLY,NULL)) < 0)
@@ -2015,32 +2270,56 @@ DEBUG_LEVEL1 fprintf(stderr,"resizing to <%ld,%ld>\n",cur_file->dispx,cur_file->
         fprintf(stderr,"Open file %s for audio err\n",cur_file->fname); 
         TheEnd();
       }
-      if ((cur_file->max_fvid_size) && (xa_vidcodec_buf==0))
-      {
-	xa_vidcodec_buf = (UBYTE *)malloc( xa_vidcodec_maxsize );
-	if (xa_vidcodec_buf==0) TheEnd1("XAnim: malloc vidcodec_buf err");
-      }
       if ((cur_file->max_faud_size) && (xa_audcodec_buf==0))
-      {
-	xa_audcodec_buf = (UBYTE *)malloc( xa_audcodec_maxsize );
+      { xa_audcodec_buf = (xaUBYTE *)malloc( xa_audcodec_maxsize );
 	if (xa_audcodec_buf==0) TheEnd1("XAnim: malloc audcodec_buf err");
       }
+#endif
+
     }
+
     xa_pause_hdr = cur_file->pause_lst;
-    xa_snd_cur = cur_file->first_snd;
-    xa_skip_cnt = xa_skip_video = 0;
+    xa_skip_cnt = xa_skip_video = xa_skip_diff = 0;
     /*** Call any Initializing routines needed by Audio/Video Codecs */
     if (cur_file->init_vid) cur_file->init_vid();
-    if (cur_file->init_aud) cur_file->init_aud();
-    /*** Initialize audio timing ****/
+#ifdef XA_FORK
+    xa_snd_cur = 0;
+#else
+    if (cur_file->init_aud) cur_file->init_aud();  /* FORK NOTE: */
+    xa_snd_cur = cur_file->first_snd;
+#endif
+    /* is this still needed ?? */
     xa_time_start = XA_Time_Read();
 
     /* Is Audio Valid for this animations */
-    if ( (xa_audio_present==XA_AUDIO_OK) && (xa_snd_cur) )
+/* FORK NOTE: */
+#ifdef XA_FORK
+   { int f_ret;
+
+     XA_AUDIO_PLAY_FILE(cur_file->file_num,f_ret);
+     if ( (xa_forkit==xaTRUE) && (f_ret == xaTRUE) )
+     {
+       xa_has_audio = xaTRUE;
+       xa_vaudio_enable = xaTRUE;
+       xa_vaudio_status = XA_AUDIO_STOPPED;
+       XA_AUDIO_INIT_SND(xa_snd_cur);
+       xa_time_audio = 0;
+     }
+     else
+     {
+       xa_has_audio = xaFALSE;
+       xa_time_audio = -1;
+       xa_vaudio_enable = xaFALSE;
+       xa_vaudio_status = XA_AUDIO_NICHTDA;
+     }
+   }
+#else
+    if ( (xa_vaudio_present==XA_AUDIO_OK) && (xa_snd_cur) )
     { 
-      xa_audio_enable = TRUE;
-      xa_audio_status = XA_AUDIO_STOPPED;
-      XA_Audio_Init_Snd(xa_snd_cur);
+      xa_has_audio = xaTRUE;
+      xa_vaudio_enable = xaTRUE;
+      xa_vaudio_status = XA_AUDIO_STOPPED;
+      XA_AUDIO_INIT_SND(xa_snd_cur);
       xa_time_audio = 0;
       if (xa_snd_cur->fpos >= 0)
       {
@@ -2051,10 +2330,12 @@ DEBUG_LEVEL1 fprintf(stderr,"resizing to <%ld,%ld>\n",cur_file->dispx,cur_file->
     } 
     else
     {
+      xa_has_audio = xaFALSE;
       xa_time_audio = -1;
-      xa_audio_enable = FALSE;
-      xa_audio_status = XA_AUDIO_NICHTDA;
+      xa_vaudio_enable = xaFALSE;
+      xa_vaudio_status = XA_AUDIO_NICHTDA;
     }
+#endif
     xa_time_video = 0;
     xa_av_time_off = XA_Time_Read();  /* for initial control frames if any */
 
@@ -2080,18 +2361,21 @@ DEBUG_LEVEL1 fprintf(stderr,"resizing to <%ld,%ld>\n",cur_file->dispx,cur_file->
       xa_speed_change = 0;
       XA_Reset_Speed_Time(xa_time_video,xa_speed_scale);
 #ifdef XA_AUDIO
-      if (xa_speed_scale == XA_SPEED_NORM) snd_speed_now_ok = TRUE;
+      if (xa_speed_scale == XA_SPEED_NORM) snd_speed_now_ok = xaTRUE;
       else
       {
-         snd_speed_now_ok = FALSE;
-         if (xa_audio_status == XA_AUDIO_STARTED) 
-			{ XA_Audio_Off(1); xa_audio_start = 0; }
+         snd_speed_now_ok = xaFALSE;
+         if (xa_vaudio_status == XA_AUDIO_STARTED) 
+			{ XA_AUDIO_OFF(1); xa_audio_start = 0; }
       }
 #endif
     }
 
 #ifdef XA_AUDIO
-    if (xa_audio_status == XA_AUDIO_STARTED) 
+#ifdef XA_FORK
+    if (xa_time_video == 0) XA_AUDIO_GET_STATUS( xa_vaudio_status );
+#endif
+    if (xa_vaudio_status == XA_AUDIO_STARTED) 
     {
       if (xa_time_video == 0)  /* Hitting 1st frame */
       { /* wait til audio is finished */
@@ -2103,20 +2387,22 @@ DEBUG_LEVEL1 fprintf(stderr,"resizing to <%ld,%ld>\n",cur_file->dispx,cur_file->
       }
       else if (    (xa_anim_status != XA_RUN_NEXT)
 		|| (xa_speed_scale != XA_SPEED_NORM)  ) 
-				{ XA_Audio_Off(0); xa_audio_start = 0; }
+				{ XA_AUDIO_OFF(0); xa_audio_start = 0; }
     }
-    else if (xa_audio_status == XA_AUDIO_STOPPED)
+    else if (xa_vaudio_status == XA_AUDIO_STOPPED)
     {
-      if (    (xa_anim_status == XA_RUN_NEXT) 
-	  &&  (xa_speed_scale == XA_SPEED_NORM)
-          &&  ( (xa_old_status != XA_RUN_NEXT) || (snd_speed_now_ok==TRUE)) )
+      if   (    (xa_anim_status == XA_RUN_NEXT) 
+	    &&  (xa_speed_scale == XA_SPEED_NORM)
+            &&  ( (xa_old_status != XA_RUN_NEXT) || (snd_speed_now_ok==xaTRUE))
+	   ) 
       {
+
 	xa_audio_start = 1;
 	xa_time_reset = 1;
       }
       else if (   (   (xa_old_status != XA_RUN_PREV)
                    && (xa_anim_status == XA_RUN_PREV))
-	       || (xa_time_video == 0)  )
+		|| (xa_time_video == 0)  )
       {
 	xa_time_reset = 1;
         xa_time_audio = -1;
@@ -2133,8 +2419,11 @@ DEBUG_LEVEL1 fprintf(stderr,"resizing to <%ld,%ld>\n",cur_file->dispx,cur_file->
        xa_time_audio = -1;
     }
 
+     /* Don't skip unless we are running */
+    if (xa_anim_status != XA_RUN_NEXT)
+		xa_skip_cnt = xa_skip_video = xa_skip_diff = 0;
     
-    if ( (xa_allow_resizing == TRUE) && (x11_window_x != 0) )
+    if ( (xa_allow_resizing == xaTRUE) && (x11_window_x != 0) )
         { xa_disp_x = x11_window_x; xa_disp_y = x11_window_y; }
 
     if ((xa_disp_x != xa_buff_x) || (xa_disp_y != xa_buff_y))
@@ -2161,10 +2450,10 @@ DEBUG_LEVEL1 fprintf(stderr,"resizing to <%ld,%ld>\n",cur_file->dispx,cur_file->
         * Change Color Map.
         */
      case ACT_CMAP:     
-        if (   (cmap_play_nice == FALSE) 
+        if (   (cmap_play_nice == xaFALSE) 
 	    && (!(x11_display_type & XA_X11_STATIC)) )
 	{ ColorReg *tcmap;
-	  LONG j;
+	  xaLONG j;
 	  ACT_CMAP_HDR *cmap_hdr;
 
 	  cmap_hdr	= (ACT_CMAP_HDR *)act->data;
@@ -2180,7 +2469,7 @@ DEBUG_LEVEL1 fprintf(stderr,"resizing to <%ld,%ld>\n",cur_file->dispx,cur_file->
 		xa_cmap[j].gray  = tcmap[j].gray;
 	  }
 /* POD TEMP share routine whith CHDR install */
-  if (x11_cmap_flag == TRUE)
+  if (x11_cmap_flag == xaTRUE)
   {
     DEBUG_LEVEL2 fprintf(stderr,"CMAP: size=%ld off=%ld\n",
                 xa_cmap_size,xa_cmap_off);
@@ -2210,7 +2499,7 @@ DEBUG_LEVEL1 fprintf(stderr,"resizing to <%ld,%ld>\n",cur_file->dispx,cur_file->
       }
     }
     XStoreColors(theDisp,theCmap,defs,xa_cmap_size);
-    if (xa_audio_enable != TRUE) XSync(theDisp,False);
+    if (xa_vaudio_enable != xaTRUE) XSync(theDisp,False);
   }
 
 	
@@ -2221,11 +2510,11 @@ DEBUG_LEVEL1 fprintf(stderr,"resizing to <%ld,%ld>\n",cur_file->dispx,cur_file->
         */
      case ACT_FADE:     
                         {
-                         LONG j;
+                         xaLONG j;
 
                          DEBUG_LEVEL2 fprintf(stderr,"ACT_FADE:\n");
                          if ( (x11_display_type & XA_X11_CMAP) &&
-                              (x11_cmap_flag    == TRUE) )
+                              (x11_cmap_flag    == xaTRUE) )
                          {
                            for(j=0;j<xa_cmap_size;j++)
                            {
@@ -2290,7 +2579,7 @@ if (act->chdr->new_chdr) the_chdr = act->chdr->new_chdr;
 else the_chdr = act->chdr;
 */
 
-        if (   (cmap_play_nice == FALSE) 
+        if (   (cmap_play_nice == xaFALSE) 
 	    && (x11_display_type & XA_X11_CMAP)
 	    && (xa_anim_flags & ANIM_CYCLE) )
 	{
@@ -2304,7 +2593,7 @@ else the_chdr = act->chdr;
 			XA_Install_CMAP(act->chdr);
 	      xa_cycle_cnt++;
 	      act_cycle->flags |= ACT_CYCLE_STARTED;
-	      xa_now_cycling = TRUE;
+	      xa_now_cycling = xaTRUE;
 	      XtAppAddTimeOut(theContext,(int)(act_cycle->rate), 
 		(XtTimerCallbackProc)XA_Cycle_It, (XtPointer)(act_cycle));
 	  }
@@ -2313,7 +2602,7 @@ else the_chdr = act->chdr;
 	break;
 
      case ACT_DELTA:        
-	XA_SHOW_DELTA(act);
+	XA_SHOW_DELTA(act,&xa_dec_info);
 	break;
 
      default:           
@@ -2330,10 +2619,26 @@ else the_chdr = act->chdr;
  { XA_Reset_AV_Time(xa_time_video,xa_speed_scale);
    xa_time_reset = 0;
  }
+
  /* Start Audio is needed */
  if (xa_audio_start)
  {
-   XA_Audio_On();
+#ifdef XA_FORK
+  int f_ret;
+  XA_AUDIO_N_FILE(cur_file->file_num,f_ret);
+  if ( (xa_forkit==xaFALSE) || (f_ret == xaFALSE) )
+  {
+    xa_vaudio_status = XA_AUDIO_NICHTDA;
+    xa_has_audio = xaFALSE;
+  }
+  else
+  {
+    XA_AUDIO_RST_TIME(xa_time_video);
+    xa_has_audio = xaTRUE;
+  }
+  xa_time_audio = 1;
+#endif
+   XA_AUDIO_ON();
    xa_audio_start = 0;
  }
 
@@ -2342,7 +2647,7 @@ else the_chdr = act->chdr;
     if ( (cur_frame==xa_pause_hdr->frame) && (xa_anim_status & XA_RUN_MASK))
     {
       xa_pause_hdr = xa_pause_hdr->next;
-      XA_Audio_Off(0); xa_audio_start = 0;
+      XA_AUDIO_OFF(0); xa_audio_start = 0;
 #ifdef XA_REMOTE_DEFS
       XA_Remote_Pause();
 #endif
@@ -2353,19 +2658,19 @@ else the_chdr = act->chdr;
  if (xa_anim_status & XA_STEP_MASK) /* Single step if in that mode */
  {
    XA_PAUSE_ENTRY_POINT:
-   if ( (xa_no_disp == FALSE) & (xa_title_flag != XA_TITLE_NONE) )
+   if ( (xa_no_disp == xaFALSE) & (xa_title_flag != XA_TITLE_NONE) )
    {
      sprintf(xa_title,"XAnim: %s %ld",cur_file->name,cur_frame);
      XStoreName(theDisp,mainW,xa_title);
    }
    xa_anim_status &= XA_CLEAR_MASK; /* preserve direction and stop */
    xa_anim_status |= XA_STOP_MASK;
-   xa_anim_holdoff = FALSE;
+   xa_anim_holdoff = xaFALSE;
    xa_old_status = xa_anim_status;
    return;
  }
 
- if ( (xa_no_disp == FALSE) & (xa_title_flag == XA_TITLE_FRAME) )
+ if ( (xa_no_disp == xaFALSE) & (xa_title_flag == XA_TITLE_FRAME) )
  {
    sprintf(xa_title,"XAnim: %s %ld",cur_file->name,cur_frame);
    XStoreName(theDisp,mainW,xa_title);
@@ -2395,12 +2700,21 @@ else the_chdr = act->chdr;
      t_time_delta = xa_time_video - xa_time_now;
    }
    else	
-   { LONG diff = xa_time_now - xa_time_video;
-     LONG f_time = cur_file->frame_lst[cur_frame].time_dur;
+   { xaLONG diff = xa_time_now - xa_time_video;
+     xaLONG f_time = cur_file->frame_lst[cur_frame].time_dur;
      if (diff > f_time)
-     {
-	if (f_time > 0) xa_skip_video += diff / f_time;
-	else xa_skip_video++;
+     { /* potentially skip video at this point */
+	if ((f_time > 0) && (xa_skip_flag==xaTRUE))
+	{ xaULONG cnt = diff / f_time;  /* frame behind */
+          if ((xa_skip_diff) && (cnt)) /* if skip & skipped last time */
+	  {  if (cnt < 2) xa_skip_video = 0;
+	     else if (cnt < 3) xa_skip_video = 1;
+	     else xa_skip_video = 2;
+	  }
+	  else xa_skip_video = 0;  /* last wasn't skip, don't skip this */
+	  xa_skip_diff = cnt;
+	}
+	else xa_skip_video = 0;
 DEBUG_LEVEL1 fprintf(stderr,"vid behind dif %ld skp %ld\n",diff,xa_skip_video);
      }
      else xa_skip_video = 0;
@@ -2421,9 +2735,14 @@ DEBUG_LEVEL1 fprintf(stderr,"vid behind dif %ld skp %ld\n",diff,xa_skip_video);
 
  DEBUG_LEVEL1 fprintf(stderr,"t_time_delta %ld\n",t_time_delta);
  if ( !(xa_anim_status & XA_STOP_MASK) )
-   XtAppAddTimeOut(theContext,t_time_delta,(XtTimerCallbackProc)ShowAction,
-						  (XtPointer)(XA_SHOW_NORM));
- else xa_anim_holdoff = FALSE;
+ {
+   if (   (t_time_delta < 10) 
+       && (looped < XA_ALLOWABLE_LOOPS)) { looped++; goto ShowAction_Loop; }
+
+   else XtAppAddTimeOut(theContext,t_time_delta,
+		(XtTimerCallbackProc)ShowAction,(XtPointer)(XA_SHOW_NORM));
+ }
+ else xa_anim_holdoff = xaFALSE;
  xa_old_status = xa_anim_status;
 }
 
@@ -2436,7 +2755,7 @@ void Step_Action_Next()
 
   cur_frame++; frame = &cur_file->frame_lst[cur_frame];
   do
-  { ULONG jmp2end_flag = 0;
+  { xaULONG jmp2end_flag = 0;
     if ( (frame->zztime == -1) && (frame->act != 0) ) /* check for loops */
     {
       XA_ACTION *lp_act = frame->act;
@@ -2455,7 +2774,7 @@ void Step_Action_Next()
       }
       else if (lp_act->type == ACT_JMP2END)
       { 
-	if (xa_pingpong_flag==FALSE)
+	if (xa_pingpong_flag==xaFALSE)
 	{
 	  if ( (cur_floop+1) >= cur_file->loop_num) /* done with this file */
 	  {
@@ -2463,7 +2782,7 @@ void Step_Action_Next()
 	     {
 	       cur_frame = cur_file->last_frame + 1; /* jmp to end */
 	     }
-	     else if (xa_exit_flag == TRUE) TheEnd(); /* we're outta here */
+	     else if (xa_exit_flag == xaTRUE) TheEnd(); /* we're outta here */
 	     else cur_frame++;  /* step to beg */
           }  else cur_frame++; /* step to beg */
         } else jmp2end_flag = 1;
@@ -2474,7 +2793,7 @@ void Step_Action_Next()
     if ( (frame->act == 0) /* Are we at the end of an anim? */
         || (jmp2end_flag) )
     {
-      if (xa_pingpong_flag == TRUE)
+      if (xa_pingpong_flag == xaTRUE)
       { jmp2end_flag = 0;
         xa_anim_status &= ~(XA_NEXT_MASK);  /* change dir to prev */
         cur_frame--; 
@@ -2494,7 +2813,7 @@ void Step_Action_Next()
 
 	/* Are we on the last file and do we need to exit? */
 	if (   (cur_file->next_file == first_file)
-	    && (xa_exit_flag == TRUE) )   TheEnd(); /* later */
+	    && (xa_exit_flag == xaTRUE) )   TheEnd(); /* later */
 
         /* This is a special case check.
          * If more that one file, reset file_is_started, otherwise
@@ -2503,14 +2822,14 @@ void Step_Action_Next()
 	 * If cur_file has audio then we always restart.
          */
         if (   (first_file->next_file != first_file)
-            || (cur_file->first_snd) )
+            || (xa_has_audio==xaTRUE) )
         {
-          file_is_started = FALSE;
+          file_is_started = xaFALSE;
           cur_file = cur_file->next_file;
           cur_frame = 0;
         }
         DEBUG_LEVEL1 fprintf(stderr,"  file = %ld\n",cur_file->file_num);
-        if (xa_time_flag == TRUE) XA_Time_Check();
+        if (xa_time_flag == xaTRUE) XA_Time_Check();
       } /* end done looping file */
     } /* end done with frames in file */
     frame = &cur_file->frame_lst[cur_frame];
@@ -2559,14 +2878,14 @@ void Step_Action_Prev()
     {
       XA_Step_Action_Prev_0:  /* skip indexing with -1 */
 
-      if (xa_pingpong_flag == TRUE)
+      if (xa_pingpong_flag == xaTRUE)
       {
         xa_anim_status |= XA_NEXT_MASK;  /* change dir to forward */
         cur_floop++;
 
 	/* Are we on the last file and do we need to exit? */
 	if (   (cur_file->next_file == first_file)
-	    && (xa_exit_flag == TRUE) )   TheEnd(); /* later */
+	    && (xa_exit_flag == xaTRUE) )   TheEnd(); /* later */
 
          /* do we move to next file? */
         if (  (first_file->next_file != first_file)  /* more than 1 file */
@@ -2574,7 +2893,7 @@ void Step_Action_Prev()
                 || (xa_anim_status & XA_STEP_MASK)  ) )
         {
           cur_floop = 0;
-          file_is_started = FALSE;
+          file_is_started = xaFALSE;
           cur_file = cur_file->next_file;
           cur_frame = 0;
           break;
@@ -2583,7 +2902,7 @@ void Step_Action_Prev()
         if (cur_floop >= cur_file->loop_num) 
         {
           cur_floop = 0;
-          if (xa_time_flag == TRUE) XA_Time_Check();
+          if (xa_time_flag == xaTRUE) XA_Time_Check();
         }
         cur_frame++;
         Step_Action_Next();
@@ -2602,13 +2921,13 @@ void Step_Action_Prev()
         /* If more that one file, go to next file */
         if (first_file->next_file != first_file )
         {
-          file_is_started = FALSE;
+          file_is_started = xaFALSE;
           cur_file = cur_file->prev_file;
           cur_frame = cur_file->last_frame;
           cur_floop = cur_file->loop_num; /* Reset Loop Count */
         }
 
-        if (xa_time_flag == TRUE) XA_Time_Check();
+        if (xa_time_flag == xaTRUE) XA_Time_Check();
         DEBUG_LEVEL1 fprintf(stderr,"  file = %ld\n",cur_file->file_num);
       } /* end done looping file */
     } /* end done with frames in file */
@@ -2669,7 +2988,7 @@ void Step_Frame_Prev()
  */
 void Step_File_Next()
 {
-  file_is_started = FALSE;
+  file_is_started = xaFALSE;
   cur_frame = 0;
   cur_file = cur_file->next_file;
   cur_floop = 0; /* used if things start up again */
@@ -2682,7 +3001,7 @@ void Step_File_Next()
  */
 void Step_File_Prev()
 {
-  file_is_started = FALSE;
+  file_is_started = xaFALSE;
   cur_frame = 0;
   cur_file = cur_file->prev_file;
   cur_floop = 0; /* used if things start up again */
@@ -2694,25 +3013,28 @@ void Step_File_Prev()
 /*
  * Simple routine to find out the file type. Defaults to FLI.
  */
-LONG Determine_Anim_Type(filename)
+xaLONG Determine_Anim_Type(filename)
 char *filename;
-{ LONG ret;
- if ( Is_RLE_File(filename)==TRUE)	return(RLE_ANIM);
- if ( Is_IFF_File(filename)==TRUE)	return(IFF_ANIM); 
- if ( Is_GIF_File(filename)==TRUE)	return(GIF_ANIM); 
- if ( Is_TXT_File(filename)==TRUE)	return(TXT_ANIM); 
- if ( Is_FLI_File(filename)==TRUE)	return(FLI_ANIM); 
+{ xaLONG ret;
+ if ( Is_RLE_File(filename)==xaTRUE)	return(RLE_ANIM);
+ if ( Is_IFF_File(filename)==xaTRUE)	return(IFF_ANIM); 
+ if ( Is_GIF_File(filename)==xaTRUE)	return(GIF_ANIM); 
+ if ( Is_TXT_File(filename)==xaTRUE)	return(TXT_ANIM); 
+ if ( Is_FLI_File(filename)==xaTRUE)	return(FLI_ANIM); 
+ if ( Is_JMOV_File(filename)==xaTRUE)	return(JMOV_ANIM); 
+ if ( Is_ARM_File(filename)==xaTRUE)	return(ARM_ANIM); 
 /*PODTEMP
- if ( Is_PFX_File(filename)==TRUE)	return(PFX_ANIM);
+ if ( Is_PFX_File(filename)==xaTRUE)	return(PFX_ANIM);
 */
- if ( Is_SET_File(filename)==TRUE)	return(SET_ANIM);
- if ( Is_JFIF_File(filename)==TRUE)     return(JFIF_ANIM);
- if ( Is_AVI_File(filename)==TRUE)	return(AVI_ANIM); 
- if ( Is_WAV_File(filename)==TRUE)	return(WAV_ANIM); 
- if ( (ret=Is_QT_File(filename))==TRUE) return(QT_ANIM);
- if ( Is_MPG_File(filename)==TRUE)	return(MPG_ANIM);
- if (ret == XA_NOFILE)			return(NOFILE_ANIM);
- if ( Is_DL_File(filename)==TRUE)	return(DL_ANIM);
+ if ( Is_SET_File(filename)==xaTRUE)	return(SET_ANIM);
+ if ( Is_JFIF_File(filename)==xaTRUE)     return(JFIF_ANIM);
+ if ( Is_AVI_File(filename)==xaTRUE)	return(AVI_ANIM); 
+ if ( Is_WAV_File(filename)==xaTRUE)	return(WAV_ANIM); 
+ if ( Is_AU_File(filename)==xaTRUE)	return(AU_ANIM); 
+ if ( (ret=Is_QT_File(filename))==xaTRUE) return(QT_ANIM);
+ if ( Is_MPG_File(filename)==xaTRUE)	return(MPG_ANIM);
+ if (ret == xaNOFILE)			return(NOFILE_ANIM);
+ if ( Is_DL_File(filename)==xaTRUE)	return(DL_ANIM);
  return(UNKNOWN_ANIM);
 }
 
@@ -2735,7 +3057,7 @@ XtIntervalId *id;
   }
   else /* then move on */
   {
-    xa_now_cycling = FALSE;
+    xa_now_cycling = xaFALSE;
     XtAppAddTimeOut(theContext, 1, (XtTimerCallbackProc)ShowAction, 
 						(XtPointer)(XA_SHOW_SKIP));
   }
@@ -2752,7 +3074,11 @@ char *nothing;
 XtIntervalId *id;
 {
 DEBUG_LEVEL1 fprintf(stderr,"XA_Audio_Wait\n");
-  if (xa_audio_status == XA_AUDIO_STARTED) /* continue waiting */
+
+#ifdef XA_FORK
+  XA_AUDIO_GET_STATUS( xa_vaudio_status );
+#endif
+  if (xa_vaudio_status == XA_AUDIO_STARTED) /* continue waiting */
   {
     if (xa_anim_status & XA_RUN_MASK)
     {
@@ -2760,7 +3086,7 @@ DEBUG_LEVEL1 fprintf(stderr,"XA_Audio_Wait\n");
 							(XtPointer)(NULL));
       return;
     }
-    XA_Audio_Off(0);		xa_audio_start = 0;
+    XA_AUDIO_OFF(0);		xa_audio_start = 0;
   }
   XtAppAddTimeOut(theContext, 1, (XtTimerCallbackProc)ShowAction, 
 						(XtPointer)(XA_SHOW_SKIP));
@@ -2773,7 +3099,7 @@ void XA_Cycle_It(act_cycle, id)
 ACT_CYCLE_HDR   *act_cycle;
 XtIntervalId *id;
 {
-  ULONG i,*i_ptr,size,curpos;
+  xaULONG i,*i_ptr,size,curpos;
 
   if (xa_anim_flags & ANIM_CYCLE) XtAppAddTimeOut(theContext,
 		(int)(act_cycle->rate),(XtTimerCallbackProc)XA_Cycle_It,
@@ -2795,10 +3121,10 @@ XtIntervalId *id;
       curpos = (curpos >= (size - 1))?(0):(curpos + 1); 
   act_cycle->curpos = curpos;
 
-  i_ptr = (ULONG *)act_cycle->data;
+  i_ptr = (xaULONG *)act_cycle->data;
   for(i=0;i<size;i++)
   {
-    ULONG j;
+    xaULONG j;
 
     j = i_ptr[i] - xa_cmap_off;
     defs[i].pixel = i_ptr[curpos];
@@ -2819,7 +3145,7 @@ XtIntervalId *id;
       curpos = (curpos >= (size - 1))?(0):(curpos + 1); 
   }
   XStoreColors(theDisp,theCmap,defs,act_cycle->size);
-  if (xa_audio_enable != TRUE) XSync(theDisp,False);
+  if (xa_vaudio_enable != xaTRUE) XSync(theDisp,False);
 }
 
 /*
@@ -2838,6 +3164,9 @@ XA_ACTION *acts;
   }
 }
 
+/***************************************
+ *
+ **************/
 XA_ANIM_HDR *Return_Anim_Hdr(file_hdr)
 XA_ANIM_HDR *file_hdr;
 {
@@ -2855,16 +3184,21 @@ XA_ANIM_HDR *file_hdr;
     tmp_hdr->next_file = file_hdr->next_file;
     file_hdr->next_file->prev_file = tmp_hdr;
   }
+  if (file_hdr->name) free(file_hdr->name);  /* POD ADD */
+
   FREE(file_hdr,0x02);
   return(tmp_hdr);
 }
 
+/***************************************
+ *
+ **************/
 XA_ANIM_HDR *Get_Anim_Hdr(file_hdr,file_name)
 XA_ANIM_HDR *file_hdr;
 char *file_name;
 {
   XA_ANIM_HDR *temp_hdr;
-  LONG length;
+  xaLONG length;
 
   temp_hdr = (XA_ANIM_HDR *)malloc( sizeof(XA_ANIM_HDR) );
   if (temp_hdr == 0) TheEnd1("Get_Anim_Hdr: malloc failed\n");
@@ -2904,11 +3238,17 @@ char *file_name;
   temp_hdr->max_faud_size	= 0;
   temp_hdr->init_vid	= 0;
   temp_hdr->init_aud	= 0;
-  xa_file_num++;
+  temp_hdr->free_chain	= 0;
 
-  length = strlen(file_name);
-  temp_hdr->name = (char *)malloc(length + 1);
+  length = strlen(file_name) + 1;
+  temp_hdr->name = (char *)malloc(length);
   strcpy(temp_hdr->name,file_name);
+
+#ifdef XA_FORK
+  XA_AUDIO_FILE(xa_file_num);
+#endif
+
+  xa_file_num++;
   return(temp_hdr);
 }
   
@@ -2916,7 +3256,7 @@ char *file_name;
 void XA_Install_CMAP(chdr)
 XA_CHDR *chdr;
 { ColorReg *tcmap;
-  LONG j;
+  xaLONG j;
 
   tcmap		= chdr->cmap;
   xa_cmap_size	= chdr->csize;
@@ -2934,9 +3274,9 @@ XA_CHDR *chdr;
   }
 
   DEBUG_LEVEL1 fprintf(stderr,"  Install CMAP %lx old was %lx\n",
-					(ULONG)chdr,(ULONG)xa_chdr_now);
+					(xaULONG)chdr,(xaULONG)xa_chdr_now);
 
-  if ( x11_cmap_flag == FALSE )
+  if ( x11_cmap_flag == xaFALSE )
   {
     DEBUG_LEVEL1 fprintf(stderr,"  Fake Install since cmap not writable\n");
     xa_chdr_now = chdr;
@@ -2986,23 +3326,28 @@ XA_CHDR *chdr;
      * this sometimes helps synchronize image to vertical refresh on
      * machines that wait until vertical refresh to load colormap
      */
-    if (cmap_force_load == FALSE) xa_chdr_now = chdr;
+    if (cmap_force_load == xaFALSE) xa_chdr_now = chdr;
   }
 }
 
 
-void XA_Time_Init()
+/********************************
+ * Initialize the global variable xa_time_off.
+ *
+ ***************/
+xaLONG XA_Time_Init()
 {
   gettimeofday(&tv, 0);
-  xa_av_time_off = xa_time_off = tv.tv_sec;
+  xa_time_off = tv.tv_sec;
+  return( xa_time_off );
 }
 
-/*
+/********************************
  * return time from start in milliseconds
- */
-LONG XA_Time_Read()
+ ***************/
+xaLONG XA_Time_Read()
 {
-  LONG t;
+  xaLONG t;
   gettimeofday(&tv, 0);
   t = (tv.tv_sec - xa_time_off) * 1000 + (tv.tv_usec / 1000);
   return(t);
@@ -3014,35 +3359,37 @@ LONG XA_Time_Read()
  */
 void XA_Time_Check()
 {
-  LONG time_int;
+  xaLONG time_int;
 
   xa_time_end = XA_Time_Read();
   time_int = xa_time_end - xa_time_start;
   xa_time_av = (xa_time_av * xa_time_num) + time_int;
   xa_time_num++;
   xa_time_av /= xa_time_num;
-  fprintf(stderr,"l_time = %ld  av %ld\n",time_int,xa_time_av);
+  fprintf(stderr,"l_time = %ld  av %ld  skipd %ld Sskipd %ld\n",
+		time_int,xa_time_av,xa_frames_skipd,xa_frames_Sskipd);
+  xa_frames_skipd = xa_frames_Sskipd = 0;
   xa_time_start = XA_Time_Read();
 
 }
 
-ULONG XA_Read_Int(s,j)
-UBYTE *s;
-ULONG *j;
+xaULONG XA_Read_Int(s,j)
+xaUBYTE *s;
+xaULONG *j;
 {
-  ULONG i,num;
+  xaULONG i,num;
   i = *j; num = 0;
   while( (s[i] >= '0') && (s[i] <= '9') )
-	{ num *= 10; num += (ULONG)(s[i]) - (ULONG)('0'); i++; }
+	{ num *= 10; num += (xaULONG)(s[i]) - (xaULONG)('0'); i++; }
   *j = i;   
   return(num);
 }
 
 float XA_Read_Float(s,j)
-UBYTE *s;
-ULONG *j;
+xaUBYTE *s;
+xaULONG *j;
 {
-  ULONG i;
+  xaULONG i;
   float num;
   i = *j; num = 0.0;
   while( (s[i] >= '0') && (s[i] <= '9') )
@@ -3061,10 +3408,10 @@ ULONG *j;
   return(num);
 }
 
-LONG XA_Get_Class(p)
+xaLONG XA_Get_Class(p)
 char *p;
 {
-  ULONG i,len;
+  xaULONG i,len;
   char tmp[16];
   
   /* copy and convert to lower case */
@@ -3084,7 +3431,7 @@ char *p;
  * Add frame to current pause list
  */
 void XA_Add_Pause(frame)
-ULONG frame;		/* frame at which to pause */
+xaULONG frame;		/* frame at which to pause */
 { XA_PAUSE *new_phdr;
 
   new_phdr = (XA_PAUSE *)malloc(sizeof(XA_PAUSE));
@@ -3102,7 +3449,7 @@ ULONG frame;		/* frame at which to pause */
 /***************************************************************************
  *  Function to return Time since Start of Animation.
  */ 
-LONG XA_Read_AV_Time()
+xaLONG XA_Read_AV_Time()
 {
   return( (XA_Time_Read() - xa_av_time_off) );
 }
@@ -3111,8 +3458,8 @@ LONG XA_Read_AV_Time()
  *
  */
 void XA_Reset_Speed_Time(vid_time,speed_scale)
-LONG vid_time; ULONG speed_scale;
-{ LONG scaled_vid_time = XA_SPEED_ADJ(vid_time,speed_scale);
+xaLONG vid_time; xaULONG speed_scale;
+{ xaLONG scaled_vid_time = XA_SPEED_ADJ(vid_time,speed_scale);
   xa_av_time_off = XA_Time_Read() - scaled_vid_time;
 }
 
@@ -3122,22 +3469,23 @@ LONG vid_time; ULONG speed_scale;
  * is enabled, it adjusts animation start time to be now.
  */
 void XA_Reset_AV_Time(vid_time,speed_scale)
-LONG vid_time; ULONG speed_scale;
-{ int xflag = FALSE;
-  LONG scaled_vid_time = XA_SPEED_ADJ(vid_time,speed_scale);
+xaLONG vid_time; xaULONG speed_scale;
+{ int xflag = xaFALSE;
+  xaLONG scaled_vid_time = XA_SPEED_ADJ(vid_time,speed_scale);
 
-  if ( (xa_audio_enable == TRUE) && (speed_scale==XA_SPEED_NORM) )
+#ifndef XA_FORK
+  if ( (xa_vaudio_enable == xaTRUE) && (speed_scale==XA_SPEED_NORM) )
   {
     if (xa_snd_cur==0) xa_snd_cur = cur_file->first_snd;
     XA_Audio_Init_Snd(xa_snd_cur);
     /* Move to the correct snd chunk */
-    while(xflag == FALSE)
-    { LONG snd_time = xa_snd_cur->snd_time;
+    while(xflag == xaFALSE)
+    { xaLONG snd_time = xa_snd_cur->snd_time;
       if (snd_time > vid_time)
       { XA_SND *p_snd = xa_snd_cur->prev;
         DEBUG_LEVEL1 fprintf(stderr,"s>v %ld %ld\n",snd_time,vid_time);
         if (p_snd) xa_snd_cur = p_snd;
-        else xflag = TRUE;
+        else xflag = xaTRUE;
       }
       else if (snd_time < vid_time)
       { XA_SND *n_snd = xa_snd_cur->next;
@@ -3145,14 +3493,14 @@ LONG vid_time; ULONG speed_scale;
         if (n_snd) 
         {
 	  if (n_snd->snd_time <= vid_time) xa_snd_cur = n_snd;
-	  else xflag = TRUE;
+	  else xflag = xaTRUE;
         }
-        else xflag = TRUE;
+        else xflag = xaTRUE;
       }
       else 
       {
         DEBUG_LEVEL1 fprintf(stderr,"s=v %ld %ld\n",snd_time,vid_time);
-        xflag = TRUE;
+        xflag = xaTRUE;
       }
     }
     /* Move within the snd chunk - HAVE NOP FLAG */
@@ -3165,7 +3513,7 @@ LONG vid_time; ULONG speed_scale;
         XA_Read_Audio_Delta(xa_aud_fd,xa_snd_cur->fpos,
 				xa_snd_cur->tot_bytes,xa_audcodec_buf);
       } 
-      { ULONG tmp_cnt; LONG diff;
+      { xaULONG tmp_cnt; xaLONG diff;
 
 	/* time diff in ms */
         diff =  (vid_time - shdr->snd_time); if (diff < 0) diff = 0;
@@ -3191,8 +3539,13 @@ DEBUG_LEVEL1 fprintf(stderr,"AV rst: snd %lx samps %ld bytes %ld diff %ld\n",
       xa_timelo_audio = 0;
     } /* end of valid xa_snd_cur */ 
   } /* end of audio enable true */
+#endif
+
 DEBUG_LEVEL1 fprintf(stderr,"RESET_AV %ld\n",vid_time);
   xa_av_time_off = XA_Time_Read() - scaled_vid_time;
+#ifdef XA_FORK
+  XA_AUDIO_VID_TIME(xa_av_time_off);
+#endif
 }
 
 /***************************************************************************
@@ -3203,7 +3556,7 @@ DEBUG_LEVEL1 fprintf(stderr,"RESET_AV %ld\n",vid_time);
  * NONE
  ***************************************************************************/
 
-ULONG XA_Audio_Speaker(env_v)
+xaULONG XA_Audio_Speaker(env_v)
 char *env_v;
 {
   char *env_d;
@@ -3228,26 +3581,31 @@ char *env_v;
  ***************/
 void Hard_Death()
 {
-  XA_ANIM_HDR *tmp_hdr;
-
-  if (xa_audio_present==XA_AUDIO_OK) XA_Audio_Kill();
+  if (xa_vaudio_present==XA_AUDIO_OK) XA_AUDIO_KILL();
   if (xa_vid_fd >= 0) { close(xa_vid_fd); xa_vid_fd = -1; }
   if (xa_aud_fd >= 0) { close(xa_aud_fd); xa_aud_fd = -1; }
   if (xa_vidcodec_buf) { FREE(xa_vidcodec_buf,0x05); xa_vidcodec_buf=0;}
   if (xa_audcodec_buf) { FREE(xa_audcodec_buf,0x99); xa_audcodec_buf=0;}
-  if (cur_file !=0 )
+
+#ifdef XA_FORK
+  XA_AUDIO_EXIT();
+  XA_IPC_Close_Pipes();
+#endif
+
+  cur_file = first_file;
+  if (cur_file)
   {
-    cur_file = first_file;
     first_file->prev_file->next_file = 0;  /* last file's next ptr to 0 */
   }
-  while( cur_file != 0)
-  {
+  while(cur_file)
+  { XA_ANIM_HDR *tmp_hdr = cur_file->next_file;
     Free_Actions(cur_file->acts);
-    tmp_hdr = cur_file->next_file;
-    if (cur_file->name) FREE(cur_file->name,0x06);
-    FREE(cur_file,0x07);
+    if (cur_file->name) { FREE(cur_file->name,0x15); cur_file->name = 0; }
+    XA_Walk_The_Chain(cur_file,xaTRUE);  /* Walk and Free functions */
+    FREE(cur_file,0x16);
     cur_file = tmp_hdr;
   }
+
   if (!shm)  /* otherwise it's free'd below as imX_shminfo.shmaddr */
   {
     if (im_buff0) { FREE(im_buff0,0x08); im_buff0=0; }
@@ -3305,27 +3663,32 @@ void Hard_Death()
  */
 void TheEnd()
 {
-  XA_ANIM_HDR *tmp_hdr;
+
 
 /*POD TEMP*/
   jpg_free_stuff();
-  mpg_free_stuff();
 
-  if (xa_audio_present==XA_AUDIO_OK) XA_Audio_Kill();
+  if (xa_vaudio_present==XA_AUDIO_OK)  XA_AUDIO_KILL();
   if (xa_vid_fd >= 0) { close(xa_vid_fd); xa_vid_fd = -1; }
   if (xa_aud_fd >= 0) { close(xa_aud_fd); xa_aud_fd = -1; }
   if (xa_vidcodec_buf) { FREE(xa_vidcodec_buf,0x14); xa_vidcodec_buf=0;}
   if (xa_audcodec_buf) { FREE(xa_audcodec_buf,0x99); xa_audcodec_buf=0;}
-  if (cur_file !=0 )
+
+#ifdef XA_FORK
+  XA_AUDIO_EXIT();
+  XA_IPC_Close_Pipes();
+#endif
+
+  cur_file = first_file;
+  if (cur_file)
   {
-    cur_file = first_file;
     first_file->prev_file->next_file = 0;  /* last file's next ptr to 0 */
-  }
-  while( cur_file != 0)
-  {
+  } 
+  while(cur_file)
+  { XA_ANIM_HDR *tmp_hdr = cur_file->next_file;
     Free_Actions(cur_file->acts);
-    tmp_hdr = cur_file->next_file;
     if (cur_file->name) { FREE(cur_file->name,0x15); cur_file->name = 0; }
+    XA_Walk_The_Chain(cur_file,xaTRUE);  /* Walk and Free functions */
     FREE(cur_file,0x16);
     cur_file = tmp_hdr;
   }
@@ -3384,6 +3747,8 @@ void TheEnd()
     XDestroyImage(theImage);
   }
   if (theDisp) XtCloseDisplay(theDisp);
+
+
   exit(0);
 }
 
@@ -3402,25 +3767,91 @@ XA_ANIM_SETUP *XA_Get_Anim_Setup()
 {
   XA_ANIM_SETUP *setup = (XA_ANIM_SETUP *)malloc(sizeof(XA_ANIM_SETUP));
   if (setup==0) TheEnd1("XA_ANIM_SETUP: malloc err\n");
-  setup->imagex = setup->max_imagex = 0;
-  setup->imagey = setup->max_imagey = 0;
-  setup->imagec = setup->depth = 0;
-  setup->compression = 0;
-  setup->pic = 0;
-  setup->pic_size = 0;
-  setup->max_fvid_size = setup->max_faud_size = 0;
-  setup->vid_time = setup->vid_timelo = 0;
-  setup->aud_time = setup->aud_timelo = 0;
-  setup->chdr = 0;
-  setup->cmap_flag      = 0;
-  setup->cmap_cnt       = 0;
-  setup->cmap_frame_num = 0;
+  setup->imagex		= setup->max_imagex	= 0;
+  setup->imagey		= setup->max_imagey	= 0;
+  setup->imagec		= setup->depth		= 0;
+  setup->compression	= 0;
+  setup->pic		= 0;
+  setup->pic_size	= 0;
+  setup->max_fvid_size	= setup->max_faud_size	= 0;
+  setup->vid_time	= setup->vid_timelo	= 0;
+  setup->aud_time	= setup->aud_timelo	= 0;
+  setup->chdr		= 0;
+  setup->cmap_flag	= 0;
+  setup->cmap_cnt	= 0;
+  setup->color_cnt	= 0;
+  setup->cmap_frame_num	= 0;
   return(setup);
 }
- 
 
 void XA_Free_Anim_Setup(setup)
 XA_ANIM_SETUP *setup;
 {
   if (setup) free(setup);
 }
+
+/***********************************************
+ * Allocate and init a Fuction Chain Structure.
+ *
+ *******************************/
+XA_FUNC_CHAIN *XA_Get_Func_Chain(anim_hdr,function)
+XA_ANIM_HDR *anim_hdr;
+void (*function)();
+{ XA_FUNC_CHAIN *f_chain = (XA_FUNC_CHAIN *)malloc(sizeof(XA_FUNC_CHAIN));
+  if (f_chain==0) TheEnd1("XA_FUNC_CHAIN: malloc err\n");
+  f_chain->function = function;
+  f_chain->next     = 0;
+  return(f_chain);
+}
+
+/***********************************************
+ * Add Function to List of functions to be called at Dying Time.
+ *
+ *******************************/
+void XA_Add_Func_To_Free_Chain(anim_hdr,function)
+XA_ANIM_HDR *anim_hdr;
+void (*function)();
+{ XA_FUNC_CHAIN *f_chain = XA_Get_Func_Chain(anim_hdr,function);
+  f_chain->next = anim_hdr->free_chain;
+  anim_hdr->free_chain = f_chain;
+}
+
+/***********************************************
+ * 
+ *
+ *******************************/
+void XA_Walk_The_Chain(anim_hdr,free_flag)
+XA_ANIM_HDR *anim_hdr;
+xaULONG free_flag;		/* xaTRUE free structs. xaFALSE don't free */
+{ XA_FUNC_CHAIN *f_chain = anim_hdr->free_chain;
+
+  while(f_chain)
+  { XA_FUNC_CHAIN *tmp = f_chain;
+    f_chain->function();
+    f_chain = f_chain->next;
+    if (free_flag == xaTRUE) free(tmp);
+  }
+  if (free_flag == xaTRUE) anim_hdr->free_chain = 0;
+}
+
+
+/**************** Send BOFL's to the Audio Child every 5 seconds(5000 ms) */
+#ifdef XA_FORK
+
+void XA_Setup_BOFL()
+{
+  XtAppAddTimeOut(theContext,5000, (XtTimerCallbackProc)XA_Video_BOFL,
+                                                        (XtPointer)(NULL));
+}
+
+void XA_Video_BOFL()
+{
+  if (xa_forkit == xaTRUE)
+	xa_forkit = XA_Video_Send2_Audio(XA_IPC_BOFL,NULL,0,0,0,0);
+  if (xa_forkit == xaTRUE)
+	XtAppAddTimeOut(theContext,5000, 
+		(XtTimerCallbackProc)XA_Video_BOFL,(XtPointer)(NULL));
+}
+
+#endif
+

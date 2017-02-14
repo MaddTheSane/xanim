@@ -14,17 +14,16 @@
  * Modified for use with Unix
  *----------------------------------------------------------------------*/
 #include <stdio.h>
-#define LONG int
-#define ULONG unsigned int
-#define BYTE char
-#define UBYTE unsigned char
-#define SHORT short
-#define USHORT unsigned short
-#define WORD short int
-#define UWORD unsigned short int
 
-#define TRUE 1
-#define FALSE 0
+typedef int             xaLONG;
+typedef unsigned int    xaULONG;
+typedef short           xaSHORT;
+typedef unsigned short  xaUSHORT;
+typedef char            xaBYTE;
+typedef unsigned char   xaUBYTE;
+
+#define xaxaTRUE  1
+#define xaxaFALSE 0
 
 
 
@@ -36,40 +35,45 @@
 /* Given POINTERS to POINTER variables, unpacks one row, updating the source
  * and destination pointers until it produces dstBytes bytes. */
 
-LONG UnPackRow(pSource, pDest, srcBytes0, dstBytes0)
-BYTE  **pSource, **pDest;  LONG *srcBytes0, *dstBytes0; 
+xaLONG UnPackRow(pSource, pDest, srcBytes0, dstBytes0)
+xaBYTE  **pSource, **pDest;  xaLONG *srcBytes0, *dstBytes0; 
 {
-    register BYTE *source = *pSource; 
-    register BYTE *dest   = *pDest;
-    register LONG n;
-    register BYTE c;
-    register LONG srcBytes = *srcBytes0, dstBytes = *dstBytes0;
-    LONG error = TRUE;	/* assume error until we make it through the loop */
+  register xaBYTE *source = *pSource; 
+  register xaBYTE *dest   = *pDest;
+  register xaLONG n;
+  register xaBYTE c;
+  register xaLONG srcBytes = *srcBytes0, dstBytes = *dstBytes0;
+  xaLONG error = xaxaTRUE; /* assume error until we make it through the loop */
 
-    while( dstBytes > 0 )  {
-	if ( (srcBytes -= 1) < 0 )  {error=1; goto ErrorExit;}
-    	n = UGetByte() & 0xff;
+  while( dstBytes > 0 )  
+  {
+    if ( (srcBytes -= 1) < 0 )  { error=1; goto ErrorExit; }
+    n = UGetByte() & 0xff;
 
-    	if (!(n & 0x80)) {
-	    n += 1;
-	    if ( (srcBytes -= n) < 0 )  {error=2; goto ErrorExit;}
-	    if ( (dstBytes -= n) < 0 )  {error=3; goto ErrorExit;}
-	    do {  UPutByte(UGetByte());  } while (--n > 0);
-	    }
-
-    	else if (n != 0x80) {
-	    n = (256-n) + 1;
-	    if ( (srcBytes -= 1) < 0 )  {error=4; goto ErrorExit;}
-	    if ( (dstBytes -= n) < 0 )  {error=5; goto ErrorExit;}
-	    c = UGetByte();
-	    do {  UPutByte(c);  } while (--n > 0);
-	    }
-	}
-    error = FALSE;	/* success! */
-
-  ErrorExit:
-    *pSource = source;  *pDest = dest; 
-    *srcBytes0 = srcBytes; *dstBytes0 = dstBytes;
-    return(error);
+    if (!(n & 0x80)) 
+    {
+      n += 1;
+      if ( (srcBytes -= n) < 0 )  {error=2; goto ErrorExit;}
+      if ( (dstBytes -= n) < 0 )  {error=3; goto ErrorExit;}
+      do {  UPutByte(UGetByte());  } while (--n > 0);
     }
+    else if (n != 0x80) 
+    {
+      n = (256-n) + 1;
+      if ( (srcBytes -= 1) < 0 )  {error=4; goto ErrorExit;}
+      if ( (dstBytes -= n) < 0 )  {error=5; goto ErrorExit;}
+      c = UGetByte();
+      do 
+      {
+	UPutByte(c);
+      } while (--n > 0);
+    }
+  }
+  error = xaxaFALSE;	/* success! */
+
+ErrorExit:
+  *pSource = source;  *pDest = dest; 
+   *srcBytes0 = srcBytes; *dstBytes0 = dstBytes;
+   return(error);
+}
 

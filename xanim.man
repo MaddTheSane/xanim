@@ -104,7 +104,7 @@ AVI animations. Currently supported are
 .TP 3
   \-> Microsoft Video 1  (CRAM) depth 8 and 16.
 .TP 3
-  \-> Radius Cinepak     (CVID) depth 24. TEMP REMOVED
+  \-> SuperMac Cinepak   (CVID) depth 24.
 .TP 3
   \-> Uncompressed       (RGB ) depth 8.
 .TP 3
@@ -131,7 +131,7 @@ Quicktime Animations. The following features are supported:
 .TP 3
   \-> Apple Video      (RPZA) depth 16.
 .TP 3
-  \-> Radius Cinepak   (CVID) depth 24 and GRAY 8. TEMP REMOVED
+  \-> SuperMac Cinepak (CVID) depth 24 and GRAY 8.
 .TP 3
   \-> Component Video  (YUV2) depth 24.
 .TP 3
@@ -430,6 +430,10 @@ and buffered. This is cleared by the +f option.
 .B +B
 Used X11 Shared Memory(if present) for unbuffered animations only.(This is
 mutually exclusive with +b above).
+.TP
+.B +D
+Use X11 Multi Buffering (if present) to smooth animations by double-buffering.
+Default is on.
 .TP
 .B +f
 Don't load anim into memory, but read each section only when needed. This is

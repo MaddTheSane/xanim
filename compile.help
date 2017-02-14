@@ -1,17 +1,9 @@
 
-Here's a help file I've been working on that describes how to obtain, unarchive
-and compile XAnim.  Let me know if this helps or if you have any questions
-this doesn't answer.
-
-Thanks,
-
-Mark
-
 --------------------------------------------------------------------------
 
-         Compiling the Audio Revisions of XAnim(2.69.* and up)
+         Compiling the Audio Revisions of XAnim(2.70.* and up)
 
-In the following help section,  the "26978" part is variable and
+In the following help section,  the "2700" part is variable and
 depends on the rev. For example: Rev 2.88.3 would be "2883".
 
 --------------------------------------------------------------------------
@@ -24,9 +16,9 @@ Obtaining the XAnim archive through ftp:
 	3) Enter your full email address as the password.
 	4) "cd /pub/podlipec"
 	5) "type binary"
-        6a) "get xanim26978.tar.Z"     For the unix compressed version
+        6a) "get xanim2700.tar.Z"     For the unix compressed version
                 OR
-        6b) "get xanim26978.tar.gz"    For the gnu zipped version
+        6b) "get xanim2700.tar.gz"    For the gnu zipped version
 	7) by
 
 Obtaining XAnim through mosaic or a browser:
@@ -35,62 +27,58 @@ Obtaining XAnim through mosaic or a browser:
   uncompressed as it was transferred. Different browsers do different things.
 
 	A) If your browser uncompressed XAnim then save the file
-	   as "xanim26978.tar" and skip the uncompress steps in
+	   as "xanim2700.tar" and skip the uncompress steps in
 	   sections I) or II).
 	B) If your browers didn't uncompress XAnim then save the file
-	   as "xanim26978.tar.Z".
+	   as "xanim2700.tar.Z".
         C) If you're not sure then: 
-	     1) save the file as "xanim26978"
-             2) "ls -l xanim26978"
+	     1) save the file as "xanim2700"
+             2) "ls -l xanim2700"
                  a) if the size is < 600K, then it's compressed and you
-		    should "mv xanim26978 xanim26978.tar.Z".
+		    should "mv xanim2700 xanim2700.tar.Z".
 	         b) else it's not compressed and you should
-		    "mv xanim26978 xanim26978.tar". NOTE: skip the
+		    "mv xanim2700 xanim2700.tar". NOTE: skip the
 		    uncompress steps below.
 
 --------------------------------------------------------------------------
-Section II    Unarchiving and Compiling
+Section II    Unarchiving
+--------------------------------------------------------------------------
+
+    1a) uncompress xanim2700.tar.Z    For the unix compressed version
+               OR
+    1b) gunzip xanim2700.tar.gz       For the gnu zipped version
+    2) tar xvof xanim2700.tar
+    3) cd xanim2700
+
+--------------------------------------------------------------------------
+Section III   Compiling
 --------------------------------------------------------------------------
 
 Now that you've got it, what do you do?  
 
-I) If you are using OpenWindows(with SunOS 4.1.3) goto section II. 
+Part A) 
+   If you are using OpenWindows(with SunOS 4.1.3) goto Part B. 
    OpenWindows with SunOS 5.x should be okay here, but not positive.
-   If you know that Imake is NOT setup on your system, goto section II.
+   If you know that Imake is NOT setup on your system, goto Part B.
    If you're not sure about Imake, try it anyways and on any failure
-   goto II) and skip any initial steps you've already done.
+   goto Part B and skip any initial steps you've already done.
    
-    1a) uncompress xanim26978.tar.Z    For the unix compressed version
-               OR
-    1b) gunzip xanim26978.tar.gz       For the gnu zipped version
-    2) tar xvof xanim26978.tar
-    3) cd xanim26978
-    4) Edit the Imakefile and: 
-          a) indicate which XA_AUDIO_DEFS/LIBS/etc is correct for you
-	     machine and OS.
-	  b) Indicate whether you wish to use Athena, Athena 3d or Motif
-             Widgets for the Remote Control window.(XA_REMOTE_DEFS/INCS/etc)
-	     NOTE: You need the Motif library in order to compile XAnim
-             for Motif. Check to make sure you have the libXm.* library
-             in your X11 libs diretory before selecting Motif.
-    5) xmkmf
-    6) make xanim
+    1) Read and edit the Imakefile. Visit each section and
+       follow the directions for your machine/OS/Windowing environment.
+    2) xmkmf
+    3) make xanim
 
-    If steps 5) or 6) failed, then your system most likely isn't setup up
+    If steps 2) or 3) failed, then your system most likely isn't setup up
     properly for Imake(xmkmf). Either talk to your System Administrator 
-    or goto II).
+    or goto Part B.
 
 
-II) IF  I) ABOVE FAILED, OR Imake ISN'T PROPERLY SETUP OR YOU'RE USING
+Part B)
+    IF  Part A ABOVE FAILED, OR Imake ISN'T PROPERLY SETUP OR YOU'RE USING
     Sun OpenWindows INSTEAD OF X11
 
-    1a) uncompress xanim26978.tar.Z    NOTE: mosaic usually does this for you.
-               OR
-    1b) gunzip xanim26978.tar.gz       For the gnu zipped version
-    2) tar xvof xanim26978.tar
-    3) cd xanim26978
-    4) cp Makefile.unx Makefile
-    5) Edit the Makefile and: 
+    1) cp Makefile.unx Makefile
+    2) Edit the Makefile and: 
           a) indicate which XA_AUDIO_DEFS/LIBS/etc is correct for you
 	     machine and OS.
 	  b) Indicate whether you wish to use Athena, Athena 3d or Motif
@@ -102,7 +90,7 @@ II) IF  I) ABOVE FAILED, OR Imake ISN'T PROPERLY SETUP OR YOU'RE USING
 	  d) Indicate where the X11 libs are on your machine(LIBS)
           e) If you're using OpenWindows, follow the directions at the
              top of the Makefile to work around the bugs in OpenWindows.
-    6) On Suns you need to have your LD_LIBRARY_PATH match your the XLIBDIR
+    3) On Suns you need to have your LD_LIBRARY_PATH match the XLIBDIR
        define inside the Makefile. If it doesn't, you might end up mismatching
        different revs of X11 includes and libraries, causing all sorts of
        failures(usually undefined symbols). NOTE: This also has to match
@@ -121,8 +109,10 @@ II) IF  I) ABOVE FAILED, OR Imake ISN'T PROPERLY SETUP OR YOU'RE USING
 	To set it up properly for OpenWindows in the (Korn, Bourne and 
 	POSIX shells):
 
-        	"LD_LIBRARY_PATH = /usr/lib:/usr/openwin/lib"
+        	"LD_LIBRARY_PATH=/usr/lib:/usr/openwin/lib"
         	"export LD_LIBRARY_PATH"
+
+	NOTE: No spaces around "=" sign.
 
     7) make xanim
 
@@ -135,7 +125,7 @@ podlipec@shell.portal.com
 
 
 --------------------------------------------------------------------------
-Section III    Common Compiling Problems
+Section IV    Common Compiling Problems
 --------------------------------------------------------------------------
 
 1) 
