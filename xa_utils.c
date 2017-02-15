@@ -39,10 +39,10 @@ xaUBYTE *UTIL_Scale_Bitmap();
 void UTIL_Pack_Image();
 void UTIL_FPS_2_Time();
 
-static xaULONG UTIL_Get_LSB_Long();
-static xaULONG UTIL_Get_LSB_Short();
+extern xaULONG UTIL_Get_LSB_Long();
+extern xaULONG UTIL_Get_LSB_Short();
 extern xaULONG UTIL_Get_MSB_Long();
-static xaULONG UTIL_Get_MSB_UShort();
+extern xaULONG UTIL_Get_MSB_UShort();
 static xaLONG UTIL_Get_MSB_Short();
 extern void UTIL_Mapped_To_Floyd();
 extern xaULONG CMAP_Find_Closest();

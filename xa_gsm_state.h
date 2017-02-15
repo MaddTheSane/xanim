@@ -1,3 +1,5 @@
+#ifndef __XA_GSM_STATE_H__
+#define __XA_GSM_STATE_H__
 /********************************************************************
  *
  * Copyright 1992 by Jutta Degener and Carsten Bormann, Technische
@@ -37,3 +39,4 @@ typedef struct {
 	unsigned char	frame_chain;	/*   half-byte to carry forward	*/
 } XA_GSM_STATE;
 
+#endif

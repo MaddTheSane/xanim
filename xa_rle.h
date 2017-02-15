@@ -1,4 +1,3 @@
-
 /*
  * xa_rle.h
  *
@@ -15,6 +14,9 @@
  * or its effect upon hardware or computer systems.
  *
  */
+
+#ifndef __XA_RLE_H__
+#define __XA_RLE_H__
 
 #include "xanim.h"
 
@@ -64,4 +66,4 @@ typedef struct RLE_HDR_STRUCT
 #define RLE_RunDataOp          0x06
 #define RLE_EOFOp              0x07
 
-
+#endif

@@ -1,4 +1,3 @@
-
 /*
  * xa_jmov.h
  *
@@ -15,6 +14,9 @@
  * or its effect upon hardware or computer systems.
  *
  */
+
+#ifndef __XA_JMOV_H__
+#define __XA_JMOV_H__
 
 #include "xanim.h"
 
@@ -54,3 +56,4 @@ typedef struct
 #define JMOV_AUDIO_ENC_ALAW (2)   /* A-law encoding */
 #define JMOV_AUDIO_ENC_PCM  (3)   /* Linear PCM encoding */
 
+#endif

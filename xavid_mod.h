@@ -1,3 +1,5 @@
+#ifndef __XAVID_MOD_H__
+#define __XAVID_MOD_H__
 
 typedef struct S_XAVID_FUNC_HDR
 {
@@ -27,4 +29,4 @@ typedef struct
 } XAVID_MOD_HDR;
 
 
-
+#endif

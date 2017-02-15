@@ -1,4 +1,3 @@
-
 /*
  * xa_avi.h
  *
@@ -23,6 +22,8 @@
  *
  */
 
+#ifndef __XA_AVI_H__
+#define __XA_AVI_H__
 
 #include "xanim.h"
 
@@ -318,3 +319,4 @@ typedef struct /* BitMapInfoHeader */
 #define IBM_FORMAT_ADPCM		(0x0103)
 /*********************/
 
+#endif

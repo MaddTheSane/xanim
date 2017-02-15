@@ -1,4 +1,3 @@
-
 /*
  * xa_dl.h
  *
@@ -15,6 +14,9 @@
  * or its effect upon hardware or computer systems.
  *
  */
+
+#ifndef __XA_DL_H__
+#define __XA_DL_H__
 
 #include "xanim.h"
 
@@ -36,3 +38,4 @@
 #define DL_SMALL_XSIZE    80
 #define DL_SMALL_YSIZE    50
 
+#endif

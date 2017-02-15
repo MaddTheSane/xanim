@@ -20,12 +20,12 @@ static void Gsm_RPE_Decoding();
 /*   Table 4.3b   Quantization levels of the LTP gain quantizer
  */
 /* bc                 0          1        2          3                  */
-static word gsm_QLB[4] = {  3277,    11469,    21299,     32767        };
+static const word gsm_QLB[4] = {  3277,    11469,    21299,     32767        };
 
 /*   Table 4.6   Normalized direct mantissa used to compute xM/xmax
  */
 /* i                  0      1       2      3      4      5      6      7   */
-static word gsm_FAC[8] = { 18431, 20479, 22527, 24575, 26623, 28671, 30719, 32767 };
+static const word gsm_FAC[8] = { 18431, 20479, 22527, 24575, 26623, 28671, 30719, 32767 };
 
 
 
@@ -34,18 +34,14 @@ static word gsm_FAC[8] = { 18431, 20479, 22527, 24575, 26623, 28671, 30719, 3276
         ((x) < MIN_WORD ? MIN_WORD : (x) > MAX_WORD ? MAX_WORD: (x))
 
 /****************/
-static word gsm_sub (a,b)
-word a;
-word b;
+static word gsm_sub (word a, word b)
 {
         longword diff = (longword)a - (longword)b;
         return saturate(diff);
 }
 
 /****************/
-static word gsm_asr (a,n)
-word a; 
-int n;
+static word gsm_asr (word a,int n)
 {
         if (n >= 16) return -(a < 0);
         if (n <= -16) return 0;
@@ -60,9 +56,7 @@ int n;
 }
 
 /****************/
-static word gsm_asl (a,n)
-word a; 
-int n;
+static word gsm_asl (word a, int n)
 {
         if (n >= 16) return 0;
         if (n <= -16) return -(a < 0);

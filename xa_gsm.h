@@ -6,6 +6,9 @@
  *
  ********************************************************************/
 
+#ifndef __XA_GSM_H__
+#define __XA_GSM_H__
+
 #include "xa_gsm_state.h"
 
 #define	MIN_WORD	(-32767 - 1)
@@ -79,3 +82,4 @@
 
 */
 
+#endif

@@ -1,4 +1,3 @@
-
 /*
  * xa_ipc_cmds.h
  *
@@ -22,6 +21,8 @@
  *
  ****************/
 
+#ifndef __XA_IPC_CMDS_H__
+#define __XA_IPC_CMDS_H__
 
 #ifdef XA_AUDIO
 
@@ -129,3 +130,4 @@ extern void XA_IPC_Set_Debug();
 
 #endif
 
+#endif

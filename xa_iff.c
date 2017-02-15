@@ -96,7 +96,7 @@ static ColorReg *iff_cur_hmap;
 static ColorReg iff_cmap[256];
 static XA_CHDR *iff_chdr;
 
-static xaLONG mask[8] = {0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01};
+static const xaLONG mask[8] = {0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01};
 
 static IFF_ACT_LST *iff_act_start,*iff_act_cur;
 static xaULONG iff_act_cnt;

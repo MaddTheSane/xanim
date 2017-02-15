@@ -107,8 +107,7 @@ XA_ACTION *act;
 }
 
 void
-GIF_Free_Frame_List(gframes)
-GIF_FRAME *gframes;
+GIF_Free_Frame_List(GIF_FRAME *gframes)
 {
   GIF_FRAME *gtmp;
   while(gframes != 0)

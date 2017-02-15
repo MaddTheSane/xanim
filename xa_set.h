@@ -1,4 +1,3 @@
-
 /*
  * xa_set.h
  *
@@ -15,6 +14,10 @@
  * or its effect upon hardware or computer systems.
  *
  */
+
+#ifndef __XA_SET_H__
+#define __XA_SET_H__
+
 /*********************************** X11 stuff */
 extern Display       *theDisp;
 extern Colormap      theCmap;
@@ -62,3 +65,4 @@ typedef struct STRUCT_SET_FRAM_HDR
   ACT_SETTER_HDR *pms_hdr;
 } SET_FRAM_HDR;
 
+#endif

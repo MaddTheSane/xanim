@@ -19,9 +19,6 @@
 #include "xa_gif.h"
 #include "xa_formats.h"
 
-
-extern void GIF_Free_Frame_List();
-
 extern xaULONG XA_Open_And_ID_File();
 extern xaULONG XA_Setup_Input_Methods();
 

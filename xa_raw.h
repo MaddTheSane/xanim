@@ -1,4 +1,3 @@
-
 /*
  * xa_raw.h
  *
@@ -23,6 +22,8 @@
  *
  */
 
+#ifndef __XA_RAW_H__
+#define __XA_RAW_H__
 
 #include "xanim.h"
 
@@ -37,3 +38,4 @@ typedef struct RAW_FRAME_STRUCT
   struct RAW_FRAME_STRUCT *next;
 } RAW_FRAME;
 
+#endif

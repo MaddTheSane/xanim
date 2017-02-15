@@ -1,4 +1,3 @@
-
 /*
  * xa_jpg.h
  *
@@ -15,6 +14,9 @@
  * or its effect upon hardware or computer systems.
  *
  */
+
+#ifndef __XA_JPG_H__
+#define __XA_JPG_H__
 
 #include "xanim.h"
 
@@ -108,4 +110,4 @@ typedef int ISLOW_MULT_TYPE;
 #define   M_TEM     0x01
 #define   M_ERROR   0x100
 
-
+#endif

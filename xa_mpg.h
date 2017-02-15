@@ -1,5 +1,3 @@
-#ifndef __XA_MPG_H__
-#define __XA_MPG_H__
 /*
  * xa_mpg.h
  *
@@ -17,6 +15,8 @@
  *
  */
 
+#ifndef __XA_MPG_H__
+#define __XA_MPG_H__
 
 #include "xanim.h"
 

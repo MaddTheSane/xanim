@@ -1,5 +1,3 @@
-#ifndef __XANIM_H__
-#define __XANIM_H__
 /*
  * xanim.h
  *
@@ -16,6 +14,10 @@
  * or its effect upon hardware or computer systems.
  *
  */
+
+#ifndef __XANIM_H__
+#define __XANIM_H__
+
 #include <X11/Xos.h>
 #include <stdio.h>
 #include <sys/types.h>

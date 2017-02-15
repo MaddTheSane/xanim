@@ -1,4 +1,3 @@
- 
 /*
  * xa_qt.h
  *
@@ -16,6 +15,9 @@
  *
  */
  
+#ifndef __XA_QT_H__
+#define __XA_QT_H__
+
 #include "xanim.h"
  
 #define QT_moov 0x6D6F6F76
@@ -229,4 +231,4 @@ typedef struct
   xaULONG timelo;
 } QT_T2SAMP_HDR;
 
-
+#endif

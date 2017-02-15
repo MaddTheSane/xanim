@@ -16,6 +16,9 @@
  *
  */
 
+#ifndef __XA_8SVX_H__
+#define __XA_8SVX_H__
+
 /* this one could be in xanim.h, we used to adapt the IFF 8SVX spec with
  * minimal changes
  */
@@ -65,3 +68,4 @@ typedef struct
 	xaLONG	volume;		/* fixed point value */
 } Voice8Header;
 
+#endif

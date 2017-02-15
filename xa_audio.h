@@ -1,4 +1,3 @@
-
 /*
  * xa_audio.h
  *
@@ -16,6 +15,8 @@
  *
  */
 
+#ifndef __XA_AUDIO_H__
+#define __XA_AUDIO_H__
 
 #include "xanim.h"
 #include <X11/Intrinsic.h>
@@ -216,3 +217,5 @@ extern xaULONG xa_forkit;
 
 
 /*********************** END   INCLUDES ********************************/
+
+#endif

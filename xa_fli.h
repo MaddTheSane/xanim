@@ -1,4 +1,3 @@
-
 /*
  * xa_fli.h
  *
@@ -15,6 +14,9 @@
  * or its effect upon hardware or computer systems.
  *
  */
+
+#ifndef __XA_FLI_H__
+#define __XA_FLI_H__
 
 #include "xanim.h"
 
@@ -65,4 +67,4 @@ extern void Decode_Fli_LC();
 extern void Fli_Buffer_Action();
 extern xaLONG Is_FLI_File();
 
-
+#endif

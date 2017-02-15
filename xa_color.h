@@ -1,4 +1,3 @@
-
 /*
  * xa_color.h
  *
@@ -15,6 +14,9 @@
  * or its effect upon hardware or computer systems.
  *
  */
+
+#ifndef __XA_COLOR_H__
+#define __XA_COLOR_H__
 
 typedef struct
 {
@@ -50,4 +52,4 @@ typedef struct
 } XA_2x2_Color;
 
 
-
+#endif

@@ -1,4 +1,5 @@
-
+#ifndef __XA_DEC2_H__
+#define __XA_DEC2_H__
 /* REV 2 Decoder Info Structure */
 
 typedef struct
@@ -36,4 +37,4 @@ typedef struct
 #define XA_IMTYPE_CF4		0x0008
 #define XA_IMTYPE_CF4DITH	0x0009
 
-
+#endif

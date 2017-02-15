@@ -1,4 +1,3 @@
-
 /*
  * xa_x11.h
  *
@@ -15,6 +14,9 @@
  * or its effect upon hardware or computer systems.
  *
  */
+
+#ifndef __XA_X11_H__
+#define __XA_X11_H__
 
 /*********************************** X11 stuff */
 extern Display		*theDisp;
@@ -41,3 +43,4 @@ extern void Cycle_It();
 extern void X11Setup();
 extern void X11_Show_Visuals();
 
+#endif

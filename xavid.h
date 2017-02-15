@@ -1,4 +1,3 @@
-
 /*
  * xavid.h
  *
@@ -15,6 +14,9 @@
  * or its effect upon hardware or computer systems.
  *
  */
+
+#ifndef __XAVID_H__
+#define __XAVID_H__
 
 typedef int             xaLONG;
 typedef unsigned int    xaULONG;
@@ -81,4 +83,4 @@ typedef struct XA_CHDR_STRUCT
 #include <xa_dec2.h>
 #include <xavid_mod.h>
 
-
+#endif

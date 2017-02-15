@@ -1,4 +1,3 @@
-
 /*
  * xa_ipc.h
  *
@@ -22,6 +21,8 @@
  *
  *******************************/
 
+#ifndef __XA_IPC_H__
+#define __XA_IPC_H__
 
 #include <errno.h>
 
@@ -115,3 +116,4 @@ typedef struct STRUCT_XA_AUD_HDR
   struct STRUCT_XA_AUD_HDR *prev;
 } XA_AUD_HDR;
 
+#endif

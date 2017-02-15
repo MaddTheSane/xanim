@@ -1,5 +1,3 @@
-#ifndef __XA_IFF_H__
-#define __XA_IFF_H__
 /*
  * xa_iff.h
  *
@@ -16,6 +14,9 @@
  * or its effect upon hardware or computer systems.
  *
  */
+
+#ifndef __XA_IFF_H__
+#define __XA_IFF_H__
 
 #include "xanim.h"
 

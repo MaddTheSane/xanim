@@ -1,5 +1,3 @@
-#ifndef __XA_XMPEG_H__
-#define __XA_XMPEG_H__
 /*
  * xa_xmpg.c
  *
@@ -16,6 +14,9 @@
  * or its effect upon hardware or computer systems.
  *
  */
+
+#ifndef __XA_XMPEG_H__
+#define __XA_XMPEG_H__
 
 #include "xanim.h"
 

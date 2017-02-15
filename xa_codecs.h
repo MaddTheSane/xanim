@@ -1,4 +1,3 @@
-
 /*
  * xa_codecs.h
  *
@@ -15,6 +14,9 @@
  * or its effect upon hardware or computer systems.
  *
  */
+
+#ifndef __XA_CODECS_H__
+#define __XA_CODECS_H__
 
 typedef struct
 {
@@ -35,3 +37,4 @@ typedef struct
 #define CODEC_UNKNOWN      0
 #define CODEC_UNSUPPORTED -1
 
+#endif
