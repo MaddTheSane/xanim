@@ -23,7 +23,6 @@ XA_ACTION *ACT_Get_Action();
 void  ACT_Setup_Mapped();
 void  ACT_Add_CHDR_To_Action();
 void  ACT_Setup_Loop();
-xaULONG DL_Read_File();
 extern XA_ANIM_SETUP *XA_Get_Anim_Setup();
 void XA_Free_Anim_Setup();
 xaULONG DL_Decode_Image();

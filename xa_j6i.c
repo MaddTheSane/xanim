@@ -24,8 +24,8 @@
 
 
 #include "xa_j6i.h" 
+#include "xa_formats.h"
 
-xaULONG J6I_Read_File();
 J6I_FRAME *J6I_Add_Frame();
 void J6I_Free_Frame_List();
 void ACT_Setup_Delta();
@@ -111,10 +111,7 @@ J6I_FRAME *fframes;
 }
 
 
-xaULONG J6I_Read_File(fname,anim_hdr,audio_attempt)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
-xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
+xaULONG J6I_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr,xaULONG audio_attempt)
 { XA_INPUT *xin = anim_hdr->xin;
   xaLONG i,t_time;
   xaULONG t_timelo;

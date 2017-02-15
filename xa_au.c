@@ -33,6 +33,7 @@
 
 
 #include "xanim.h"
+#include "xa_formats.h"
 
 #define AU_MAGIC 0x2e736e64
 #define AU_HSIZE 0x18
@@ -41,7 +42,6 @@
 #define AU_LIN_8       2
 #define AU_LIN_16      3
 
-xaULONG AU_Read_File();
 xaULONG au_max_faud_size;
 extern void  AVI_Print_ID();
 
@@ -54,10 +54,7 @@ xaULONG UTIL_Get_LSB_Long();
 xaULONG UTIL_Get_LSB_Short();
 xaULONG XA_Add_Sound();
 
-xaULONG AU_Read_File(fname,anim_hdr,audio_attempt)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
-xaULONG audio_attempt;    /* xaTRUE if audio is to be attempted */
+xaULONG AU_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr,xaULONG audio_attempt)
 {
   FILE *fin;
   xaLONG tmp,au_hdr_size,au_data_size;

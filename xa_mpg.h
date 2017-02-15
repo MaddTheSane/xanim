@@ -1,4 +1,5 @@
-
+#ifndef __XA_MPG_H__
+#define __XA_MPG_H__
 /*
  * xa_mpg.h
  *
@@ -432,4 +433,4 @@ unsigned short int dct_coeff_first[256] =
 0x0010, 0x0010, 0x0010, 0x0010, 
 };
 
-
+#endif

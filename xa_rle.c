@@ -17,8 +17,8 @@
  */
 #include "xa_rle.h"
 #include "xa_cmap.h"
+#include "xa_formats.h"
 
-xaULONG RLE_Read_File();
 xaULONG RLE_Read_Header();
 xaULONG RLE_Get_Image();
 void RLE_Read_Row();
@@ -84,9 +84,7 @@ RLE_FRAME *rframes;
 }
 
 
-xaULONG RLE_Read_File(fname,anim_hdr)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
+xaULONG RLE_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr)
 {
   int i;
   RLE_FRAME *rtmp;

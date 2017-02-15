@@ -61,6 +61,7 @@
 
 #include "xanim.h"
 #include "xa_cmap.h"
+#include "xa_formats.h"
 #include <X11/Intrinsic.h>
 #include <X11/StringDefs.h>
 #include <X11/Shell.h>

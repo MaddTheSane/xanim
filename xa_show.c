@@ -24,6 +24,7 @@
  */
 
 #include "xanim.h"
+#include "xa_iff.h"
 #include <X11/Intrinsic.h>
 #include <X11/StringDefs.h>
 #include <X11/Shell.h>
@@ -59,10 +60,6 @@ xaULONG XA_Image_To_Pixmap();
 xaULONG XA_Read_Delta();
 void X11_Init_Image_Struct();
 void XA_Install_CMAP();
-void IFF_Init_DLTA_HDR();
-void IFF_Update_DLTA_HDR();
-void IFF_Buffer_HAM6();
-void IFF_Buffer_HAM8();
 extern xaULONG XA_Get_Image_Type();
 
 

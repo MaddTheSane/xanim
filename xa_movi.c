@@ -28,7 +28,6 @@
 #include "xa_movi.h" 
 #include "xa_cmap.h"
 
-xaULONG MOVI_Read_File();
 MOVI_FRAME *MOVI_Add_Frame();
 void MOVI_Free_Frame_List();
 void ACT_Setup_Delta();

@@ -30,7 +30,10 @@
  * Common routines for G.721 and G.723 conversions.
  */
 
+#include <math.h>
+#include <tgmath.h>
 #include "xa_g72x.h"
+#include "xa_formats.h"
 #include <stdlib.h>
 
 static short power2[15] = {1, 2, 4, 8, 0x10, 0x20, 0x40, 0x80,
@@ -44,10 +47,7 @@ static short power2[15] = {1, 2, 4, 8, 0x10, 0x20, 0x40, 0x80,
  *
  * Using linear search for simple coding.
  */
-static int quan(val,table,size)
-int		val;
-short		*table;
-int		size;
+static int quan(int val, short *table, int size)
 {
 	int		i;
 
@@ -63,9 +63,7 @@ int		size;
  * returns the integer product of the 14-bit integer "an" and
  * "floating point" representation (4-bit exponent, 6-bit mantessa) "srn".
  */
-static int fmult( an, srn)
-int		an;
-int		srn;
+static int fmult(int an, int srn)
 {
 	short		anmag, anexp, anmant;
 	short		wanexp, /* wanmag, */ wanmant;

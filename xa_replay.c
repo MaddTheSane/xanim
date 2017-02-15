@@ -24,8 +24,8 @@
 
 
 #include "xa_replay.h" 
+#include "xa_formats.h"
 
-xaULONG ARM_Read_File();
 ARM_FRAME *ARM_Add_Frame();
 void ARM_Free_Frame_List();
 void ACT_Setup_Delta();
@@ -119,10 +119,7 @@ ARM_FRAME *fframes;
 }
 
 
-xaULONG ARM_Read_File(fname,anim_hdr,audio_attempt)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
-xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
+xaULONG ARM_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr,xaULONG audio_attempt)
 { XA_INPUT *xin = anim_hdr->xin;
   xaLONG i,t_time;
   xaULONG t_timelo;

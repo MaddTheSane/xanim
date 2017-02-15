@@ -49,6 +49,7 @@
  *
  */
 #include "xa_g72x.h"
+#include "xa_formats.h"
 
 #ifdef NOT_USED___WHY
 static short qtab_721[7] = {-124, 80, 178, 246, 300, 349, 400};

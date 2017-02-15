@@ -18,9 +18,9 @@
 #include "xanim.h"
 #include "xa_set.h"
 #include "xa_iff.h"
+#include "xa_formats.h"
 #include <ctype.h>
 
-xaULONG SET_Read_File();
 SET_FRAM_HDR *SET_Init_FRAM_HDRS();
 xaUBYTE *SET_Read_BACK();
 xaUBYTE *SET_Read_FACE();
@@ -45,15 +45,7 @@ XA_ACTION *ACT_Get_Action();
 xaULONG UTIL_Get_Buffer_Scale();
 void UTIL_Scale_Buffer_Pos();
 void ACT_Setup_Mapped();
-void IFF_Read_BMHD();
-void IFF_Read_BODY();
-void IFF_Read_CMAP_0();
-void IFF_Read_CMAP_1();
-void IFF_Shift_CMAP();
-void IFF_Print_ID();
 
-XA_CHDR *ACT_Get_CMAP();
-xaULONG CMAP_Get_Or_Mask();
 void ACT_Add_CHDR_To_Action();
 extern void XA_Setup_Input_Methods();
 
@@ -220,9 +212,7 @@ SET_SSET_HDR *SET_Alloc_SSET_HDR()
 }
 
 
-xaULONG SET_Read_File(fname,anim_hdr)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
+xaULONG SET_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr)
 { XA_INPUT *xin = anim_hdr->xin;
   xaULONG op; 
   xaULONG cur_fram_num;

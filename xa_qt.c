@@ -51,6 +51,7 @@
 #include "xa_qt.h"
 #include "xa_codecs.h"
 #include "xa_cmap.h"
+#include "xa_formats.h"
 #include <sys/stat.h>
 
 #ifdef XA_ZLIB
@@ -65,7 +66,6 @@ extern xaULONG XA_Mem_Open_Init();
 static xaULONG QT_Read_Video_Codec_HDR();
 static xaULONG QT_Read_Audio_Codec_HDR();
 static void QT_Audio_Type();
-extern xaULONG QT_Read_File();
 
 
 static void QT_Create_Default_Cmap();
@@ -232,10 +232,7 @@ xaULONG qt_has_ctab;
 xaULONG qt_saw_audio, qt_saw_video;
 
 /* main() */
-xaULONG QT_Read_File(fname,anim_hdr,audio_attempt)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
-xaULONG audio_attempt;  /* xaTRUE is audio is to be attempted */
+xaULONG QT_Read_File(const char* fname,XA_ANIM_HDR *anim_hdr,xaULONG audio_attempt)
 { XA_INPUT *xin;
   xaLONG i,t_time;
   xaULONG t_timelo;

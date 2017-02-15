@@ -16,6 +16,8 @@
  *
  */
 
+#include <math.h>
+#include <tgmath.h>
 #include "xanim.h"
 #include "xa_cmap.h"
 
@@ -62,10 +64,13 @@ typedef struct CMAP_Box_Struct
 #define CMAP_MEDIAN_GREEN 2
 #define CMAP_MEDIAN_BLUE  3
 
-int ColorComp();
+static int ColorComp(ColorReg *c1,ColorReg *c2);
+static void CMAP_Histogram_CHDR(XA_CHDR *chdr,xaULONG *hist,xaULONG csize,xaULONG moff);
+static void CMAP_CMAP_From_Clist(ColorReg *cmap_out,xaULONG *clist,xaULONG clist_len);
+static void CMAP_Map_To_One(void);
 static int CMAP_CList_Compare(const void *pc1, const void *pc2);
 static void CMAP_Shrink_CHDR(XA_CHDR *old_chdr,xaULONG new_csize);
-static CMAP_Box *CMAP_Get_Box();
+static CMAP_Box *CMAP_Get_Box(void);
 static void CMAP_Compact_Box(CMAP_Box *box);
 static xaLONG CMAP_Split_Box(CMAP_Box *box);
 static void CMAP_Find_Box_Color(ColorReg *creg,CMAP_Box *box);
@@ -78,8 +83,7 @@ static int CMAP_Median_Compare_Blue(const void *pc1, const void *pc2);
 /*
  *
  */
-int ColorComp(c1,c2)
-ColorReg *c1,*c2;
+int ColorComp(ColorReg *c1,ColorReg *c2)
 {
  long val1,val2;
 
@@ -321,7 +325,7 @@ static xaULONG CMAP_Make_Clist(XA_CHDR *chdr,xaULONG **clist)
   return(c_i);
 }
 
-static void
+void
 CMAP_Map_To_One(void)
 {
   XA_CHDR *new_chdr;
@@ -1179,7 +1183,7 @@ void CMAP_CList_CombSort_Blue(xaULONG *clist,xaULONG cnum)
 xaULONG CMAP_Gamma_Adjust(xaUSHORT *gamma_adj,double disp_gamma,double anim_gamma)
 {
   register xaULONG i;
-  double pow(),t64k,d;
+  double t64k,d;
  
   DEBUG_LEVEL2 fprintf(stderr,"CMAP_Gamma_Adjust\n");
   if (disp_gamma < GAMMA_MIN) disp_gamma = 1.0;

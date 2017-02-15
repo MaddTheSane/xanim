@@ -26,6 +26,8 @@
 #include "xa_jpg.h"
 
 #include "xa_color.h"
+#include "xa_xmpg.h"
+#include "xa_formats.h"
 YUVBufs jpg_YUVBufs;
 extern YUVTabs def_yuv_tabs;
 
@@ -138,7 +140,6 @@ extern void *XA_MCU411111_Func();
 extern void XA_Add_Func_To_Free_Chain();
 
 /******* JFIF extern stuff and variables ***************/
-xaULONG JFIF_Read_File();
 XA_ACTION *ACT_Get_Action();
 XA_CHDR   *ACT_Get_CMAP();
 XA_CHDR *CMAP_Create_332();
@@ -211,9 +212,7 @@ void jpg_free_stuff()
 /*****
  *
  */
-xaULONG JFIF_Read_File(fname,anim_hdr)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
+xaULONG JFIF_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr)
 { XA_INPUT *xin = anim_hdr->xin;
   ACT_DLTA_HDR *dlta_hdr = 0;
   XA_ACTION *act = 0;

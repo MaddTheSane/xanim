@@ -23,8 +23,8 @@
 
 
 #include "xa_avi.h"
+#include "xa_formats.h"
 
-xaULONG WAV_Read_File();
 extern void AVI_Print_ID();
 extern void AVI_Print_Audio_Type();
 
@@ -39,10 +39,9 @@ extern xaULONG XA_Add_Sound();
 extern void GSM_Init();
 #endif
 
-xaULONG WAV_Read_File(fname,anim_hdr,audio_attempt)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
-xaULONG audio_attempt;    /* xaTRUE if audio is to be attempted */
+xaULONG WAV_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr,
+xaULONG audio_attempt /* xaTRUE if audio is to be attempted */
+)
 {
   XA_INPUT *xin = anim_hdr->xin;
   xaLONG wav_riff_size;

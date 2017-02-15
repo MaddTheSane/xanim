@@ -63,7 +63,6 @@ typedef struct FLI_FRAME_STRUCT
 extern void Decode_Fli_BRUN();
 extern void Decode_Fli_LC();
 extern void Fli_Buffer_Action();
-extern xaULONG Fli_Read_File();
 extern xaLONG Is_FLI_File();
 
 

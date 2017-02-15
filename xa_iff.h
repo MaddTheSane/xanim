@@ -1,4 +1,5 @@
-
+#ifndef __XA_IFF_H__
+#define __XA_IFF_H__
 /*
  * xa_iff.h
  *
@@ -15,6 +16,8 @@
  * or its effect upon hardware or computer systems.
  *
  */
+
+#include "xanim.h"
 
 typedef struct 
 {
@@ -190,7 +193,6 @@ typedef struct
   IFF_ACT_LST *end;
 } IFF_DLTA_TABLE;
 
-extern xaULONG IFF_Read_File();
 extern xaULONG IFF_Delta3();
 extern xaULONG IFF_Delta5();
 extern xaULONG IFF_Delta7();
@@ -199,6 +201,19 @@ extern xaULONG IFF_Deltal();
 extern xaULONG IFF_DeltaJ();
 extern xaLONG Is_IFF_File();
 extern xaLONG UnPackRow();
+
+
+extern void IFF_Print_ID(FILE *fout,xaLONG id);
+extern void IFF_Read_BODY(XA_INPUT *xin,xaUBYTE *image_out,xaLONG bodysize,xaULONG xsize,xaULONG ysize,xaULONG depth,
+			xaLONG compression,xaLONG masking,xaULONG or_mask);
+extern void IFF_Buffer_HAM6(xaUBYTE *out, xaUBYTE *in, XA_CHDR *chdr, ColorReg *h_cmap, xaULONG xosize, xaULONG yosize, xaULONG xip,xaULONG yip, xaULONG xisize, xaULONG d_flag);
+extern void IFF_Buffer_HAM8(xaUBYTE *out, xaUBYTE *in, XA_CHDR *chdr, ColorReg *h_cmap, xaULONG xosize, xaULONG yosize, xaULONG xip,xaULONG yip, xaULONG xisize, xaULONG d_flag);
+extern void IFF_Init_DLTA_HDR(xaULONG max_x,xaULONG max_y);
+extern void IFF_Update_DLTA_HDR(xaLONG *min_x,xaLONG *min_y,xaLONG *max_x,xaLONG *max_y);
+extern void IFF_Read_BMHD(XA_INPUT *xin,Bit_Map_Header *bmhd);
+extern void IFF_Read_CMAP_0(ColorReg *cmap,xaULONG size,XA_INPUT *xin);
+extern void IFF_Read_CMAP_1(ColorReg *cmap,xaULONG size,XA_INPUT *xin);
+extern void IFF_Shift_CMAP(ColorReg *cmap,xaULONG csize);
 
 /* POD NOTE: further optimization would be to have
  * IFF_Byte_Mod and IFF_Byte_Mod_with_XOR_flag
@@ -264,3 +279,4 @@ if (xorflag) { \
   if (0x0001 & data) *_iptr     |= dmask; else *_iptr     &= dmaskoff; \
 } }
 
+#endif

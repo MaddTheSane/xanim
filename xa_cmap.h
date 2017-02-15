@@ -8,8 +8,6 @@ extern xaLONG CMAP_Find_Exact(ColorReg *cmap,xaULONG coff,xaULONG csize,xaUSHORT
 extern xaLONG CMAP_CHDR_Match(XA_CHDR *chdr1, XA_CHDR *chdr2);
 extern void CMAP_Remap_CHDRs(XA_CHDR *the_chdr);
 extern void CMAP_Remap_CHDR(XA_CHDR *new_chdr,XA_CHDR *old_chdr);
-extern void CMAP_Histogram_CHDR(XA_CHDR *chdr,xaULONG *hist,xaULONG csize,xaULONG moff);
-extern void CMAP_CMAP_From_Clist(ColorReg *cmap_out,xaULONG *clist,xaULONG clist_len);
 extern void CMAP_CList_CombSort(xaULONG *clist,xaULONG cnum);
 extern void CMAP_CList_CombSort_Red(xaULONG *clist,xaULONG cnum);
 extern void CMAP_CList_CombSort_Green(xaULONG *clist,xaULONG cnum);

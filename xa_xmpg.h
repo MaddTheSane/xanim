@@ -1,4 +1,5 @@
-
+#ifndef __XA_XMPEG_H__
+#define __XA_XMPEG_H__
 /*
  * xa_xmpg.c
  *
@@ -16,7 +17,7 @@
  *
  */
 
-
+#include "xanim.h"
 
 #define MPG_TYPE_I 1
 #define MPG_TYPE_P 2
@@ -86,4 +87,7 @@ typedef struct STRUCT_PIC_HDR
   MPG_SLICE_HDR slices[2];  /* must be last */
 } MPG_PIC_HDR;
 
+extern void MPG_Init_Stuff(XA_ANIM_HDR *anim_hdr);
+extern void j_rev_dct(xaSHORT *data,xaUBYTE *outptr,xaUBYTE *rnglimit);
 
+#endif

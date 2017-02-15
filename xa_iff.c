@@ -18,62 +18,52 @@
 #include "xanim.h"
 #include "xa_iff.h"
 #include "xa_cmap.h"
+#include "xa_formats.h"
 
-xaULONG IFF_Read_File();
-void IFF_Adjust_For_EHB();
-void IFF_Read_BODY();
-void IFF_Print_ID();
-xaULONG IFF_Delta_Body();
-xaULONG IFF_Delta_l();
-xaULONG IFF_Delta_3();
-xaULONG IFF_Delta_5();
-xaULONG IFF_Delta_7();
-xaULONG IFF_Delta_8();
-xaULONG IFF_Delta_J();
-void IFF_Long_Mod();
-void IFF_Buffer_Action();
-void IFF_Buffer_HAM6();
-void IFF_Buffer_HAM8();
-void IFF_Setup_HMAP();
-void IFF_Setup_CMAP();
-IFF_ACT_LST *IFF_Add_Frame();
-void IFF_Image_To_Bufferable();
-void IFF_Read_BMHD();
-void IFF_Read_ANHD();
-void IFF_Read_ANSQ();
-void IFF_Register_CRNGs();
-void IFF_Read_CRNG();
-void IFF_Read_CMAP_0();
-void IFF_Read_CMAP_1();
-void IFF_Init_DLTA_HDR();
-void IFF_Update_DLTA_HDR();
-void IFF_Free_Stuff();
-void IFF_Shift_CMAP();
-void IFF_HAM6_As_True();
-void IFF_HAM8_As_True();
-void IFF_Hash_CleanUp();
-void IFF_Hash_Init();
-void IFF_Hash_Add();
-XA_ACTION *IFF_Hash_Get();
-xaULONG IFF_Check_Same();
+static void IFF_Adjust_For_EHB();
+static xaULONG IFF_Delta_Body();
+static xaULONG IFF_Delta_l();
+static xaULONG IFF_Delta_3();
+static xaULONG IFF_Delta_5();
+static xaULONG IFF_Delta_7();
+static xaULONG IFF_Delta_8();
+static xaULONG IFF_Delta_J();
+static void IFF_Long_Mod();
+static void IFF_Buffer_Action();
+static void IFF_Setup_HMAP();
+static void IFF_Setup_CMAP();
+static IFF_ACT_LST *IFF_Add_Frame();
+static void IFF_Image_To_Bufferable();
+static void IFF_Read_ANHD();
+static void IFF_Read_ANSQ();
+static void IFF_Register_CRNGs();
+static void IFF_Read_CRNG();
+static void IFF_Free_Stuff();
+static void IFF_HAM6_As_True();
+static void IFF_HAM8_As_True();
+static void IFF_Hash_CleanUp();
+static void IFF_Hash_Init();
+static void IFF_Hash_Add();
+static XA_ACTION *IFF_Hash_Get();
+static xaULONG IFF_Check_Same();
 
 
-void ACT_Add_CHDR_To_Action();
-void ACT_Del_CHDR_From_Action();
-void UTIL_Mapped_To_Bitmap();
-void UTIL_Mapped_To_Mapped();
-xaUBYTE *UTIL_RGB_To_Map();
-xaUBYTE *UTIL_RGB_To_FS_Map();
-void ACT_Free_Act();
-xaULONG UTIL_Get_Buffer_Scale();
-void UTIL_Scale_Pos_Size();
+extern void ACT_Add_CHDR_To_Action();
+extern void ACT_Del_CHDR_From_Action();
+extern void UTIL_Mapped_To_Bitmap();
+extern void UTIL_Mapped_To_Mapped();
+extern xaUBYTE *UTIL_RGB_To_Map();
+extern xaUBYTE *UTIL_RGB_To_FS_Map();
+extern void ACT_Free_Act();
+extern xaULONG UTIL_Get_Buffer_Scale();
+extern void UTIL_Scale_Pos_Size();
 
 extern xaLONG xa_anim_cycling;
 
-XA_ACTION *ACT_Get_Action();
-void ACT_Setup_Mapped();
-void UTIL_Sub_Image();
-XA_CHDR *ACT_Get_CMAP();
+extern XA_ACTION *ACT_Get_Action();
+extern void ACT_Setup_Mapped();
+extern void UTIL_Sub_Image();
+extern XA_CHDR *ACT_Get_CMAP();
 
 #define IFF_SPEED_DEFAULT 3
 #define IFF_MS_PER_60HZ  17
@@ -89,8 +79,8 @@ typedef struct
   XA_ACTION *nxtdlta;
 } IFF_HASH;
 
-IFF_HASH *iff_hash_tbl;
-xaULONG iff_hash_cur = 0;
+static IFF_HASH *iff_hash_tbl;
+static xaULONG iff_hash_cur = 0;
 
 
 static IFF_ANSQ_HDR *iff_ansq;
@@ -189,9 +179,7 @@ IFF_Free_Stuff()
 /*
  *
  */
-xaULONG IFF_Read_File(fname,anim_hdr)
-xaBYTE *fname;
-XA_ANIM_HDR *anim_hdr;
+xaULONG IFF_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr)
 { XA_INPUT *xin = anim_hdr->xin;
   xaLONG camg_flag,cmap_flag,chdr_flag,ret;
   xaLONG crng_flag,formtype;
@@ -1036,13 +1024,8 @@ xaULONG cmap_bits;
 /*
  *
  */
-void IFF_Read_BODY(xin,image_out,bodysize,xsize,ysize,depth,
-			compression,masking,or_mask)
-XA_INPUT *xin;
-xaUBYTE *image_out;
-xaULONG xsize,ysize,depth;
-xaLONG bodysize,compression,masking;
-xaULONG or_mask;
+void IFF_Read_BODY(XA_INPUT *xin,xaUBYTE *image_out,xaLONG bodysize,xaULONG xsize,xaULONG ysize,xaULONG depth,
+			xaLONG compression,xaLONG masking,xaULONG or_mask)
 {
  xaLONG i,ret,x,y,d,dmask,tmp,rowsize;
  xaLONG imagex_pad;
@@ -1132,9 +1115,7 @@ xaULONG or_mask;
 /*
  *
  */
-void IFF_Print_ID(fout,id)
-FILE *fout;
-xaLONG id;
+void IFF_Print_ID(FILE *fout,xaLONG id)
 {
  fprintf(fout,"%c",     (char)((id >> 24) & 0xff)   );
  fprintf(fout,"%c",     (char)((id >> 16) & 0xff)   );
@@ -1836,8 +1817,7 @@ xaULONG bits;
 IFF_DLTA_HDR iff_dlta[2];
 
 void
-IFF_Init_DLTA_HDR(max_x,max_y)
-xaULONG max_x,max_y;
+IFF_Init_DLTA_HDR(xaULONG max_x,xaULONG max_y)
 {
   iff_dlta[0].minx = iff_dlta[1].minx = 0;
   iff_dlta[0].miny = iff_dlta[1].miny = 0;
@@ -1846,8 +1826,7 @@ xaULONG max_x,max_y;
 }
 
 void
-IFF_Update_DLTA_HDR(min_x,min_y,max_x,max_y)
-xaLONG *min_x,*min_y,*max_x,*max_y;
+IFF_Update_DLTA_HDR(xaLONG *min_x,xaLONG *min_y,xaLONG *max_x,xaLONG *max_y)
 {
   register xaLONG tmin_x,tmin_y,tmax_x,tmax_y;
 
@@ -1893,9 +1872,7 @@ xaLONG *min_x,*min_y,*max_x,*max_y;
 }
 
 void
-IFF_Read_BMHD(xin,bmhd)
-XA_INPUT *xin;
-Bit_Map_Header *bmhd;
+IFF_Read_BMHD(XA_INPUT *xin,Bit_Map_Header *bmhd)
 {
   /* read Bit_Map_Header into bmhd */
   /* read so as to avoid endian problems */
@@ -2071,10 +2048,7 @@ xaULONG *crng_flag;
 
 
 void
-IFF_Read_CMAP_0(cmap,size,xin)
-ColorReg *cmap;
-xaULONG size;
-XA_INPUT *xin;
+IFF_Read_CMAP_0(ColorReg *cmap,xaULONG size,XA_INPUT *xin)
 {
   xaULONG i;
   for(i=0; i < size; i++)
@@ -2086,10 +2060,7 @@ XA_INPUT *xin;
 }
 
 void
-IFF_Read_CMAP_1(cmap,size,xin)
-ColorReg *cmap;
-xaULONG size;
-XA_INPUT *xin;
+IFF_Read_CMAP_1(ColorReg *cmap,xaULONG size,XA_INPUT *xin)
 {
   xaULONG i;
   for(i=0; i < size; i++)
@@ -2104,15 +2075,19 @@ XA_INPUT *xin;
 }
 
 
-void IFF_Buffer_HAM6(out,in,chdr,h_cmap,xosize,yosize,xip,yip,xisize,d_flag)
-xaUBYTE *out;		/* output image (size of section) */
-xaUBYTE *in;		/* input image */
-XA_CHDR *chdr;		/* color header to map to */
-ColorReg *h_cmap;	/* ham color map */
-xaULONG xosize,yosize;	/* size of section in input buffer */
-xaULONG xip,yip;		/* pos of section in input buffer */
-xaULONG xisize;		/* x size of input buffer */
-xaULONG d_flag;		/* map_flag */
+/*!
+ * \param out output image (size of section)
+ * \param in input image
+ * \param chdr color header to map to
+ * \param h_cmap ham color map
+ * \param xosize size of section in input buffer
+ * \param yosize size of section in input buffer
+ * \param xip pos of section in input buffer
+ * \param yip pos of section in input buffer
+ * \param xisize x size of input buffer
+ * \param d_flag map_flag
+ */
+void IFF_Buffer_HAM6(xaUBYTE *out, xaUBYTE *in, XA_CHDR *chdr, ColorReg *h_cmap, xaULONG xosize, xaULONG yosize, xaULONG xip,xaULONG yip, xaULONG xisize, xaULONG d_flag)
 {
   XA_CHDR *the_chdr;
   xaULONG new_cmap_flag,*the_map,psize;
@@ -2204,15 +2179,7 @@ xaULONG d_flag;		/* map_flag */
 }
 
 
-void IFF_Buffer_HAM8(out,in,chdr,h_cmap,xosize,yosize,xip,yip,xisize,d_flag)
-xaUBYTE *out;		/* output image (size of section) */
-xaUBYTE *in;		/* input image */
-XA_CHDR *chdr;		/* color header to map to */
-ColorReg *h_cmap;	/* ham color map */
-xaULONG xosize,yosize;	/* size of section in input buffer */
-xaULONG xip,yip;		/* pos of section in input buffer */
-xaULONG xisize;		/* x size of input buffer */
-xaULONG d_flag;		/* map_flag */
+void IFF_Buffer_HAM8(xaUBYTE *out, xaUBYTE *in, XA_CHDR *chdr, ColorReg *h_cmap, xaULONG xosize, xaULONG yosize, xaULONG xip,xaULONG yip, xaULONG xisize, xaULONG d_flag)
 {
   XA_CHDR *the_chdr;
   xaULONG new_cmap_flag,*the_map,psize;
@@ -2313,9 +2280,7 @@ xaULONG d_flag;		/* map_flag */
 }
 
 void
-IFF_Shift_CMAP(cmap,csize)
-ColorReg *cmap;
-xaULONG csize;
+IFF_Shift_CMAP(ColorReg *cmap,xaULONG csize)
 { xaULONG i;
   for(i=0;i<csize;i++)
   { cmap[i].red   >>= 4;

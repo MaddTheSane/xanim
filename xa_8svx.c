@@ -28,6 +28,7 @@
 /*#include "xa_iff.h" consider it */
 #include "xanim.h"
 #include "xa_8svx.h"
+#include "xa_formats.h"
 
 #define XA_ID_8SVX	0x38535658
 
@@ -36,7 +37,6 @@
  */
 
 /* Forward declarations */
-xaULONG SVX_Read_File();
 static void SVX_Read_VHDR();
 static void SVX_Read_Chunk_Header();
 static void SVX_Print_VHDR();
@@ -61,10 +61,7 @@ static Chunk_Header svx_vhdr_hdr;	/* VHDR Header */
 static Voice8Header svx_vhdr;		/* VHDR */
 static xaULONG svx_snd_time, svx_snd_timelo;
 
-xaULONG SVX_Read_File(fname,anim_hdr,audio_attempt)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
-xaULONG audio_attempt;    /* xaTRUE if audio is to be attempted */
+xaULONG SVX_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr,xaULONG audio_attempt)
 {
 	XA_INPUT	*xin = anim_hdr->xin;
 	xaLONG		svx_type;	/* must be 8SVX */

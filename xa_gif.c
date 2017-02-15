@@ -27,9 +27,8 @@
  *          
  */
 #include "xa_gif.h"
+#include "xa_formats.h"
 
-xaULONG GIF_Read_Anim();
-GIF_FRAME *GIF_Read_File();
 GIF_FRAME *GIF_Add_Frame();
 
 xaULONG GIF_Decompress();
@@ -121,9 +120,7 @@ GIF_FRAME *gframes;
 }
 
 xaULONG
-GIF_Read_Anim(fname,anim_hdr)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
+GIF_Read_Anim(const char *fname,XA_ANIM_HDR *anim_hdr)
 {
   GIF_FRAME *glist,*gtmp;
   xaULONG frame_cnt,i;
@@ -206,10 +203,7 @@ xaUBYTE pad_byte;
 /*
  *
  */
-GIF_FRAME *GIF_Read_File(fname,anim_hdr,frame_cnt)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
-xaULONG *frame_cnt;
+GIF_FRAME *GIF_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr,xaULONG *frame_cnt)
 {
   XA_INPUT *xin = anim_hdr->xin;
   xaLONG i,exit_flag;

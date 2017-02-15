@@ -65,5 +65,3 @@ typedef struct
 	xaLONG	volume;		/* fixed point value */
 } Voice8Header;
 
-extern xaULONG SVX_Read_File();
-

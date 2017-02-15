@@ -16,11 +16,11 @@
  *
  */
 #include "xa_fli.h" 
+#include "xa_formats.h"
 
 extern xaULONG xa_kludge1_fli;
 
 xaLONG Is_FLI_File();
-xaULONG Fli_Read_File();
 static void FLI_Read_Header();
 xaULONG FLI_Read_Frame_Header();
 FLI_FRAME *FLI_Add_Frame();
@@ -144,9 +144,7 @@ Fli_Frame_Header *frame_hdr;
   return(1);
 }
 
-xaULONG Fli_Read_File(fname,anim_hdr)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
+xaULONG Fli_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr)
 {
   XA_INPUT *xin = anim_hdr->xin;
   xaLONG j,ret;

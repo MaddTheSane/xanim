@@ -52,7 +52,7 @@
 /* If xaTRUE then IFF CRNG (color cycling chunks) will be activated for
  * IFF animation files.
  */
-#define DEFAULT_CYCLE_ANIM_FLAG		xaFALSE
+#define DEFAULT_CYCLE_ANIM_FLAG		xaTRUE
 
 /* If xaTRUE then image height is reduced by half if an IFF image/animation
  * is interlaced.
@@ -88,7 +88,7 @@
  * can not display the images at the specified rate. Turning optimization
  * off will force the entire animation to go at the slower rate.
  */
-#define DEFAULT_OPTIMIZE_FLAG	xaTRUE
+#define DEFAULT_OPTIMIZE_FLAG	xaFALSE
 
 /* If this is xaTRUE and DEFAULT_BUFF_FLAG is xaTRUE, the images will be
  * put into pixmaps. Pixmaps have the following advantages:

@@ -24,8 +24,9 @@
 
 
 #include "xa_jmov.h" 
+#include "xa_cmap.h"
+#include "xa_formats.h"
 
-xaULONG JMOV_Read_File();
 JMOV_FRAME *JMOV_Add_Frame();
 void JMOV_Free_Frame_List();
 void ACT_Setup_Delta();
@@ -42,18 +43,12 @@ extern char IJPG_Tab1[64];
 extern char IJPG_Tab2[64];
 extern void JFIF_Init_IJPG_Tables();
 
-extern void CMAP_Cache_Clear();
-extern void CMAP_Cache_Init();
-
 extern XA_ACTION *ACT_Get_Action();
 extern XA_CHDR *ACT_Get_CMAP();
-extern XA_CHDR *CMAP_Create_332();
-extern XA_CHDR *CMAP_Create_422();
-extern XA_CHDR *CMAP_Create_Gray();
 extern void ACT_Add_CHDR_To_Action();
 extern void ACT_Setup_Mapped();
 extern void ACT_Get_CCMAP();
-extern XA_CHDR *CMAP_Create_CHDR_From_True();
+//extern XA_CHDR *CMAP_Create_CHDR_From_True();
 extern xaULONG CMAP_Find_Closest();
 extern xaUBYTE *UTIL_RGB_To_FS_Map();
 extern xaUBYTE *UTIL_RGB_To_Map();
@@ -109,10 +104,7 @@ JMOV_FRAME *fframes;
 }
 
 
-xaULONG JMOV_Read_File(fname,anim_hdr,audio_attempt)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
-xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
+xaULONG JMOV_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr,xaULONG audio_attempt)
 { XA_INPUT *xin = anim_hdr->xin;
   xaLONG i,t_time;
   xaULONG t_timelo;

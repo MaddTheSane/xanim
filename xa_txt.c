@@ -17,11 +17,10 @@
  */
 
 #include "xa_gif.h"
+#include "xa_formats.h"
 
 
-xaULONG TXT_Read_File();
 extern void GIF_Free_Frame_List();
-extern GIF_FRAME *GIF_Read_File();
 
 extern xaULONG XA_Open_And_ID_File();
 extern xaULONG XA_Setup_Input_Methods();
@@ -39,9 +38,7 @@ static xaULONG txt_max_imagex,txt_max_imagey,txt_max_imagec,txt_max_imaged;
  * This file parse the txt animation file and converts it into actions. 
  *
  */
-xaULONG TXT_Read_File(fname,anim_hdr)
-XA_ANIM_HDR *anim_hdr;
-char *fname;
+xaULONG TXT_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr)
 { XA_INPUT *xin = anim_hdr->xin;
   FILE *fp;
   xaLONG ret,i,f_cnt;

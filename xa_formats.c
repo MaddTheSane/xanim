@@ -17,33 +17,12 @@
  */
 
 #include "xanim.h"
+#include "xa_formats.h"
 
 extern char	*xa_raw_format;
 xaULONG Is_DL_File();
 extern xaLONG Is_QT_File();
 
-xaULONG IFF_Read_File();
-xaULONG GIF_Read_Anim();
-xaULONG TXT_Read_File();
-xaULONG Fli_Read_File();
-xaULONG DL_Read_File();
-/* xaULONG PFX_Read_File(); */
-xaULONG MOVI_Read_File();
-xaULONG SET_Read_File();
-xaULONG RLE_Read_File();
-xaULONG AVI_Read_File();
-xaULONG QT_Read_File();
-xaULONG JFIF_Read_File();
-xaULONG MPG_Read_File();
-xaULONG JMOV_Read_File();
-xaULONG ARM_Read_File();
-xaULONG WAV_Read_File();
-xaULONG AU_Read_File();
-xaULONG SVX_Read_File();
-xaULONG DUM_Read_File();
-xaULONG QCIF_Read_File();
-xaULONG CIF_Read_File();
-xaULONG J6I_Read_File();
 
 
 #define XA_ID_FORM	0x464f524d

@@ -17,8 +17,7 @@
  */
 
 #include "xanim.h"
-
-xaULONG DUM_Read_File();
+#include "xa_formats.h"
 
 extern XA_ANIM_SETUP *XA_Get_Anim_Setup();
 extern xaULONG FLI_Decode_BLACK();
@@ -29,9 +28,7 @@ extern void ACT_Setup_Delta();
 extern XA_CHDR *CMAP_Create_332();
 extern XA_CHDR *CMAP_Create_Gray();
 
-xaULONG DUM_Read_File(fname,anim_hdr)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
+xaULONG DUM_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr)
 { xaULONG i,num_frames;
   XA_ACTION *act;
   ACT_DLTA_HDR *dlta_hdr;

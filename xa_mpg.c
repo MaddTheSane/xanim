@@ -52,16 +52,17 @@
  *
  */
 
+#include "xanim.h"
 #include "xa_mpg.h"
 #include "xa_xmpg.h"
 #include "xa_color.h"
 #include "xa_cmap.h"
+#include "xa_formats.h"
 
 extern YUVBufs jpg_YUVBufs;
 extern YUVTabs def_yuv_tabs;
 
 /* internal FUNCTIONS */
-xaULONG MPG_Read_File();
 xaULONG mpg_get_start_code();
 static xaULONG mpg_read_SEQ_HDR();
 static xaULONG mpg_read_GOP_HDR();
@@ -72,7 +73,6 @@ static xaULONG MPG_Decode_I();
 xaULONG MPG_Decode_P();
 xaULONG MPG_Decode_B();
 #endif
-void MPG_Init_Stuff();
 static void mpg_init_motion_vectors();
 static void mpg_init_mb_type_B();
 static void mpg_init_mb_type_P();
@@ -308,9 +308,7 @@ MPG_FRAME *fframes;
 }
 
 
-xaULONG MPG_Read_File(fname,anim_hdr)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
+xaULONG MPG_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr)
 { XA_INPUT *xin = anim_hdr->xin;
   xaULONG i,t_timelo;
   xaULONG t_time;
@@ -1450,8 +1448,7 @@ xaLONG *level;
  *
  *********************/
 
-void MPG_Init_Stuff(anim_hdr)
-XA_ANIM_HDR *anim_hdr;
+void MPG_Init_Stuff(XA_ANIM_HDR *anim_hdr)
 {
   XA_Add_Func_To_Free_Chain(anim_hdr,MPG_Free_Stuff);
   if (mb_addr_inc == 0)  
@@ -2128,10 +2125,7 @@ if (size > 10) { fprintf(stderr,"HUFF ERR \n"); return; }
 
 #define MULTIPLY(var,const)  ((var) * (const))
 
-void j_rev_dct (data,outptr,rnglimit)
-xaSHORT *data;
-xaUBYTE *outptr;
-xaUBYTE *rnglimit;
+void j_rev_dct (xaSHORT *data,xaUBYTE *outptr,xaUBYTE *rnglimit)
 {
   xaLONG tmp0, tmp1, tmp2, tmp3;
   xaLONG tmp10, tmp11, tmp12, tmp13;

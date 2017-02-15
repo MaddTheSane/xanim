@@ -47,6 +47,7 @@
 #include "xa_codecs.h"
 #include "xa_color.h"
 #include "xa_cmap.h"
+#include "xa_formats.h"
 
 
 #ifdef XA_GSM
@@ -61,7 +62,6 @@ extern xaLONG AVI_Video_Codec_Query();
 
 static xaULONG AVI_IJPG_Read_Ext();
 static xaULONG AVI_JPEG_Read_Ext();
-xaULONG AVI_Read_File();
 void AVI_Print_ID();
 AVI_FRAME *AVI_Add_Frame();
 void AVI_Free_Frame_List();
@@ -224,10 +224,7 @@ AVI_FRAME *fframes;
 /****-----------------------------------------------------------------****
  *
  ****-----------------------------------------------------------------****/
-xaULONG AVI_Read_File(fname,anim_hdr,audio_attempt)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
-xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
+xaULONG AVI_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr,xaULONG audio_attempt)
 { XA_INPUT *xin;
   xaLONG i,t_time;
   xaULONG t_timelo;

@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <assert.h>  /* POD optional */
 #include "xa_gsm.h"
+#include "xa_formats.h"
 
 void XA_MSGSM_Decoder();
 static void GSM_Decode();

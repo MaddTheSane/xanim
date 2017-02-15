@@ -56,3 +56,5 @@ typedef struct GIF_FRAME_STRUCT
   struct GIF_FRAME_STRUCT *next;
 } GIF_FRAME;
 
+extern GIF_FRAME *GIF_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr,xaULONG *frame_cnt);
+

@@ -26,11 +26,7 @@
 #include "xa_codecs.h"
 #include "xa_color.h"
 #include "xa_cmap.h"
-
-
-/****---------- Global Routines -----------------------****/
-xaULONG QCIF_Read_File();
-xaULONG	CIF_Read_File();
+#include "xa_formats.h"
 
 /****---------- Local Routines --------------------****/
 static xaULONG		RAW_Read_File();
@@ -114,10 +110,7 @@ RAW_FRAME *fframes;
 /****------------------------------------------------------------------****
  ****
  ****------------------------------------------------------------------****/
-xaULONG QCIF_Read_File(fname,anim_hdr,audio_attempt)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
-xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
+xaULONG QCIF_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr,xaULONG audio_attempt)
 { xaULONG ret, delta_size;
   XA_CODEC_HDR	codec;
 
@@ -140,10 +133,7 @@ xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
 /****------------------------------------------------------------------****
  ****
  ****------------------------------------------------------------------****/
-xaULONG CIF_Read_File(fname,anim_hdr,audio_attempt)
-char *fname;
-XA_ANIM_HDR *anim_hdr;
-xaULONG audio_attempt;	/* xaTRUE if audio is to be attempted */
+xaULONG CIF_Read_File(const char *fname,XA_ANIM_HDR *anim_hdr,xaULONG audio_attempt)
 { xaULONG ret, delta_size;
   XA_CODEC_HDR	codec;
 
